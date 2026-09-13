@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabaseClient'
 import { generateStrongPassword } from '../../lib/generatePassword'
+import * as XLSX from 'xlsx'
 import styles from './admin.module.css'
 
 const ROLE_LABEL = { admin: 'Quản trị viên', teacher: 'Giáo viên', student: 'Học sinh' }
@@ -83,6 +84,12 @@ export default function AdminPage() {
   const [resetPassword, setResetPassword] = useState('')
   const [rowBusyId, setRowBusyId] = useState(null)
   const [rowMsg, setRowMsg] = useState({ id: null, text: '', isError: false })
+
+  // ---- Nhập danh sách học sinh hàng loạt ----
+  const [rosterClassId, setRosterClassId] = useState('')
+  const [rosterResults, setRosterResults] = useState(null)
+  const [rosterBusy, setRosterBusy] = useState(false)
+  const [rosterError, setRosterError] = useState('')
 
   const getToken = useCallback(async () => {
     const { data } = await supabase.auth.getSession()
@@ -499,6 +506,90 @@ export default function AdminPage() {
     }
   }
 
+  // ---------- Nhập danh sách học sinh hàng loạt ----------
+  // Đọc thẳng file sổ điểm / sổ điểm danh sẵn có của giáo viên (không cần file mẫu riêng).
+  // File dạng này luôn có vài dòng tiêu đề rác phía trên, rồi tới dòng header thật chứa
+  // "Mã học sinh" và "Họ và tên" (họ tên bị tách làm 2 cột liền nhau do merge cell).
+  function parseRosterSheet(sheet) {
+    const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false })
+
+    let headerRowIdx = -1
+    let codeColIdx = -1
+    let nameColIdx = -1
+
+    for (let i = 0; i < raw.length; i++) {
+      const row = raw[i]
+      const idx = row.findIndex((c) => String(c).trim() === 'Mã học sinh')
+      if (idx !== -1) {
+        headerRowIdx = i
+        codeColIdx = idx
+        nameColIdx = row.findIndex((c) => String(c).trim() === 'Họ và tên')
+        break
+      }
+    }
+
+    if (headerRowIdx === -1 || nameColIdx === -1) {
+      return { error: 'Không tìm thấy cột "Mã học sinh" và "Họ và tên" trong file. Kiểm tra lại file đã chọn.' }
+    }
+
+    const students = raw
+      .slice(headerRowIdx + 1)
+      .map((row) => {
+        const studentCode = String(row[codeColIdx] || '').trim()
+        const hoDem = String(row[nameColIdx] || '').trim()
+        const ten = String(row[nameColIdx + 1] || '').trim()
+        const fullName = [hoDem, ten].filter(Boolean).join(' ')
+        return { studentCode, fullName }
+      })
+      .filter((r) => r.studentCode && r.fullName)
+
+    return { students }
+  }
+
+  async function handleRosterUpload(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    if (!rosterClassId) {
+      setRosterError('Vui lòng chọn lớp trước khi tải file lên.')
+      return
+    }
+
+    setRosterBusy(true)
+    setRosterError('')
+    setRosterResults(null)
+
+    try {
+      const buffer = await file.arrayBuffer()
+      const wb = XLSX.read(buffer, { cellDates: true })
+      const sheet = wb.Sheets[wb.SheetNames[0]]
+      const { students, error } = parseRosterSheet(sheet)
+
+      if (error) {
+        setRosterError(error)
+        setRosterBusy(false)
+        return
+      }
+      if (students.length === 0) {
+        setRosterError('Không đọc được dòng học sinh nào có đủ mã học sinh và họ tên trong file.')
+        setRosterBusy(false)
+        return
+      }
+
+      const data = await authedFetch('/api/admin/bulk-create-students', {
+        method: 'POST',
+        body: JSON.stringify({ classId: rosterClassId, students }),
+      })
+      setRosterResults(data.results || [])
+      loadUsers()
+    } catch (err) {
+      setRosterError(err.message)
+    } finally {
+      setRosterBusy(false)
+    }
+  }
+
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       if (roleFilter !== 'all' && u.role !== roleFilter) return false
@@ -881,6 +972,61 @@ export default function AdminPage() {
               )}
             </div>
           )}
+
+          <hr className={styles.sectionDivider} />
+
+          {/* ---------------- NHẬP DANH SÁCH HỌC SINH HÀNG LOẠT ---------------- */}
+          <h2>Nhập danh sách học sinh hàng loạt</h2>
+          <p style={{ fontSize: 12, color: '#5b6b66', margin: '0 0 10px' }}>
+            Chọn lớp, sau đó tải thẳng file sổ điểm hoặc sổ điểm danh sẵn có của giáo viên lên (không cần điền file
+            mẫu riêng). Hệ thống tự đọc cột "Mã học sinh" và "Họ và tên" trong file, dùng luôn mã học sinh có sẵn
+            để tạo tài khoản.
+          </p>
+          <div className={styles.passwordRow} style={{ marginBottom: 10 }}>
+            <select value={rosterClassId} onChange={(e) => setRosterClassId(e.target.value)}>
+              <option value="">-- Chọn lớp --</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <label
+              className={styles.genButton}
+              style={{
+                cursor: rosterBusy || !rosterClassId ? 'default' : 'pointer',
+                textAlign: 'center',
+                opacity: rosterBusy || !rosterClassId ? 0.6 : 1,
+              }}
+            >
+              {rosterBusy ? 'Đang xử lý…' : 'Tải file danh sách lên'}
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleRosterUpload}
+                disabled={rosterBusy || !rosterClassId}
+                style={{ display: 'none' }}
+              />
+            </label>
+          </div>
+          {rosterError && <p className={styles.error}>{rosterError}</p>}
+
+          {rosterResults && (
+            <div className={styles.successBox}>
+              <p>
+                <strong>
+                  Đã tạo {rosterResults.filter((r) => r.success).length}/{rosterResults.length} tài khoản.
+                </strong>
+              </p>
+              {rosterResults.map((r, i) => (
+                <p key={i} style={{ margin: '4px 0' }}>
+                  {r.success ? (
+                    <>✅ {r.fullName} — <code>{r.studentCode}</code> / <code>{r.password}</code></>
+                  ) : (
+                    <span className={styles.rowError}>❌ {r.fullName || '(dòng lỗi)'}: {r.error}</span>
+                  )}
+                </p>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className={styles.listCard}>
@@ -916,6 +1062,7 @@ export default function AdminPage() {
               <table className={styles.table}>
                 <thead>
                   <tr>
+                    <th>Ảnh</th>
                     <th>Họ tên</th>
                     <th>Đăng nhập bằng</th>
                     <th>Vai trò</th>
@@ -927,6 +1074,17 @@ export default function AdminPage() {
                 <tbody>
                   {filteredUsers.map((u) => (
                     <tr key={u.id}>
+                      <td>
+                        {u.photo_url ? (
+                          <img
+                            src={u.photo_url}
+                            alt=""
+                            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', display: 'block' }}
+                          />
+                        ) : (
+                          <span style={{ color: '#8aa39c', fontSize: 11 }}>—</span>
+                        )}
+                      </td>
                       <td>{u.full_name || '—'}</td>
                       <td>{u.role === 'student' ? (u.student_code || '—') : u.email}</td>
                       <td>{ROLE_LABEL[u.role] || u.role}</td>
@@ -1001,7 +1159,7 @@ export default function AdminPage() {
                   ))}
                   {filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={6} className={styles.muted}>
+                      <td colSpan={7} className={styles.muted}>
                         Không có tài khoản nào khớp.
                       </td>
                     </tr>

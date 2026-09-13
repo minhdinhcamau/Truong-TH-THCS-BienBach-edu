@@ -10,7 +10,9 @@ export async function GET(request) {
 
   const { data: profiles, error } = await supabaseAdmin
     .from('profiles')
-    .select('id, role, full_name, student_code, class_id, expires_at, is_retained, created_at')
+    .select(
+      'id, role, full_name, student_code, class_id, date_of_birth, photo_url, expires_at, is_retained, created_at'
+    )
     .order('created_at', { ascending: false })
 
   if (error) {

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
 
 // Bảng màu tự động gán cho từng môn học (không cố định 4 môn như bản mẫu,
@@ -21,6 +22,7 @@ function initialsOf(name) {
 }
 
 export default function StudentDashboard() {
+  const router = useRouter();
   const [profile, setProfile] = useState(null);
   const [className, setClassName] = useState('');
   const [assignments, setAssignments] = useState([]);
@@ -75,6 +77,11 @@ export default function StudentDashboard() {
     }
     load();
   }, []);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.replace('/login');
+  }
 
   if (loading) {
     return <div style={{ maxWidth: 700, margin: '40px auto', padding: 24 }}>Đang tải…</div>;
@@ -190,6 +197,22 @@ export default function StudentDashboard() {
         .profile-class {
           font-size: 12.5px;
           color: var(--masthead-soft);
+        }
+        .logout-btn {
+          border: 1px solid var(--masthead-border);
+          background: #fff;
+          color: var(--masthead-soft);
+          font-family: inherit;
+          font-weight: 600;
+          font-size: 12.5px;
+          padding: 8px 16px;
+          border-radius: 999px;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .logout-btn:hover {
+          border-color: #a3374a;
+          color: #a3374a;
         }
         .hero {
           margin-bottom: 40px;
@@ -369,6 +392,9 @@ export default function StudentDashboard() {
             <div className="profile-class">Mã học sinh: {profile?.student_code || '—'}</div>
           </div>
         </div>
+        <button className="logout-btn" onClick={handleLogout}>
+          Đăng xuất
+        </button>
       </header>
 
       <section className="hero">
