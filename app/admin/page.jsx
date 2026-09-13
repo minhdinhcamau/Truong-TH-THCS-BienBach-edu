@@ -46,7 +46,8 @@ export default function AdminPage() {
   const [editClassName, setEditClassName] = useState('')
   const [editClassGrade, setEditClassGrade] = useState('')
   const [classBusyId, setClassBusyId] = useState(null)
-  const [collapsedGrades, setCollapsedGrades] = useState({})
+  // Mac dinh {} nghia la MOI khoi deu dang an - phai bam moi hien (xem isOpen ben duoi)
+  const [expandedGrades, setExpandedGrades] = useState({})
 
   // ---- Môn học ----
   const [subjects, setSubjects] = useState([])
@@ -55,6 +56,8 @@ export default function AdminPage() {
   const [editingSubjectId, setEditingSubjectId] = useState(null)
   const [editSubjectName, setEditSubjectName] = useState('')
   const [subjectBusyId, setSubjectBusyId] = useState(null)
+  // Danh sach mon hoc cung an mac dinh, giong nhu danh sach lop
+  const [subjectsOpen, setSubjectsOpen] = useState(false)
 
   // ---- Phân công giảng dạy ----
   const [selectedTeacherId, setSelectedTeacherId] = useState('')
@@ -62,12 +65,22 @@ export default function AdminPage() {
   const [loadingAssignments, setLoadingAssignments] = useState(false)
   const [assignmentError, setAssignmentError] = useState('')
   const [newAssignmentSubject, setNewAssignmentSubject] = useState('')
-  const [newAssignmentClass, setNewAssignmentClass] = useState('')
+  // Truoc day chi chon 1 lop; doi thanh mang de 1 giao vien co the duoc phan
+  // cong day cung 1 mon o nhieu lop cung luc (VD Van 6A1 + 6A2 + 6A3).
+  const [newAssignmentClassIds, setNewAssignmentClassIds] = useState([])
   const [newAssignmentYear, setNewAssignmentYear] = useState(currentSchoolYear())
   const [assignmentBusy, setAssignmentBusy] = useState(false)
 
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
+  const [classFilter, setClassFilter] = useState('')
+  // Loc giao vien theo mon dang day (chi co tac dung khi tab dang chon la Giao vien)
+  const [subjectFilter, setSubjectFilter] = useState('')
+
+  // ---- Chọn nhiều để xoá hàng loạt ----
+  const [selectedUserIds, setSelectedUserIds] = useState(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [bulkError, setBulkError] = useState('')
 
   const [form, setForm] = useState({
     fullName: '',
@@ -203,7 +216,7 @@ export default function AdminPage() {
 
   // ---------- Lớp ----------
   function toggleGrade(gradeKey) {
-    setCollapsedGrades((prev) => ({ ...prev, [gradeKey]: !prev[gradeKey] }))
+    setExpandedGrades((prev) => ({ ...prev, [gradeKey]: !prev[gradeKey] }))
   }
 
   async function handleCreateClass() {
@@ -352,34 +365,54 @@ export default function AdminPage() {
 
   function handleSelectTeacher(id) {
     setSelectedTeacherId(id)
+    setNewAssignmentSubject('')
+    setNewAssignmentClassIds([])
     loadTeacherAssignments(id)
   }
 
+  function toggleAssignmentClass(classId) {
+    setNewAssignmentClassIds((prev) =>
+      prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]
+    )
+  }
+
   async function handleAddAssignment() {
-    if (!selectedTeacherId || !newAssignmentSubject || !newAssignmentClass || !newAssignmentYear.trim()) {
-      setAssignmentError('Chọn đủ môn, lớp và năm học.')
+    if (
+      !selectedTeacherId ||
+      !newAssignmentSubject ||
+      newAssignmentClassIds.length === 0 ||
+      !newAssignmentYear.trim()
+    ) {
+      setAssignmentError('Chọn đủ môn, ít nhất 1 lớp và năm học.')
       return
     }
     setAssignmentBusy(true)
     setAssignmentError('')
-    try {
-      await authedFetch('/api/admin/teacher-assignments', {
-        method: 'POST',
-        body: JSON.stringify({
-          teacherId: selectedTeacherId,
-          classId: newAssignmentClass,
-          subjectId: newAssignmentSubject,
-          schoolYear: newAssignmentYear.trim(),
-        }),
-      })
-      setNewAssignmentSubject('')
-      setNewAssignmentClass('')
-      loadTeacherAssignments(selectedTeacherId)
-    } catch (err) {
-      setAssignmentError(err.message)
-    } finally {
-      setAssignmentBusy(false)
+
+    // Giao vien co the day cung 1 mon o nhieu lop - API chi nhan 1 lop/lan nen
+    // gui lan luot tung lop, gom lai loi cua rieng lop nao that bai (VD da ton tai).
+    const failed = []
+    for (const classId of newAssignmentClassIds) {
+      try {
+        await authedFetch('/api/admin/teacher-assignments', {
+          method: 'POST',
+          body: JSON.stringify({
+            teacherId: selectedTeacherId,
+            classId,
+            subjectId: newAssignmentSubject,
+            schoolYear: newAssignmentYear.trim(),
+          }),
+        })
+      } catch (err) {
+        failed.push(`${classNameById[classId] || classId}: ${err.message}`)
+      }
     }
+
+    setNewAssignmentSubject('')
+    setNewAssignmentClassIds([])
+    loadTeacherAssignments(selectedTeacherId)
+    setAssignmentError(failed.length > 0 ? `Một số lớp chưa thêm được — ${failed.join('; ')}` : '')
+    setAssignmentBusy(false)
   }
 
   async function deleteAssignment(a) {
@@ -452,6 +485,12 @@ export default function AdminPage() {
         body: JSON.stringify({ userId: user.id }),
       })
       setUsers((prev) => prev.filter((u) => u.id !== user.id))
+      setSelectedUserIds((prev) => {
+        if (!prev.has(user.id)) return prev
+        const next = new Set(prev)
+        next.delete(user.id)
+        return next
+      })
       if (selectedTeacherId === user.id) {
         setSelectedTeacherId('')
         setTeacherAssignments([])
@@ -593,6 +632,13 @@ export default function AdminPage() {
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       if (roleFilter !== 'all' && u.role !== roleFilter) return false
+      // Loc theo lop chi co y nghia khi dang xem tab Hoc sinh - cac tab
+      // Tat ca / Quan tri vien / Giao vien khong bi anh huong boi lop dang chon.
+      if (roleFilter === 'student' && classFilter && u.class_id !== classFilter) return false
+      // Loc giao vien theo mon dang day - chi co tac dung o tab Giao vien.
+      if (roleFilter === 'teacher' && subjectFilter && !(u.subjectIds || []).includes(subjectFilter)) {
+        return false
+      }
       if (!search.trim()) return true
       const q = search.trim().toLowerCase()
       return (
@@ -601,7 +647,78 @@ export default function AdminPage() {
         u.student_code?.toLowerCase().includes(q)
       )
     })
-  }, [users, search, roleFilter])
+  }, [users, search, roleFilter, classFilter, subjectFilter])
+
+  // Chi cho phep chon hang loat voi tai khoan hoc sinh, trong pham vi dang loc
+  const selectableStudentIds = useMemo(
+    () => filteredUsers.filter((u) => u.role === 'student').map((u) => u.id),
+    [filteredUsers]
+  )
+  const allStudentsSelected =
+    selectableStudentIds.length > 0 && selectableStudentIds.every((id) => selectedUserIds.has(id))
+
+  function handleRoleFilterClick(r) {
+    setRoleFilter(r)
+    // Roi khoi tab Hoc sinh thi bo chon lop, roi khoi tab Giao vien thi bo chon
+    // mon - tranh nham lan la bo loc con hieu luc o tab khac.
+    if (r !== 'student') setClassFilter('')
+    if (r !== 'teacher') setSubjectFilter('')
+  }
+
+  function toggleSelectOne(id) {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev)
+      if (allStudentsSelected) {
+        selectableStudentIds.forEach((id) => next.delete(id))
+      } else {
+        selectableStudentIds.forEach((id) => next.add(id))
+      }
+      return next
+    })
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedUserIds)
+    if (ids.length === 0) return
+
+    const confirmed = window.confirm(
+      `Xoá ${ids.length} tài khoản học sinh đã chọn? Hành động này không thể hoàn tác.`
+    )
+    if (!confirmed) return
+
+    setBulkDeleting(true)
+    setBulkError('')
+    try {
+      const data = await authedFetch('/api/admin/bulk-delete-users', {
+        method: 'POST',
+        body: JSON.stringify({ userIds: ids }),
+      })
+      const succeededIds = new Set((data.results || []).filter((r) => r.success).map((r) => r.userId))
+      const failed = (data.results || []).filter((r) => !r.success)
+
+      setUsers((prev) => prev.filter((u) => !succeededIds.has(u.id)))
+      setSelectedUserIds(new Set())
+
+      if (failed.length > 0) {
+        setBulkError(
+          `Không xoá được ${failed.length} tài khoản: ${failed.map((f) => f.error).join('; ')}`
+        )
+      }
+    } catch (err) {
+      setBulkError(err.message)
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
 
   if (checkingAuth) {
     return <div className={styles.loadingScreen}>Đang kiểm tra quyền truy cập…</div>
@@ -648,7 +765,7 @@ export default function AdminPage() {
           )}
 
           {sortedGradeKeys.map((gradeKey) => {
-            const isOpen = !collapsedGrades[gradeKey]
+            const isOpen = !!expandedGrades[gradeKey]
             return (
               <div key={gradeKey} className={styles.gradeGroup}>
                 <button
@@ -738,46 +855,65 @@ export default function AdminPage() {
             {subjectError && <p className={styles.error}>{subjectError}</p>}
           </div>
 
-          {subjects.length === 0 && <p className={styles.muted}>Chưa có môn học nào.</p>}
+          <div className={styles.gradeGroup}>
+            <button
+              type="button"
+              className={styles.gradeGroupHeader}
+              onClick={() => setSubjectsOpen((prev) => !prev)}
+            >
+              <span>
+                <span className={`${styles.chevron} ${subjectsOpen ? styles.chevronOpen : ''}`}>▶</span>
+                {' '}
+                Danh sách môn học ({subjects.length})
+              </span>
+              <span>{subjectsOpen ? 'Ẩn môn học' : 'Hiện môn học'}</span>
+            </button>
 
-          {subjects.map((s) => (
-            <div key={s.id} className={styles.classRow}>
-              {editingSubjectId === s.id ? (
-                <>
-                  <input
-                    className={styles.inlineInput}
-                    value={editSubjectName}
-                    onChange={(e) => setEditSubjectName(e.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                  <button
-                    className={styles.smallConfirm}
-                    onClick={() => saveEditSubject(s)}
-                    disabled={subjectBusyId === s.id}
-                  >
-                    Lưu
-                  </button>
-                  <button className={styles.smallCancel} onClick={() => setEditingSubjectId(null)}>
-                    Huỷ
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span style={{ flex: 1, fontSize: 14 }}>{s.name}</span>
-                  <button className={styles.linkBtn} onClick={() => startEditSubject(s)}>
-                    Sửa
-                  </button>
-                  <button
-                    className={styles.dangerBtn}
-                    onClick={() => deleteSubject(s)}
-                    disabled={subjectBusyId === s.id}
-                  >
-                    Xoá
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
+            {subjectsOpen && (
+              <div className={styles.gradeGroupBody}>
+                {subjects.length === 0 && <p className={styles.muted}>Chưa có môn học nào.</p>}
+
+                {subjects.map((s) => (
+                  <div key={s.id} className={styles.classRow}>
+                    {editingSubjectId === s.id ? (
+                      <>
+                        <input
+                          className={styles.inlineInput}
+                          value={editSubjectName}
+                          onChange={(e) => setEditSubjectName(e.target.value)}
+                          style={{ flex: 1 }}
+                        />
+                        <button
+                          className={styles.smallConfirm}
+                          onClick={() => saveEditSubject(s)}
+                          disabled={subjectBusyId === s.id}
+                        >
+                          Lưu
+                        </button>
+                        <button className={styles.smallCancel} onClick={() => setEditingSubjectId(null)}>
+                          Huỷ
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ flex: 1, fontSize: 14 }}>{s.name}</span>
+                        <button className={styles.linkBtn} onClick={() => startEditSubject(s)}>
+                          Sửa
+                        </button>
+                        <button
+                          className={styles.dangerBtn}
+                          onClick={() => deleteSubject(s)}
+                          disabled={subjectBusyId === s.id}
+                        >
+                          Xoá
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <hr className={styles.sectionDivider} />
 
@@ -807,16 +943,46 @@ export default function AdminPage() {
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
-                <select value={newAssignmentClass} onChange={(e) => setNewAssignmentClass(e.target.value)}>
-                  <option value="">-- Lớp --</option>
-                  {sortedGradeKeys.map((gradeKey) => (
-                    <optgroup key={gradeKey} label={gradeKey === 'other' ? 'Chưa xếp khối' : `Khối ${gradeKey}`}>
+              </div>
+
+              <p style={{ fontSize: 12, color: '#5b6b66', margin: '0 0 6px' }}>
+                Chọn một hoặc nhiều lớp (giáo viên có thể dạy cùng môn ở nhiều lớp):
+              </p>
+              <div
+                style={{
+                  border: '1px solid #dce3e0',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  marginBottom: 10,
+                  maxHeight: 180,
+                  overflowY: 'auto',
+                }}
+              >
+                {sortedGradeKeys.length === 0 && (
+                  <p className={styles.muted} style={{ margin: 0 }}>Chưa có lớp nào.</p>
+                )}
+                {sortedGradeKeys.map((gradeKey) => (
+                  <div key={gradeKey} style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#37423e', marginBottom: 4 }}>
+                      {gradeKey === 'other' ? 'Chưa xếp khối' : `Khối ${gradeKey}`}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px' }}>
                       {classesByGrade[gradeKey].map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
+                        <label
+                          key={c.id}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={newAssignmentClassIds.includes(c.id)}
+                            onChange={() => toggleAssignmentClass(c.id)}
+                          />
+                          {c.name}
+                        </label>
                       ))}
-                    </optgroup>
-                  ))}
-                </select>
+                    </div>
+                  </div>
+                ))}
               </div>
               <div className={styles.passwordRow} style={{ marginBottom: 12 }}>
                 <input
@@ -1044,14 +1210,83 @@ export default function AdminPage() {
                   <button
                     key={r}
                     className={r === roleFilter ? styles.filterActive : styles.filterTab}
-                    onClick={() => setRoleFilter(r)}
+                    onClick={() => handleRoleFilterClick(r)}
                   >
                     {r === 'all' ? 'Tất cả' : ROLE_LABEL[r]}
                   </button>
                 ))}
               </div>
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                disabled={roleFilter !== 'student'}
+                title={
+                  roleFilter !== 'student'
+                    ? 'Chọn tab "Học sinh" để lọc theo lớp'
+                    : 'Lọc học sinh theo lớp'
+                }
+                style={{
+                  padding: '8px 11px',
+                  border: '1px solid #dce3e0',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  opacity: roleFilter !== 'student' ? 0.5 : 1,
+                  cursor: roleFilter !== 'student' ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <option value="">-- Tất cả lớp --</option>
+                {sortedGradeKeys.map((gradeKey) => (
+                  <optgroup key={gradeKey} label={gradeKey === 'other' ? 'Chưa xếp khối' : `Khối ${gradeKey}`}>
+                    {classesByGrade[gradeKey].map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <select
+                value={subjectFilter}
+                onChange={(e) => setSubjectFilter(e.target.value)}
+                disabled={roleFilter !== 'teacher'}
+                title={
+                  roleFilter !== 'teacher'
+                    ? 'Chọn tab "Giáo viên" để lọc theo môn'
+                    : 'Lọc giáo viên theo môn đang dạy'
+                }
+                style={{
+                  padding: '8px 11px',
+                  border: '1px solid #dce3e0',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  opacity: roleFilter !== 'teacher' ? 0.5 : 1,
+                  cursor: roleFilter !== 'teacher' ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <option value="">-- Tất cả môn --</option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
             </div>
           </div>
+
+          {selectedUserIds.size > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '0 0 12px' }}>
+              <span style={{ fontSize: 13, color: '#37423e' }}>
+                Đã chọn {selectedUserIds.size} tài khoản học sinh
+              </span>
+              <button className={styles.dangerBtn} onClick={handleBulkDelete} disabled={bulkDeleting}>
+                {bulkDeleting ? 'Đang xoá…' : 'Xoá các mục đã chọn'}
+              </button>
+              <button
+                className={styles.linkBtn}
+                onClick={() => setSelectedUserIds(new Set())}
+                disabled={bulkDeleting}
+              >
+                Bỏ chọn
+              </button>
+            </div>
+          )}
+          {bulkError && <p className={styles.error}>{bulkError}</p>}
 
           {listError && <p className={styles.error}>{listError}</p>}
 
@@ -1062,6 +1297,15 @@ export default function AdminPage() {
               <table className={styles.table}>
                 <thead>
                   <tr>
+                    <th style={{ width: 28 }}>
+                      <input
+                        type="checkbox"
+                        checked={allStudentsSelected}
+                        onChange={toggleSelectAll}
+                        disabled={selectableStudentIds.length === 0}
+                        title="Chọn tất cả học sinh đang hiển thị"
+                      />
+                    </th>
                     <th>Ảnh</th>
                     <th>Họ tên</th>
                     <th>Đăng nhập bằng</th>
@@ -1074,6 +1318,15 @@ export default function AdminPage() {
                 <tbody>
                   {filteredUsers.map((u) => (
                     <tr key={u.id}>
+                      <td>
+                        {u.role === 'student' && (
+                          <input
+                            type="checkbox"
+                            checked={selectedUserIds.has(u.id)}
+                            onChange={() => toggleSelectOne(u.id)}
+                          />
+                        )}
+                      </td>
                       <td>
                         {u.photo_url ? (
                           <img
@@ -1159,7 +1412,7 @@ export default function AdminPage() {
                   ))}
                   {filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={7} className={styles.muted}>
+                      <td colSpan={8} className={styles.muted}>
                         Không có tài khoản nào khớp.
                       </td>
                     </tr>

@@ -27,7 +27,24 @@ export async function GET(request) {
     emailById[u.id] = u.email
   }
 
-  const users = profiles.map((p) => ({ ...p, email: emailById[p.id] || '' }))
+  // Lay danh sach mon giao vien dang day (tu bang phan cong) de admin loc
+  // giao vien theo mon o trang danh sach tai khoan. 1 giao vien co the day
+  // nhieu mon/nhieu lop nen gom lai thanh mang, bo trung bang Set.
+  const { data: assignments } = await supabaseAdmin
+    .from('teacher_assignments')
+    .select('teacher_id, subject_id')
+
+  const subjectIdsByTeacher = {}
+  for (const a of assignments || []) {
+    if (!subjectIdsByTeacher[a.teacher_id]) subjectIdsByTeacher[a.teacher_id] = new Set()
+    subjectIdsByTeacher[a.teacher_id].add(a.subject_id)
+  }
+
+  const users = profiles.map((p) => ({
+    ...p,
+    email: emailById[p.id] || '',
+    subjectIds: p.role === 'teacher' ? Array.from(subjectIdsByTeacher[p.id] || []) : [],
+  }))
 
   return NextResponse.json({ users })
 }
