@@ -357,7 +357,7 @@ export default function StudentDashboard() {
           <div className="emblem">BB</div>
           <div>
             <div className="brand-name">Trường TH - THCS Biển Bạch</div>
-            <div className="brand-place">Thới Bình, Cà Mau</div>
+            <div className="brand-place">Xã Biển Bạch, tỉnh Cà Mau</div>
           </div>
         </div>
         <div className="profile">
