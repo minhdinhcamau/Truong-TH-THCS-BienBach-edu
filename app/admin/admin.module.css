@@ -21,12 +21,41 @@
   padding: 18px 32px;
   background: #ffffff;
   border-bottom: 1px solid #dce3e0;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .header h1 {
   font-size: 20px;
   margin: 0;
   font-weight: 600;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.navBtn {
+  background: #ffffff;
+  border: 1px solid #dce3e0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #2f6f5e;
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.navBtn:hover {
+  background: #eef5f2;
+  border-color: #2f6f5e;
 }
 
 .logout {
@@ -48,7 +77,7 @@
   display: grid;
   grid-template-columns: minmax(320px, 400px) 1fr;
   gap: 24px;
-  padding: 24px 32px 48px;
+  padding: 24px 32px 24px;
   align-items: start;
   max-width: 1400px;
   margin: 0 auto;
@@ -58,6 +87,12 @@
   .layout {
     grid-template-columns: 1fr;
   }
+}
+
+.bottomWrap {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 32px 48px;
 }
 
 .createCard,
@@ -408,4 +443,47 @@
 
 .chevronOpen {
   transform: rotate(90deg);
+}
+
+/* --- Phân trang danh sách tài khoản --- */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.pageBtn {
+  min-width: 32px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid #dce3e0;
+  background: #ffffff;
+  color: #37423e;
+}
+
+.pageBtn:hover:not(:disabled) {
+  border-color: #2f6f5e;
+  color: #2f6f5e;
+}
+
+.pageBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pageBtnActive {
+  background: #2f6f5e;
+  border-color: #2f6f5e;
+  color: #ffffff;
+}
+
+.pageInfo {
+  font-size: 12.5px;
+  color: #5b6b66;
+  margin-left: 8px;
 }

@@ -94,3 +94,59 @@
   border-color: #b3432b !important;
   color: #ffffff !important;
 }
+
+/* --- Thanh trượt ngang chọn tab (Quản lý Hỏi bài / Kho lưu trữ) --- */
+.tabStrip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #eef1f0;
+}
+
+.tabStrip::-webkit-scrollbar {
+  height: 5px;
+}
+
+.tabStrip::-webkit-scrollbar-thumb {
+  background: #dce3e0;
+  border-radius: 10px;
+}
+
+.tabBtn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #dce3e0;
+  background: #ffffff;
+  color: #37423e;
+}
+
+.tabBtn:hover {
+  border-color: #2f6f5e;
+  color: #2f6f5e;
+}
+
+.tabBtnActive {
+  background: #2f6f5e;
+  border-color: #2f6f5e;
+  color: #ffffff;
+}
+
+.tabBtnActive:hover {
+  color: #ffffff;
+}
+
+.tabCount {
+  display: inline-block;
+  margin-left: 6px;
+  font-weight: 400;
+  opacity: 0.85;
+}

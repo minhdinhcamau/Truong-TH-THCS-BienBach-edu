@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '../../lib/supabaseClient'
 import { generateStrongPassword } from '../../lib/generatePassword'
 import * as XLSX from 'xlsx'
@@ -79,6 +80,12 @@ export default function AdminPage() {
   const [classFilter, setClassFilter] = useState('')
   // Loc giao vien theo mon dang day (chi co tac dung khi tab dang chon la Giao vien)
   const [subjectFilter, setSubjectFilter] = useState('')
+
+  // ---- Phân trang danh sách tài khoản ----
+  // Gioi han so dong hien thi 1 lan cho hop ly, tranh bang qua dai khi
+  // truong co hang tram/nghin tai khoan.
+  const PAGE_SIZE = 15
+  const [page, setPage] = useState(1)
 
   // ---- Chọn nhiều để xoá hàng loạt ----
   const [selectedUserIds, setSelectedUserIds] = useState(new Set())
@@ -652,10 +659,35 @@ export default function AdminPage() {
     })
   }, [users, search, roleFilter, classFilter, subjectFilter])
 
-  // Chi cho phep chon hang loat voi tai khoan hoc sinh, trong pham vi dang loc
+  // Doi bo loc/tim kiem thi quay ve trang 1, tranh dung o mot trang rong
+  // khi ket qua loc moi it hon trang dang xem.
+  useEffect(() => {
+    setPage(1)
+  }, [search, roleFilter, classFilter, subjectFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+
+  const paginatedUsers = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE
+    return filteredUsers.slice(start, start + PAGE_SIZE)
+  }, [filteredUsers, currentPage])
+
+  // Danh sach so trang rut gon kieu "1 2 3 ... 8" khi co nhieu trang, tranh
+  // hien het hang chuc nut so trang gay roi mat.
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1)
+    const set = new Set([1, 2, totalPages - 1, totalPages, currentPage - 1, currentPage, currentPage + 1])
+    return Array.from(set)
+      .filter((n) => n >= 1 && n <= totalPages)
+      .sort((a, b) => a - b)
+  }, [totalPages, currentPage])
+
+  // Chi cho phep chon hang loat voi tai khoan hoc sinh dang hien thi TREN
+  // TRANG HIEN TAI (khop voi checkbox nguoi dung nhin thay tren man hinh).
   const selectableStudentIds = useMemo(
-    () => filteredUsers.filter((u) => u.role === 'student').map((u) => u.id),
-    [filteredUsers]
+    () => paginatedUsers.filter((u) => u.role === 'student').map((u) => u.id),
+    [paginatedUsers]
   )
   const allStudentsSelected =
     selectableStudentIds.length > 0 && selectableStudentIds.every((id) => selectedUserIds.has(id))
@@ -731,9 +763,17 @@ export default function AdminPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <h1>Quản trị tài khoản</h1>
-        <button className={styles.logout} onClick={handleLogout}>
-          Đăng xuất
-        </button>
+        <div className={styles.headerActions}>
+          <Link href="/teacher" className={styles.navBtn}>
+            Xem trang Giáo viên
+          </Link>
+          <Link href="/student" className={styles.navBtn}>
+            Xem trang Học sinh
+          </Link>
+          <button className={styles.logout} onClick={handleLogout}>
+            Đăng xuất
+          </button>
+        </div>
       </header>
 
       <div className={styles.layout}>
@@ -1331,7 +1371,7 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((u) => (
+                  {paginatedUsers.map((u) => (
                     <tr key={u.id}>
                       <td>
                         {u.role === 'student' && (
@@ -1425,7 +1465,7 @@ export default function AdminPage() {
                       </td>
                     </tr>
                   ))}
-                  {filteredUsers.length === 0 && (
+                  {paginatedUsers.length === 0 && (
                     <tr>
                       <td colSpan={8} className={styles.muted}>
                         Không có tài khoản nào khớp.
@@ -1436,12 +1476,51 @@ export default function AdminPage() {
               </table>
             </div>
           )}
+
+          {!loadingUsers && totalPages > 1 && (
+            <div className={styles.pagination}>
+              <button
+                className={styles.pageBtn}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                ‹ Trước
+              </button>
+              {pageNumbers.map((n, i) => {
+                const prev = pageNumbers[i - 1]
+                const showEllipsis = prev !== undefined && n - prev > 1
+                return (
+                  <span key={n} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {showEllipsis && <span className={styles.pageInfo}>…</span>}
+                    <button
+                      className={n === currentPage ? `${styles.pageBtn} ${styles.pageBtnActive}` : styles.pageBtn}
+                      onClick={() => setPage(n)}
+                    >
+                      {n}
+                    </button>
+                  </span>
+                )
+              })}
+              <button
+                className={styles.pageBtn}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Sau ›
+              </button>
+              <span className={styles.pageInfo}>
+                Trang {currentPage}/{totalPages} · {filteredUsers.length} tài khoản
+              </span>
+            </div>
+          )}
           </>
           )}
         </section>
       </div>
 
-      <QaArchivePanel />
+      <div className={styles.bottomWrap}>
+        <QaArchivePanel />
+      </div>
     </div>
   )
 }
