@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabaseClient'
 import { generateStrongPassword } from '../../lib/generatePassword'
 import * as XLSX from 'xlsx'
 import styles from './admin.module.css'
+import QaArchivePanel from './QaArchivePanel'
 
 const ROLE_LABEL = { admin: 'Quản trị viên', teacher: 'Giáo viên', student: 'Học sinh' }
 const GRADE_OPTIONS = [6, 7, 8, 9]
@@ -1423,6 +1424,8 @@ export default function AdminPage() {
           )}
         </section>
       </div>
+
+      <QaArchivePanel />
     </div>
   )
 }
