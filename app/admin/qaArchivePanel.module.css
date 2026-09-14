@@ -1,0 +1,96 @@
+.dayBtn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid #2f6f5e;
+  background: #ffffff;
+  color: #2f6f5e;
+  white-space: nowrap;
+}
+
+.dayBtn:hover {
+  background: #eef5f2;
+}
+
+.dayBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.allBtn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid #b3432b;
+  background: #ffffff;
+  color: #b3432b;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.allBtn:hover {
+  background: #fdeeea;
+}
+
+.allBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.toolbarLabel {
+  font-size: 13px;
+  color: #5b6b66;
+  margin-right: 4px;
+}
+
+.photoThumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  display: block;
+}
+
+.contentCell {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirmBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  background: #fdeeea;
+  border: 1px solid #f3c8bb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.confirmBox button {
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid #dce3e0;
+  background: #ffffff;
+}
+
+.confirmYes {
+  background: #b3432b !important;
+  border-color: #b3432b !important;
+  color: #ffffff !important;
+}
