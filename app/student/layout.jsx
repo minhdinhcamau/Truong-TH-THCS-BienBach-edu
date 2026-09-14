@@ -88,6 +88,10 @@ export default function StudentLayout({ children }) {
   }
 
   const { profile, stats } = state;
+  // Tai khoan dang xem trang nay la QUAN TRI VIEN (admin bam nut "Xem trang
+  // Hoc sinh" tu trang admin, khong phai hoc sinh that) -> hien nut quay ve
+  // thay vi bat cac tinh nang chi danh cho hoc sinh.
+  const isAdminViewing = profile.role === 'admin';
   const tier = getRankTier(stats.total_xp);
   const initials = getInitials(profile.full_name);
 
@@ -104,24 +108,47 @@ export default function StudentLayout({ children }) {
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div className="student-chip">
-                <div className={`avatar-frame ${tier.className}`} style={{ width: 46, height: 46 }}>
-                  <div className="core" style={{ width: 38, height: 38, fontSize: 14 }}>
-                    {profile.photo_url ? <img src={profile.photo_url} alt="" /> : initials}
+              {!isAdminViewing && (
+                <div className="student-chip">
+                  <div className={`avatar-frame ${tier.className}`} style={{ width: 46, height: 46 }}>
+                    <div className="core" style={{ width: 38, height: 38, fontSize: 14 }}>
+                      {profile.photo_url ? <img src={profile.photo_url} alt="" /> : initials}
+                    </div>
+                    {tier.badge && <div className="rank-badge">{tier.badge}</div>}
                   </div>
-                  {tier.badge && <div className="rank-badge">{tier.badge}</div>}
+                  <div className="student-info">
+                    <div className="name-row">
+                      {profile.full_name} · Lớp {profile.classes?.name || '—'}
+                    </div>
+                    <div className="sub-row">
+                      <span>{tier.name}</span>
+                      <span className="streak-pill">🔥 {stats.current_streak} ngày</span>
+                      <span className="xp-pill">⭐ {stats.total_xp.toLocaleString('vi-VN')} KN</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="student-info">
-                  <div className="name-row">
-                    {profile.full_name} · Lớp {profile.classes?.name || '—'}
-                  </div>
-                  <div className="sub-row">
-                    <span>{tier.name}</span>
-                    <span className="streak-pill">🔥 {stats.current_streak} ngày</span>
-                    <span className="xp-pill">⭐ {stats.total_xp.toLocaleString('vi-VN')} KN</span>
-                  </div>
-                </div>
-              </div>
+              )}
+              {isAdminViewing && (
+                <Link
+                  href="/admin"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 14px',
+                    borderRadius: 999,
+                    border: '1px solid #cfe2f7',
+                    background: '#fff',
+                    color: '#1b3a63',
+                    fontWeight: 600,
+                    fontSize: 12.5,
+                    whiteSpace: 'nowrap',
+                    textDecoration: 'none',
+                  }}
+                >
+                  ← Quay về trang quản trị
+                </Link>
+              )}
               <button className="logout-btn" onClick={handleLogout}>Đăng xuất</button>
             </div>
           </div>

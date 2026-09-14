@@ -23,9 +23,13 @@ export default function TeacherDashboard() {
       } = await supabase.auth.getSession();
 
       if (session) {
+        // Them "role" vao select: admin co the bam "Xem trang Giao vien" tu
+        // trang admin de kiem tra, can biet tai khoan dang xem co phai admin
+        // khong de hien nut "Quay ve trang quan tri" thay vi cac tinh nang
+        // chi danh cho giao vien.
         const { data: prof } = await supabase
           .from('profiles')
-          .select('full_name')
+          .select('full_name, role')
           .eq('id', session.user.id)
           .single();
         setProfile(prof);
@@ -45,6 +49,8 @@ export default function TeacherDashboard() {
     await supabase.auth.signOut();
     router.replace('/login');
   }
+
+  const isAdminViewing = profile?.role === 'admin';
 
   return (
     <div className="wrap">
@@ -145,6 +151,23 @@ export default function TeacherDashboard() {
           font-size: 12.5px;
           color: var(--masthead-soft);
         }
+        .admin-return-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 14px;
+          border-radius: 999px;
+          border: 1px solid var(--masthead-border);
+          background: #fff;
+          color: var(--masthead-ink);
+          font-weight: 600;
+          font-size: 12.5px;
+          white-space: nowrap;
+          text-decoration: none;
+        }
+        .admin-return-btn:hover {
+          border-color: #225da3;
+        }
         .logout-btn {
           border: 1px solid var(--masthead-border);
           background: #fff;
@@ -210,13 +233,20 @@ export default function TeacherDashboard() {
           </div>
         </div>
         <div className="profile-row">
-          <div className="profile">
-            <div className="avatar">{initialsOf(profile?.full_name)}</div>
-            <div>
-              <div className="profile-name">{profile?.full_name || 'Giáo viên'}</div>
-              <div className="profile-role">Giáo viên</div>
+          {!isAdminViewing && (
+            <div className="profile">
+              <div className="avatar">{initialsOf(profile?.full_name)}</div>
+              <div>
+                <div className="profile-name">{profile?.full_name || 'Giáo viên'}</div>
+                <div className="profile-role">Giáo viên</div>
+              </div>
             </div>
-          </div>
+          )}
+          {isAdminViewing && (
+            <Link href="/admin" className="admin-return-btn">
+              ← Quay về trang quản trị
+            </Link>
+          )}
           <button className="logout-btn" onClick={handleLogout}>
             Đăng xuất
           </button>

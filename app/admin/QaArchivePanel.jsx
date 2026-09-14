@@ -29,9 +29,9 @@ function confirmLabel(pendingAction) {
 }
 
 export default function QaArchivePanel() {
-  // Tab dang mo: "manage" (xoa nhanh theo tuoi bai, ap dung cho MOI bai kể
-  // cả bài chưa vào lưu trữ) hoac "archive" (bang kho luu tru, chi bai da
-  // qua 5 ngay - chi admin/giao vien xem duoc).
+  // Tab dang mo: "manage" (cai dat so ngay + xoa nhanh theo tuoi bai) hoac
+  // "archive" (bang kho luu tru, chi bai da qua han - chi admin/giao vien
+  // xem duoc).
   const [activeTab, setActiveTab] = useState('manage')
 
   const [archive, setArchive] = useState(null)
@@ -42,6 +42,70 @@ export default function QaArchivePanel() {
   const [busy, setBusy] = useState(false)
   const [resultMsg, setResultMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
+
+  // ---- Cai dat so ngay luu tru / xoa tu dong (chi chinh duoc o day, trang
+  // admin - KHONG bat cai dat nay o trang Hoi bai cua hoc sinh/giao vien) ----
+  const [settings, setSettings] = useState(null)
+  const [loadingSettings, setLoadingSettings] = useState(true)
+  const [archiveDaysInput, setArchiveDaysInput] = useState('')
+  const [deleteDaysInput, setDeleteDaysInput] = useState('')
+  const [settingsBusy, setSettingsBusy] = useState(false)
+  const [settingsMsg, setSettingsMsg] = useState({ text: '', isError: false })
+
+  const authedFetch = useCallback(async (url, options = {}) => {
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+      },
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(body.error || 'Có lỗi xảy ra')
+    return body
+  }, [])
+
+  const loadSettings = useCallback(async () => {
+    setLoadingSettings(true)
+    setSettingsMsg({ text: '', isError: false })
+    try {
+      const data = await authedFetch('/api/admin/qa-settings')
+      setSettings(data.settings)
+      setArchiveDaysInput(String(data.settings.archive_after_days))
+      setDeleteDaysInput(String(data.settings.delete_after_days))
+    } catch (err) {
+      setSettingsMsg({ text: err.message, isError: true })
+    } finally {
+      setLoadingSettings(false)
+    }
+  }, [authedFetch])
+
+  useEffect(() => {
+    loadSettings()
+  }, [loadSettings])
+
+  async function saveSettings() {
+    setSettingsBusy(true)
+    setSettingsMsg({ text: '', isError: false })
+    try {
+      const data = await authedFetch('/api/admin/qa-settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          archiveAfterDays: archiveDaysInput,
+          deleteAfterDays: deleteDaysInput,
+        }),
+      })
+      setSettings(data.settings)
+      setSettingsMsg({ text: 'Đã lưu cài đặt.', isError: false })
+    } catch (err) {
+      setSettingsMsg({ text: err.message, isError: true })
+    } finally {
+      setSettingsBusy(false)
+    }
+  }
 
   const loadArchive = useCallback(async () => {
     setLoadingArchive(true)
@@ -89,6 +153,12 @@ export default function QaArchivePanel() {
     }
   }
 
+  // Gia tri dang dung de tinh cac nut xoa nhanh trong tab "Kho luu tru" -
+  // LAY TU CAU HINH DA LUU (khong phai o input chua bam Luu), fallback 5/7
+  // trong luc dang tai lan dau de UI khong bi vo.
+  const currentArchiveDays = settings?.archive_after_days ?? 5
+  const currentDeleteDays = settings?.delete_after_days ?? 7
+
   return (
     <section className={adminStyles.listCard}>
       <div className={adminStyles.sectionHeader}>
@@ -114,6 +184,62 @@ export default function QaArchivePanel() {
 
       {activeTab === 'manage' && (
         <>
+          {/* ---------------- CÀI ĐẶT SỐ NGÀY LƯU TRỮ / XOÁ TỰ ĐỘNG ---------------- */}
+          <p style={{ fontSize: 13, color: '#5b6b66', margin: '0 0 10px' }}>
+            Áp dụng cho TOÀN BỘ bài Hỏi bài trong trường. Chỉ chỉnh được ở đây (trang quản trị) —
+            trang Hỏi bài của giáo viên/học sinh không có cài đặt này.
+          </p>
+          {loadingSettings ? (
+            <p className={adminStyles.muted}>Đang tải cài đặt…</p>
+          ) : (
+            <div className={adminStyles.form} style={{ marginBottom: 12 }}>
+              <div className={adminStyles.passwordRow}>
+                <label className={adminStyles.field} style={{ flex: '1 1 160px' }}>
+                  <span>Sau bao nhiêu ngày thì vào kho lưu trữ</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={archiveDaysInput}
+                    onChange={(e) => setArchiveDaysInput(e.target.value)}
+                  />
+                </label>
+                <label className={adminStyles.field} style={{ flex: '1 1 160px' }}>
+                  <span>Sau bao nhiêu ngày thì xoá vĩnh viễn</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={deleteDaysInput}
+                    onChange={(e) => setDeleteDaysInput(e.target.value)}
+                  />
+                </label>
+              </div>
+              <p style={{ fontSize: 12, color: '#8aa39c', margin: 0 }}>
+                Số ngày xoá vĩnh viễn phải lớn hơn số ngày lưu trữ (tính từ lúc bài được đăng).
+              </p>
+              <button
+                type="button"
+                className={adminStyles.genButton}
+                style={{ alignSelf: 'flex-start' }}
+                onClick={saveSettings}
+                disabled={settingsBusy}
+              >
+                {settingsBusy ? 'Đang lưu…' : 'Lưu cài đặt'}
+              </button>
+              {settingsMsg.text && (
+                <p className={settingsMsg.isError ? adminStyles.error : adminStyles.rowOk}>
+                  {settingsMsg.text}
+                </p>
+              )}
+              {settings?.updated_at && (
+                <p style={{ fontSize: 12, color: '#8aa39c', margin: 0 }}>
+                  Cập nhật lần cuối: {formatDateTime(settings.updated_at)}
+                </p>
+              )}
+            </div>
+          )}
+
+          <hr className={adminStyles.sectionDivider} />
+
           {/* ---------------- XOÁ NHANH THEO TUỔI BÀI (KHÔNG CẦN VÀO LƯU TRỮ) ---------------- */}
           <p style={{ fontSize: 13, color: '#5b6b66', margin: '0 0 10px' }}>
             Xoá vĩnh viễn ngay lập tức, áp dụng cho MỌI bài (kể cả bài chưa vào kho lưu trữ) —
@@ -169,29 +295,36 @@ export default function QaArchivePanel() {
 
       {activeTab === 'archive' && (
         <>
-          {/* ---------------- KHO LƯU TRỮ (5-7 NGÀY, CHỈ ADMIN XEM) ---------------- */}
+          {/* ---------------- KHO LƯU TRỮ (CHỈ ADMIN/GIÁO VIÊN XEM) ---------------- */}
           <p style={{ fontSize: 13, color: '#5b6b66', margin: '0 0 10px' }}>
-            Các bài này đã ẩn khỏi học sinh và giáo viên. Sau 7 ngày (2 ngày trong kho) hệ thống sẽ
-            tự động xoá — bạn cũng có thể xoá sớm bằng các nút bên dưới.
+            Các bài này đã ẩn khỏi học sinh. Theo cài đặt hiện tại, bài vào kho lưu trữ sau{' '}
+            <strong>{currentArchiveDays} ngày</strong> và bị xoá vĩnh viễn sau{' '}
+            <strong>{currentDeleteDays} ngày</strong> (tức còn ở trong kho tối đa{' '}
+            {currentDeleteDays - currentArchiveDays} ngày) — bạn cũng có thể xoá sớm bằng các nút
+            bên dưới.
           </p>
           <div className={styles.toolbar}>
             <button
               className={styles.dayBtn}
-              onClick={() => askConfirm('đã lưu trữ từ 1 ngày trở lên', 6)}
+              onClick={() =>
+                askConfirm('đã lưu trữ từ 1 ngày trở lên', currentArchiveDays + 1)
+              }
               disabled={busy}
             >
               Xoá đã lưu trữ ≥ 1 ngày
             </button>
             <button
               className={styles.dayBtn}
-              onClick={() => askConfirm('đã lưu trữ từ 2 ngày trở lên', 7)}
+              onClick={() =>
+                askConfirm('đã lưu trữ từ 2 ngày trở lên', currentArchiveDays + 2)
+              }
               disabled={busy}
             >
               Xoá đã lưu trữ ≥ 2 ngày
             </button>
             <button
               className={styles.allBtn}
-              onClick={() => askConfirm('toàn bộ kho lưu trữ', 5)}
+              onClick={() => askConfirm('toàn bộ kho lưu trữ', currentArchiveDays)}
               disabled={busy}
             >
               Xoá toàn bộ kho lưu trữ
