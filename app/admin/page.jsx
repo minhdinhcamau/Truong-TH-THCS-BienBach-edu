@@ -59,6 +59,8 @@ export default function AdminPage() {
   const [subjectBusyId, setSubjectBusyId] = useState(null)
   // Danh sach mon hoc cung an mac dinh, giong nhu danh sach lop
   const [subjectsOpen, setSubjectsOpen] = useState(false)
+  // Danh sach tai khoan: mac dinh HIEN, admin co the bam an di cho gon
+  const [accountsOpen, setAccountsOpen] = useState(true)
 
   // ---- Phân công giảng dạy ----
   const [selectedTeacherId, setSelectedTeacherId] = useState('')
@@ -1197,8 +1199,20 @@ export default function AdminPage() {
         </section>
 
         <section className={styles.listCard}>
+          <div className={styles.sectionHeader}>
+            <h2>Danh sách tài khoản ({filteredUsers.length})</h2>
+            <button
+              type="button"
+              className={styles.linkBtn}
+              onClick={() => setAccountsOpen((prev) => !prev)}
+            >
+              {accountsOpen ? 'Ẩn danh sách' : 'Hiện danh sách'}
+            </button>
+          </div>
+
+          {accountsOpen && (
+          <>
           <div className={styles.listHeader}>
-            <h2>Danh sách tài khoản</h2>
             <div className={styles.listControls}>
               <input
                 className={styles.search}
@@ -1421,6 +1435,8 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+          )}
+          </>
           )}
         </section>
       </div>
