@@ -1,31 +1,14 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { supabase } from '../../lib/supabaseClient'
 import adminStyles from './admin.module.css'
 import styles from './qaArchivePanel.module.css'
 
-// Cac muc "tuoi bai" dung chung cho ca 2 khu vuc (xoa nhanh + kho luu tru).
-const QUICK_DELETE_DAYS = [1, 2, 3, 4, 5]
-
 const TABS = [
-  {
-    key: 'manage',
-    label: 'Quản lý Hỏi bài',
-    icon: (
-      <path d="M10.5 3.5a5 5 0 1 0 3.06 8.94l4 4a1 1 0 0 0 1.42-1.42l-4-4A5 5 0 0 0 10.5 3.5Z" />
-    ),
-  },
-  {
-    key: 'archive',
-    label: 'Kho lưu trữ',
-    icon: (
-      <>
-        <rect x="3.5" y="4.5" width="17" height="4" rx="1.2" />
-        <path d="M5 9v8.5A1.5 1.5 0 0 0 6.5 19h11a1.5 1.5 0 0 0 1.5-1.5V9M10 12.5h4" />
-      </>
-    ),
-  },
+  { key: 'manage', label: 'Cài đặt & xoá nhanh' },
+  { key: 'archive', label: 'Kho lưu trữ' },
 ]
 
 function formatDateTime(iso) {
@@ -33,74 +16,32 @@ function formatDateTime(iso) {
   return new Date(iso).toLocaleString('vi-VN')
 }
 
-// pendingAction: { label, minAgeDays } | null
-// minAgeDays: null nghia la xoa TAT CA
-function confirmLabel(pendingAction) {
-  if (!pendingAction) return ''
-  if (pendingAction.minAgeDays === null) {
-    return 'Bạn sắp xoá vĩnh viễn TẤT CẢ bài Hỏi bài trong hệ thống. Hành động này không thể hoàn tác.'
-  }
-  return `Bạn sắp xoá vĩnh viễn các bài cũ hơn ${pendingAction.minAgeDays} ngày. Hành động này không thể hoàn tác.`
-}
-
-function IconWarning() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3.5 21.5 20h-19L12 3.5Z" />
-      <path d="M12 10v4M12 17h.01" />
-    </svg>
-  )
-}
-
-function IconSettings() {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .35 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.35 1.7 1.7 0 0 0-1.05 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.87.35l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.65 15a1.7 1.7 0 0 0-1.55-1.05H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.35-1.87l-.06-.06A2 2 0 1 1 7.06 4.24l.06.06A1.7 1.7 0 0 0 9 4.65a1.7 1.7 0 0 0 1.05-1.55V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.87-.35l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.35 9a1.7 1.7 0 0 0 1.55 1.05H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z" />
-    </svg>
-  )
-}
-
-function IconInfo() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 16v-4M12 8h.01" />
-    </svg>
-  )
-}
-
-function IconRefresh() {
-  return (
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5" />
-    </svg>
-  )
-}
-
 export default function QaArchivePanel() {
-  // Tab dang mo: "manage" (cai dat so ngay + xoa nhanh theo tuoi bai) hoac
-  // "archive" (bang kho luu tru, chi bai da qua han - chi admin/giao vien
-  // xem duoc).
   const [activeTab, setActiveTab] = useState('manage')
 
-  const [archive, setArchive] = useState(null)
-  const [loadingArchive, setLoadingArchive] = useState(true)
-  const [archiveError, setArchiveError] = useState('')
-
-  const [pendingAction, setPendingAction] = useState(null)
-  const [busy, setBusy] = useState(false)
-  const [resultMsg, setResultMsg] = useState('')
-  const [errorMsg, setErrorMsg] = useState('')
-
-  // ---- Cai dat so ngay luu tru / xoa tu dong (chi chinh duoc o day, trang
-  // admin - KHONG bat cai dat nay o trang Hoi bai cua hoc sinh/giao vien) ----
+  // ---- Cai dat so ngay luu tru / xoa tu dong ----
   const [settings, setSettings] = useState(null)
   const [loadingSettings, setLoadingSettings] = useState(true)
   const [archiveDaysInput, setArchiveDaysInput] = useState('')
   const [deleteDaysInput, setDeleteDaysInput] = useState('')
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [settingsMsg, setSettingsMsg] = useState({ text: '', isError: false })
+
+  // ---- Xoa nhanh hang loat theo so ngay ke tu luc dang (ap dung cho MOI
+  // bai, ke ca bai chua vao kho luu tru) ----
+  const [quickCustomDays, setQuickCustomDays] = useState('')
+  const [pendingAction, setPendingAction] = useState(null) // { label, minAgeDays }
+  const [busy, setBusy] = useState(false)
+  const [resultMsg, setResultMsg] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
+
+  // ---- Kho luu tru ----
+  const [archive, setArchive] = useState(null)
+  const [loadingArchive, setLoadingArchive] = useState(true)
+  const [archiveError, setArchiveError] = useState('')
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [archiveCustomDays, setArchiveCustomDays] = useState('')
+  const [expandedId, setExpandedId] = useState(null)
 
   const authedFetch = useCallback(async (url, options = {}) => {
     const { data } = await supabase.auth.getSession()
@@ -164,6 +105,7 @@ export default function QaArchivePanel() {
       const { data, error } = await supabase.rpc('get_qa_archive')
       if (error) throw error
       setArchive(data || [])
+      setSelectedIds(new Set())
     } catch (err) {
       setArchiveError(err.message || 'Không tải được kho lưu trữ')
     } finally {
@@ -175,15 +117,18 @@ export default function QaArchivePanel() {
     loadArchive()
   }, [loadArchive])
 
-  // Buoc 1: bam nut -> chi hien hop xac nhan, CHUA xoa ngay.
-  function askConfirm(label, minAgeDays) {
+  // ---- Xoa nhanh hang loat (khong can vao kho luu tru) ----
+  function askQuickDelete(days) {
     setResultMsg('')
     setErrorMsg('')
-    setPendingAction({ label, minAgeDays })
+    const label =
+      days === null
+        ? 'TẤT CẢ bài Hỏi bài trong hệ thống'
+        : `mọi bài đã đăng từ ${days} ngày trước trở lên (kể cả chưa vào kho lưu trữ)`
+    setPendingAction({ label, minAgeDays: days })
   }
 
-  // Buoc 2: bam "Xác nhận xoá" trong hop xac nhan -> goi RPC that su.
-  async function runPendingAction() {
+  async function runQuickDelete() {
     if (!pendingAction) return
     setBusy(true)
     setErrorMsg('')
@@ -203,28 +148,148 @@ export default function QaArchivePanel() {
     }
   }
 
-  // Gia tri dang dung de tinh cac nut xoa nhanh trong tab "Kho luu tru" -
-  // LAY TU CAU HINH DA LUU (khong phai o input chua bam Luu), fallback 5/7
-  // trong luc dang tai lan dau de UI khong bi vo.
-  const currentArchiveDays = settings?.archive_after_days ?? 5
-  const currentDeleteDays = settings?.delete_after_days ?? 7
-  const archiveWindowDays = currentDeleteDays - currentArchiveDays
+  // ---- Cac thao tac tren 1 bai trong kho luu tru ----
+  async function restorePost(postId) {
+    setBusy(true)
+    setErrorMsg('')
+    setResultMsg('')
+    try {
+      const { error } = await supabase.rpc('admin_restore_qa_post', { p_post_id: postId })
+      if (error) throw error
+      setResultMsg('Đã phục hồi bài về lại bình thường.')
+      loadArchive()
+    } catch (err) {
+      setErrorMsg(err.message || 'Phục hồi thất bại')
+    } finally {
+      setBusy(false)
+    }
+  }
 
-  const archiveCount = archive?.length ?? 0
-  const oldestArchivedDays = archive && archive.length > 0
-    ? Math.max(...archive.map((p) => p.archived_days ?? 0))
-    : 0
+  async function deletePostPermanently(postId) {
+    setBusy(true)
+    setErrorMsg('')
+    setResultMsg('')
+    try {
+      const { error } = await supabase.rpc('admin_delete_single_qa_post', {
+        p_post_id: postId,
+        p_mode: 'permanent',
+      })
+      if (error) throw error
+      setResultMsg('Đã xoá vĩnh viễn bài này.')
+      loadArchive()
+    } catch (err) {
+      setErrorMsg(err.message || 'Xoá thất bại')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // ---- Chon nhieu: xoa hoac phuc hoi hang loat ----
+  function toggleSelect(postId) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(postId)) next.delete(postId)
+      else next.add(postId)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (!archive) return
+    setSelectedIds((prev) => (prev.size === archive.length ? new Set() : new Set(archive.map((p) => p.post_id))))
+  }
+
+  async function bulkAction(mode) {
+    if (selectedIds.size === 0) return
+    const confirmText =
+      mode === 'permanent'
+        ? `Xoá vĩnh viễn ${selectedIds.size} bài đã chọn (không thể hoàn tác)?`
+        : `Phục hồi ${selectedIds.size} bài đã chọn?`
+    if (!window.confirm(confirmText)) return
+
+    setBusy(true)
+    setErrorMsg('')
+    setResultMsg('')
+    let okCount = 0
+    for (const postId of selectedIds) {
+      try {
+        if (mode === 'permanent') {
+          const { error } = await supabase.rpc('admin_delete_single_qa_post', {
+            p_post_id: postId,
+            p_mode: 'permanent',
+          })
+          if (error) throw error
+        } else {
+          const { error } = await supabase.rpc('admin_restore_qa_post', { p_post_id: postId })
+          if (error) throw error
+        }
+        okCount += 1
+      } catch (err) {
+        setErrorMsg(err.message || 'Có mục xử lý thất bại')
+      }
+    }
+    setResultMsg(mode === 'permanent' ? `Đã xoá vĩnh viễn ${okCount} bài.` : `Đã phục hồi ${okCount} bài.`)
+    setBusy(false)
+    loadArchive()
+  }
+
+  async function deleteWholeArchive() {
+    if (!archive || archive.length === 0) return
+    if (!window.confirm(`Xoá vĩnh viễn TOÀN BỘ ${archive.length} bài trong kho lưu trữ (không thể hoàn tác)?`)) return
+    setBusy(true)
+    setErrorMsg('')
+    setResultMsg('')
+    let okCount = 0
+    for (const p of archive) {
+      try {
+        const { error } = await supabase.rpc('admin_delete_single_qa_post', {
+          p_post_id: p.post_id,
+          p_mode: 'permanent',
+        })
+        if (error) throw error
+        okCount += 1
+      } catch (err) {
+        setErrorMsg(err.message || 'Có bài xoá thất bại')
+      }
+    }
+    setResultMsg(`Đã xoá vĩnh viễn ${okCount} bài trong kho lưu trữ.`)
+    setBusy(false)
+    loadArchive()
+  }
+
+  async function deleteByCustomDays() {
+    const days = Number(archiveCustomDays)
+    if (!Number.isInteger(days) || days < 0) {
+      setErrorMsg('Nhập số ngày hợp lệ (số nguyên, từ 0 trở lên).')
+      return
+    }
+    if (!window.confirm(`Xoá vĩnh viễn mọi bài đã nằm trong kho lưu trữ từ ${days} ngày trở lên?`)) return
+    setBusy(true)
+    setErrorMsg('')
+    setResultMsg('')
+    try {
+      const currentArchiveDays = settings?.archive_after_days ?? 5
+      const { data, error } = await supabase.rpc('admin_delete_qa_posts', {
+        p_min_age_days: currentArchiveDays + days,
+      })
+      if (error) throw error
+      setResultMsg(`Đã xoá vĩnh viễn ${data ?? 0} bài.`)
+      loadArchive()
+    } catch (err) {
+      setErrorMsg(err.message || 'Xoá thất bại')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const allSelected = archive && archive.length > 0 && selectedIds.size === archive.length
 
   return (
-    <section className={`${adminStyles.listCard} ${styles.panel}`}>
-      <div className={styles.panelHeader}>
-        <h2 className={styles.panelTitle}>Quản lý Hỏi bài</h2>
-        <p className={styles.panelSubtitle}>
-          Cấu hình thời gian lưu trữ và dọn dẹp toàn bộ bài đăng trong tính năng Hỏi bài của trường.
-        </p>
+    <section className={adminStyles.listCard}>
+      <div className={adminStyles.sectionHeader}>
+        <h2>Quản lý Hỏi bài</h2>
       </div>
 
-      {/* ---------------- THANH TRƯỢT NGANG CHỌN TAB ---------------- */}
       <div className={styles.tabStrip}>
         {TABS.map((t) => (
           <button
@@ -233,270 +298,249 @@ export default function QaArchivePanel() {
             className={activeTab === t.key ? `${styles.tabBtn} ${styles.tabBtnActive}` : styles.tabBtn}
             onClick={() => setActiveTab(t.key)}
           >
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {t.icon}
-            </svg>
             {t.label}
-            {t.key === 'archive' && archive && (
-              <span className={styles.tabCount}>{archive.length}</span>
-            )}
+            {t.key === 'archive' && archive && <span className={styles.tabCount}>({archive.length})</span>}
           </button>
         ))}
       </div>
 
       {activeTab === 'manage' && (
-        <div className={styles.tabPanel}>
-          {/* ---------------- CÀI ĐẶT SỐ NGÀY LƯU TRỮ / XOÁ TỰ ĐỘNG ---------------- */}
-          <div className={styles.card}>
-            <div className={styles.cardHeadRow}>
-              <span className={styles.cardIcon}><IconSettings /></span>
-              <div>
-                <h3 className={styles.cardTitle}>Thời gian lưu trữ &amp; xoá tự động</h3>
-                <p className={styles.cardDesc}>
-                  Áp dụng cho toàn bộ bài Hỏi bài trong trường. Chỉ chỉnh được ở đây — trang Hỏi bài
-                  của giáo viên/học sinh không có cài đặt này.
-                </p>
+        <>
+          {/* ---------------- CÀI ĐẶT SỐ NGÀY ---------------- */}
+          <p style={{ fontSize: 13, color: '#5b6b66', margin: '0 0 10px' }}>
+            Áp dụng cho toàn bộ bài Hỏi bài trong trường. Chỉ chỉnh được ở đây (trang quản trị).
+          </p>
+          {loadingSettings ? (
+            <p className={adminStyles.muted}>Đang tải cài đặt…</p>
+          ) : (
+            <div className={adminStyles.form} style={{ marginBottom: 12 }}>
+              <div className={adminStyles.passwordRow}>
+                <label className={adminStyles.field} style={{ flex: '1 1 200px' }}>
+                  <span>Bao nhiêu ngày sau khi đăng thì ẩn bài (chuyển vào kho lưu trữ)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={archiveDaysInput}
+                    onChange={(e) => setArchiveDaysInput(e.target.value)}
+                  />
+                </label>
+                <label className={adminStyles.field} style={{ flex: '1 1 200px' }}>
+                  <span>Bao nhiêu ngày sau khi đăng thì xoá vĩnh viễn</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={deleteDaysInput}
+                    onChange={(e) => setDeleteDaysInput(e.target.value)}
+                  />
+                </label>
               </div>
+              <p style={{ fontSize: 12, color: '#8aa39c', margin: 0 }}>
+                Số ngày xoá vĩnh viễn phải lớn hơn số ngày ẩn bài.
+              </p>
+              <button
+                type="button"
+                className={adminStyles.genButton}
+                style={{ alignSelf: 'flex-start' }}
+                onClick={saveSettings}
+                disabled={settingsBusy}
+              >
+                {settingsBusy ? 'Đang lưu…' : 'Lưu cài đặt'}
+              </button>
+              {settingsMsg.text && (
+                <p className={settingsMsg.isError ? adminStyles.error : adminStyles.rowOk}>{settingsMsg.text}</p>
+              )}
+              {settings?.updated_at && (
+                <p style={{ fontSize: 12, color: '#8aa39c', margin: 0 }}>
+                  Cập nhật lần cuối: {formatDateTime(settings.updated_at)}
+                </p>
+              )}
             </div>
+          )}
 
-            {loadingSettings ? (
-              <p className={styles.skeletonText}>Đang tải cài đặt…</p>
-            ) : (
-              <div className={styles.settingsBody}>
-                <div className={styles.settingsGrid}>
-                  <label className={styles.numberField}>
-                    <span className={styles.numberFieldLabel}>Vào kho lưu trữ sau</span>
-                    <div className={styles.numberInputWrap}>
-                      <input
-                        type="number"
-                        min={1}
-                        value={archiveDaysInput}
-                        onChange={(e) => setArchiveDaysInput(e.target.value)}
-                      />
-                      <span className={styles.numberUnit}>ngày</span>
-                    </div>
-                  </label>
-                  <div className={styles.settingsArrow}>→</div>
-                  <label className={styles.numberField}>
-                    <span className={styles.numberFieldLabel}>Xoá vĩnh viễn sau</span>
-                    <div className={styles.numberInputWrap}>
-                      <input
-                        type="number"
-                        min={1}
-                        value={deleteDaysInput}
-                        onChange={(e) => setDeleteDaysInput(e.target.value)}
-                      />
-                      <span className={styles.numberUnit}>ngày</span>
-                    </div>
-                  </label>
-                </div>
+          <hr className={adminStyles.sectionDivider} />
 
-                <p className={styles.helperText}>
-                  Số ngày xoá vĩnh viễn phải lớn hơn số ngày lưu trữ (tính từ lúc bài được đăng).
-                </p>
-
-                <div className={styles.settingsFooter}>
-                  <button
-                    type="button"
-                    className={styles.primaryBtn}
-                    onClick={saveSettings}
-                    disabled={settingsBusy}
-                  >
-                    {settingsBusy ? 'Đang lưu…' : 'Lưu cài đặt'}
-                  </button>
-                  {settings?.updated_at && (
-                    <span className={styles.updatedAt}>
-                      Cập nhật lần cuối: {formatDateTime(settings.updated_at)}
-                    </span>
-                  )}
-                </div>
-
-                {settingsMsg.text && (
-                  <p className={settingsMsg.isError ? styles.inlineError : styles.inlineSuccess}>
-                    {settingsMsg.text}
-                  </p>
-                )}
-              </div>
-            )}
+          {/* ---------------- XOÁ NHANH HÀNG LOẠT ---------------- */}
+          <p style={{ fontSize: 13, color: '#5b6b66', margin: '0 0 10px' }}>
+            Xoá vĩnh viễn ngay lập tức những bài <strong>đã đăng từ số ngày dưới đây trở lên</strong> —
+            áp dụng cho MỌI bài, kể cả bài chưa bị ẩn/chưa vào kho lưu trữ. Dùng khi cần dọn dẹp gấp,
+            không cần đợi tự động.
+          </p>
+          <div className={styles.toolbar}>
+            <span className={styles.toolbarLabel}>Xoá bài đã đăng từ:</span>
+            {[1, 2, 3, 4, 5].map((d) => (
+              <button key={d} className={styles.dayBtn} onClick={() => askQuickDelete(d)} disabled={busy}>
+                {d} ngày trước
+              </button>
+            ))}
+          </div>
+          <div className={styles.toolbar}>
+            <input
+              type="number"
+              min={0}
+              placeholder="Số ngày khác…"
+              className={adminStyles.inlineInput}
+              value={quickCustomDays}
+              onChange={(e) => setQuickCustomDays(e.target.value)}
+            />
+            <button
+              className={styles.dayBtn}
+              disabled={busy || quickCustomDays === ''}
+              onClick={() => {
+                const d = Number(quickCustomDays)
+                if (!Number.isInteger(d) || d < 0) {
+                  setErrorMsg('Nhập số ngày hợp lệ.')
+                  return
+                }
+                askQuickDelete(d)
+              }}
+            >
+              Xoá theo số ngày này
+            </button>
+            <button className={styles.allBtn} onClick={() => askQuickDelete(null)} disabled={busy}>
+              Xoá tất cả mọi bài
+            </button>
           </div>
 
-          {/* ---------------- XOÁ NHANH THEO TUỔI BÀI ---------------- */}
-          <div className={`${styles.card} ${styles.dangerCard}`}>
-            <div className={styles.cardHeadRow}>
-              <span className={`${styles.cardIcon} ${styles.cardIconDanger}`}><IconWarning /></span>
-              <div>
-                <h3 className={styles.cardTitle}>Xoá nhanh theo tuổi bài</h3>
-                <p className={styles.cardDesc}>
-                  Xoá vĩnh viễn ngay lập tức, áp dụng cho MỌI bài — kể cả bài chưa vào kho lưu trữ.
-                  Không thể hoàn tác.
-                </p>
-              </div>
-            </div>
-
-            <div className={styles.chipRow}>
-              {QUICK_DELETE_DAYS.map((d) => (
-                <button
-                  key={d}
-                  className={styles.dayBtn}
-                  onClick={() => askConfirm(`cũ hơn ${d} ngày`, d)}
-                  disabled={busy}
-                >
-                  Cũ hơn {d} ngày
-                </button>
-              ))}
-              <button
-                className={styles.allBtn}
-                onClick={() => askConfirm('tất cả', null)}
-                disabled={busy}
-              >
-                Xoá tất cả
+          {pendingAction && (
+            <div className={styles.confirmBox}>
+              <span>Xác nhận xoá vĩnh viễn {pendingAction.label} (không thể hoàn tác)?</span>
+              <button onClick={runQuickDelete} disabled={busy} className={styles.confirmYes}>
+                {busy ? 'Đang xoá…' : 'Xác nhận xoá'}
+              </button>
+              <button onClick={() => setPendingAction(null)} disabled={busy}>
+                Huỷ
               </button>
             </div>
+          )}
 
-            {resultMsg && <p className={styles.inlineSuccess}>{resultMsg}</p>}
-            {errorMsg && <p className={styles.inlineError}>{errorMsg}</p>}
-          </div>
-
-          {/* ---------------- GHI CHÚ ---------------- */}
-          <div className={styles.noteCard}>
-            <span className={styles.cardIcon}><IconInfo /></span>
-            <p>
-              Danh sách chi tiết từng bài đang hoạt động (để xoá riêng lẻ từng bài hoặc từng bình
-              luận) sẽ được bổ sung sau. Hiện tại có thể xoá hàng loạt theo tuổi bài ở trên, hoặc
-              xem/xoá các bài đã vào kho lưu trữ ở tab bên cạnh.
-            </p>
-          </div>
-        </div>
+          {resultMsg && <p className={adminStyles.rowOk}>{resultMsg}</p>}
+          {errorMsg && <p className={adminStyles.error}>{errorMsg}</p>}
+        </>
       )}
 
       {activeTab === 'archive' && (
-        <div className={styles.tabPanel}>
-          {/* ---------------- DẢI THỐNG KÊ NHANH ---------------- */}
-          <div className={styles.statRow}>
-            <div className={styles.statPill}>
-              <span className={styles.statValue}>{archiveCount}</span>
-              <span className={styles.statLabel}>bài trong kho</span>
-            </div>
-            <div className={styles.statPill}>
-              <span className={styles.statValue}>{oldestArchivedDays}</span>
-              <span className={styles.statLabel}>ngày — bài cũ nhất</span>
-            </div>
-            <div className={styles.statPill}>
-              <span className={styles.statValue}>{archiveWindowDays}</span>
-              <span className={styles.statLabel}>ngày lưu tối đa trong kho</span>
-            </div>
-          </div>
-
-          <p className={styles.helperText} style={{ margin: '0 0 14px' }}>
-            Các bài này đã ẩn khỏi học sinh. Theo cài đặt hiện tại, bài vào kho sau{' '}
-            <strong>{currentArchiveDays} ngày</strong> và bị xoá vĩnh viễn sau{' '}
-            <strong>{currentDeleteDays} ngày</strong> kể từ lúc đăng.
+        <>
+          <p style={{ fontSize: 13, color: '#5b6b66', margin: '0 0 10px' }}>
+            Đây là các bài đã bị <strong>ẩn khỏi học sinh</strong> — hoặc do đăng quá lâu, hoặc do
+            chính học sinh tự xoá. Bấm "Xem đầy đủ" để xem trọn nội dung + ảnh, hoặc chọn nhiều bài
+            để xử lý hàng loạt.
           </p>
 
           <div className={styles.toolbar}>
-            <span className={styles.toolbarLabel}>Xoá bài đã lưu trữ:</span>
-            <button
-              className={styles.dayBtn}
-              onClick={() => askConfirm('đã lưu trữ từ 1 ngày trở lên', currentArchiveDays + 1)}
-              disabled={busy}
-            >
-              ≥ 1 ngày
+            <input
+              type="number"
+              min={0}
+              placeholder="Số ngày…"
+              className={adminStyles.inlineInput}
+              value={archiveCustomDays}
+              onChange={(e) => setArchiveCustomDays(e.target.value)}
+            />
+            <button className={styles.dayBtn} onClick={deleteByCustomDays} disabled={busy}>
+              Xoá bài đã lưu trữ từ số ngày này trở lên
             </button>
-            <button
-              className={styles.dayBtn}
-              onClick={() => askConfirm('đã lưu trữ từ 2 ngày trở lên', currentArchiveDays + 2)}
-              disabled={busy}
-            >
-              ≥ 2 ngày
+            <button className={styles.allBtn} onClick={deleteWholeArchive} disabled={busy || !archive?.length}>
+              Xoá toàn bộ kho lưu trữ
             </button>
-            <button
-              className={styles.allBtn}
-              onClick={() => askConfirm('toàn bộ kho lưu trữ', currentArchiveDays)}
-              disabled={busy}
-            >
-              Xoá toàn bộ kho
-            </button>
-            <button className={styles.refreshBtn} onClick={loadArchive} disabled={loadingArchive}>
-              <IconRefresh /> Làm mới
+            <button className={adminStyles.linkBtn} onClick={loadArchive} disabled={loadingArchive}>
+              Làm mới
             </button>
           </div>
 
-          {resultMsg && <p className={styles.inlineSuccess}>{resultMsg}</p>}
-          {errorMsg && <p className={styles.inlineError}>{errorMsg}</p>}
-          {archiveError && <p className={styles.inlineError}>{archiveError}</p>}
+          {selectedIds.size > 0 && (
+            <div className={styles.confirmBox} style={{ background: '#eef5f2', border: '1px solid #bcdbd0' }}>
+              <span>Đã chọn {selectedIds.size} bài</span>
+              <button onClick={() => bulkAction('restore')} disabled={busy}>
+                Phục hồi mục đã chọn
+              </button>
+              <button onClick={() => bulkAction('permanent')} disabled={busy} className={styles.confirmYes}>
+                Xoá vĩnh viễn mục đã chọn
+              </button>
+              <button onClick={() => setSelectedIds(new Set())} disabled={busy}>
+                Bỏ chọn
+              </button>
+            </div>
+          )}
+
+          {resultMsg && <p className={adminStyles.rowOk}>{resultMsg}</p>}
+          {errorMsg && <p className={adminStyles.error}>{errorMsg}</p>}
+          {archiveError && <p className={adminStyles.error}>{archiveError}</p>}
 
           {loadingArchive ? (
-            <div className={styles.emptyState}>
-              <p>Đang tải kho lưu trữ…</p>
-            </div>
-          ) : archive && archive.length > 0 ? (
-            <div className={styles.tableWrap}>
-              <table className={styles.archiveTable}>
-                <thead>
-                  <tr>
-                    <th>Ảnh</th>
-                    <th>Học sinh</th>
-                    <th>Lớp</th>
-                    <th>Môn</th>
-                    <th>Nội dung</th>
-                    <th>Đăng lúc</th>
-                    <th>Đã lưu trữ</th>
-                    <th>Bình luận</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {archive.map((p) => (
-                    <tr key={p.post_id}>
-                      <td>
+            <p className={adminStyles.muted}>Đang tải kho lưu trữ…</p>
+          ) : !archive || archive.length === 0 ? (
+            <p className={adminStyles.muted}>Kho lưu trữ hiện đang trống.</p>
+          ) : (
+            <>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, margin: '10px 0' }}>
+                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+                Chọn tất cả ({archive.length})
+              </label>
+
+              <div className={styles.archiveList}>
+                {archive.map((p) => {
+                  const isExpanded = expandedId === p.post_id
+                  return (
+                    <div key={p.post_id} className={styles.archiveCard}>
+                      <div className={styles.archiveCardHead}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(p.post_id)}
+                          onChange={() => toggleSelect(p.post_id)}
+                        />
                         {p.photo_url ? (
                           <img src={p.photo_url} alt="" className={styles.photoThumb} />
                         ) : (
-                          <div className={styles.noPhoto}>—</div>
+                          <div className={styles.photoThumb} style={{ background: '#f5f7f6' }} />
                         )}
-                      </td>
-                      <td className={styles.strongCell}>{p.student_name || '—'}</td>
-                      <td>{p.class_name || '—'}</td>
-                      <td>{p.subject_name || '—'}</td>
-                      <td className={styles.contentCell} title={p.content}>{p.content}</td>
-                      <td className={styles.mutedCell}>{formatDateTime(p.created_at)}</td>
-                      <td>
-                        <span className={styles.daysBadge}>{p.archived_days} ngày</span>
-                      </td>
-                      <td className={styles.mutedCell}>{p.reply_count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className={styles.emptyState}>
-              <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="3.5" y="4.5" width="17" height="4" rx="1.2" />
-                <path d="M5 9v8.5A1.5 1.5 0 0 0 6.5 19h11a1.5 1.5 0 0 0 1.5-1.5V9M10 12.5h4" />
-              </svg>
-              <p>Kho lưu trữ hiện đang trống.</p>
-            </div>
-          )}
-        </div>
-      )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13.5 }}>
+                            {p.student_name || '—'} · Lớp {p.class_name || '—'}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#5b6b66' }}>
+                            {p.subject_name || 'Chưa chọn môn'} · Đăng lúc {formatDateTime(p.created_at)}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#5b6b66', marginTop: 2 }}>
+                            {p.deleted_by_student ? 'Học sinh tự xoá' : 'Tự động ẩn do đăng quá lâu'} ·{' '}
+                            {p.reply_count} bình luận
+                          </div>
+                        </div>
+                        <button
+                          className={adminStyles.linkBtn}
+                          onClick={() => setExpandedId(isExpanded ? null : p.post_id)}
+                        >
+                          {isExpanded ? 'Thu gọn' : 'Xem đầy đủ'}
+                        </button>
+                      </div>
 
-      {/* ---------------- MODAL XÁC NHẬN XOÁ ---------------- */}
-      {pendingAction && (
-        <div className={styles.modalOverlay} onClick={(e) => e.target === e.currentTarget && !busy && setPendingAction(null)}>
-          <div className={styles.modalBox}>
-            <span className={styles.modalIcon}><IconWarning /></span>
-            <h4 className={styles.modalTitle}>Xác nhận xoá vĩnh viễn</h4>
-            <p className={styles.modalText}>{confirmLabel(pendingAction)}</p>
-            <div className={styles.modalActions}>
-              <button className={styles.modalCancel} onClick={() => setPendingAction(null)} disabled={busy}>
-                Huỷ
-              </button>
-              <button className={styles.modalConfirm} onClick={runPendingAction} disabled={busy}>
-                {busy ? 'Đang xoá…' : 'Xác nhận xoá'}
-              </button>
-            </div>
-          </div>
-        </div>
+                      {isExpanded && (
+                        <div className={styles.archiveCardBody}>
+                          <p style={{ whiteSpace: 'pre-wrap', margin: '10px 0' }}>{p.content}</p>
+                          {p.photo_url && <img src={p.photo_url} alt="" className={styles.photoFull} />}
+                        </div>
+                      )}
+
+                      <div className={styles.archiveCardActions}>
+                        <Link href={`/admin/qa-post/${p.post_id}`} className={adminStyles.linkBtn}>
+                          Mở trang chi tiết (kèm bình luận)
+                        </Link>
+                        <button onClick={() => restorePost(p.post_id)} disabled={busy} className={adminStyles.linkBtn}>
+                          Phục hồi
+                        </button>
+                        <button
+                          onClick={() => deletePostPermanently(p.post_id)}
+                          disabled={busy}
+                          className={adminStyles.dangerBtn}
+                        >
+                          Xoá vĩnh viễn
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </>
       )}
     </section>
   )
