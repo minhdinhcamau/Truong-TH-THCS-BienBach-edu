@@ -11,12 +11,38 @@ function formatDateTime(iso) {
   return new Date(iso).toLocaleString('vi-VN')
 }
 
+// Goi mot route API admin, tu dinh kem token dang nhap hien tai vao header
+// Authorization — cung mau voi cach cac trang admin khac trong du an lay
+// token (qua supabase.auth.getSession()), de requireAdmin() o server doc duoc.
+async function callAdminApi(path, options = {}) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session?.access_token || ''}`,
+      ...options.headers,
+    },
+  })
+
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(json.error || 'Có lỗi xảy ra')
+  }
+  return json
+}
+
 export default function QaPostDetailPage() {
   const { id } = useParams()
   const router = useRouter()
 
   const [post, setPost] = useState(null)
+  const [photos, setPhotos] = useState([])
   const [replies, setReplies] = useState([])
+  const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -27,23 +53,14 @@ export default function QaPostDetailPage() {
     setLoading(true)
     setLoadError('')
     try {
-      const [postRes, repliesRes] = await Promise.all([
-        supabase.rpc('get_qa_post_detail', { p_post_id: id }),
-        supabase.rpc('get_qa_post_replies', { p_post_id: id }),
-      ])
-      if (postRes.error) throw postRes.error
-      if (repliesRes.error) throw repliesRes.error
-
-      const rows = postRes.data || []
-      if (rows.length === 0) {
-        setLoadError('Không tìm thấy bài này (có thể đã bị xoá vĩnh viễn trước đó).')
-        setPost(null)
-      } else {
-        setPost(rows[0])
-      }
-      setReplies(repliesRes.data || [])
+      const data = await callAdminApi(`/api/admin/qa/posts/${id}`)
+      setPost(data.post)
+      setPhotos(data.photos || [])
+      setReplies(data.replies || [])
+      setReports(data.reports || [])
     } catch (err) {
       setLoadError(err.message || 'Không tải được bài viết')
+      setPost(null)
     } finally {
       setLoading(false)
     }
@@ -57,12 +74,11 @@ export default function QaPostDetailPage() {
     setBusy(true)
     setMsg({ text: '', isError: false })
     try {
-      const { error } = await supabase.rpc('admin_restore_qa_post', { p_post_id: id })
-      if (error) throw error
+      await callAdminApi(`/api/admin/qa/posts/${id}`, { method: 'PATCH' })
       setMsg({ text: 'Đã phục hồi bài về lại bình thường.', isError: false })
       load()
     } catch (err) {
-      setMsg({ text: err.message || 'Phục hồi thất bại', isError: true })
+      setMsg({ text: err.message, isError: true })
     } finally {
       setBusy(false)
     }
@@ -72,15 +88,14 @@ export default function QaPostDetailPage() {
     setBusy(true)
     setMsg({ text: '', isError: false })
     try {
-      const { error } = await supabase.rpc('admin_delete_single_qa_post', {
-        p_post_id: id,
-        p_mode: 'archive',
+      await callAdminApi(`/api/admin/qa/posts/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ mode: 'archive' }),
       })
-      if (error) throw error
       setMsg({ text: 'Đã chuyển bài vào kho lưu trữ.', isError: false })
       load()
     } catch (err) {
-      setMsg({ text: err.message || 'Thao tác thất bại', isError: true })
+      setMsg({ text: err.message, isError: true })
     } finally {
       setBusy(false)
     }
@@ -91,14 +106,13 @@ export default function QaPostDetailPage() {
     setBusy(true)
     setMsg({ text: '', isError: false })
     try {
-      const { error } = await supabase.rpc('admin_delete_single_qa_post', {
-        p_post_id: id,
-        p_mode: 'permanent',
+      await callAdminApi(`/api/admin/qa/posts/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ mode: 'purge' }),
       })
-      if (error) throw error
       router.push('/admin')
     } catch (err) {
-      setMsg({ text: err.message || 'Xoá thất bại', isError: true })
+      setMsg({ text: err.message, isError: true })
       setBusy(false)
     }
   }
@@ -108,15 +122,21 @@ export default function QaPostDetailPage() {
     setBusy(true)
     setMsg({ text: '', isError: false })
     try {
-      const { error } = await supabase.rpc('admin_delete_qa_reply', { p_reply_id: replyId })
-      if (error) throw error
-      setReplies((prev) => prev.filter((r) => r.reply_id !== replyId))
+      await callAdminApi(`/api/admin/qa/replies/${replyId}`, { method: 'DELETE' })
+      setReplies((prev) => prev.filter((r) => r.id !== replyId))
     } catch (err) {
-      setMsg({ text: err.message || 'Xoá bình luận thất bại', isError: true })
+      setMsg({ text: err.message, isError: true })
     } finally {
       setBusy(false)
     }
   }
+
+  // Gom photo_url cu (bai 1 anh, kieu cu) + qa_post_photos (bai nhieu anh,
+  // kieu moi) thanh 1 danh sach de hien thi chung, tranh bo sot bai cu.
+  const allPhotoUrls = [
+    ...(post?.photoUrl ? [post.photoUrl] : []),
+    ...photos.map((p) => p.url),
+  ].filter((url, idx, arr) => arr.indexOf(url) === idx)
 
   return (
     <div className={styles.page}>
@@ -134,14 +154,14 @@ export default function QaPostDetailPage() {
               <div className={styles.headRow}>
                 <div>
                   <div className={styles.title}>
-                    {post.student_name || '—'} · Lớp {post.class_name || '—'}
+                    {post.studentName || '—'} · Lớp {post.className || '—'}
                   </div>
                   <div className={styles.sub}>
-                    {post.subject_name || 'Chưa chọn môn'} · Đăng lúc {formatDateTime(post.created_at)}
+                    {post.subjectName || 'Chưa chọn môn'} · Đăng lúc {formatDateTime(post.createdAt)}
                   </div>
-                  {post.deleted_by_student && (
+                  {post.deletedByStudent && (
                     <div className={styles.badge}>
-                      Đã bị ẩn (học sinh tự xoá lúc {formatDateTime(post.deleted_at)})
+                      Đã bị ẩn (chuyển vào kho lưu trữ lúc {formatDateTime(post.deletedAt)})
                     </div>
                   )}
                 </div>
@@ -149,9 +169,9 @@ export default function QaPostDetailPage() {
 
               <p className={styles.content}>{post.content}</p>
 
-              {post.photo_urls && post.photo_urls.length > 0 && (
+              {allPhotoUrls.length > 0 && (
                 <div className={styles.photoGrid}>
-                  {post.photo_urls.map((url, i) => (
+                  {allPhotoUrls.map((url, i) => (
                     <img
                       key={i}
                       src={url}
@@ -163,8 +183,24 @@ export default function QaPostDetailPage() {
                 </div>
               )}
 
+              {reports.length > 0 && (
+                <div className={styles.reportsBox}>
+                  <b>Báo cáo ({reports.length})</b>
+                  {reports.map((r) => (
+                    <div key={r.id} className={styles.reportRow}>
+                      <span className={styles.reportReason}>{r.reason}</span>
+                      {r.details && <span className={styles.reportDetails}> — {r.details}</span>}
+                      <span className={styles.reportMeta}>
+                        {' '}
+                        · {r.reporterName} · {formatDateTime(r.createdAt)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className={styles.actions}>
-                {post.deleted_by_student ? (
+                {post.deletedByStudent ? (
                   <button onClick={restorePost} disabled={busy} className={styles.btnGhost}>
                     Phục hồi bài (hiện lại cho học sinh)
                   </button>
@@ -187,17 +223,17 @@ export default function QaPostDetailPage() {
             {replies.length === 0 && <p className={styles.muted}>Chưa có bình luận nào.</p>}
             <div className={styles.repliesList}>
               {replies.map((r) => (
-                <div key={r.reply_id} className={styles.replyCard}>
+                <div key={r.id} className={styles.replyCard}>
                   <div className={styles.replyHead}>
                     <span className={styles.replyAuthor}>
-                      {r.author_name || '—'}
-                      {r.marked_useful && <span className={styles.usefulTag}>Hữu ích</span>}
+                      {r.authorName || '—'}
+                      {r.markedUseful && <span className={styles.usefulTag}>Hữu ích</span>}
                     </span>
-                    <span className={styles.replyTime}>{formatDateTime(r.created_at)}</span>
+                    <span className={styles.replyTime}>{formatDateTime(r.createdAt)}</span>
                   </div>
                   <p className={styles.replyContent}>{r.content}</p>
                   <button
-                    onClick={() => deleteReply(r.reply_id)}
+                    onClick={() => deleteReply(r.id)}
                     disabled={busy}
                     className={styles.btnDangerSmall}
                   >

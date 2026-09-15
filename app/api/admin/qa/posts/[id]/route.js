@@ -29,15 +29,19 @@ export async function GET(request, { params }) {
     .eq('post_id', id)
     .order('sort_order', { ascending: true })
 
+  // Chi lay binh luan CHUA bi xoa (deleted_at is null) — binh luan da xoa
+  // (kieu soft-delete) khong hien trong trang chi tiet nay.
   const { data: replies } = await supabaseAdmin
     .from('qa_replies')
     .select('id, content, marked_useful, created_at, profiles!qa_replies_author_id_fkey(full_name, role)')
     .eq('post_id', id)
+    .is('deleted_at', null)
     .order('created_at', { ascending: true })
 
+  // Luu y: qa_reports chi co cot "details" (khong co "other_reason").
   const { data: reports } = await supabaseAdmin
     .from('qa_reports')
-    .select('id, reason, other_reason, created_at, profiles!qa_reports_reporter_id_fkey(full_name)')
+    .select('id, reason, details, created_at, profiles!qa_reports_reporter_id_fkey(full_name)')
     .eq('post_id', id)
     .order('created_at', { ascending: false })
 
@@ -65,17 +69,16 @@ export async function GET(request, { params }) {
     reports: (reports || []).map((r) => ({
       id: r.id,
       reason: r.reason,
-      otherReason: r.other_reason,
+      details: r.details,
       createdAt: r.created_at,
       reporterName: r.profiles?.full_name || '—',
     })),
   })
 }
 
-// Xoa bai — 2 che do theo dung yeu cau:
+// Xoa bai — 2 che do:
 //   { mode: 'archive' } -> chi CHUYEN VAO KHO LUU TRU (danh dau
-//                          deleted_by_student/deleted_at, y het hoc sinh
-//                          tu xoa), du lieu KHONG mat, xem lai duoc binh thuong
+//                          deleted_by_student/deleted_at), du lieu KHONG mat
 //   { mode: 'purge' }   -> XOA VINH VIEN: xoa anh that trong Storage, xoa
 //                          qa_post_photos + qa_replies (cascade), roi xoa
 //                          dong qa_posts
@@ -111,10 +114,27 @@ export async function DELETE(request, { params }) {
     await supabaseAdmin.storage.from('qa-photos').remove(paths)
   }
 
-  // qa_post_photos, qa_replies, qa_post_likes, qa_reports deu "on delete
-  // cascade" theo post_id nen chi can xoa dong qa_posts la du.
+  // qa_post_photos, qa_replies, qa_likes, qa_reports deu "on delete
+  // cascade" theo post_id (da xac nhan) nen chi can xoa dong qa_posts la du.
   const { error } = await supabaseAdmin.from('qa_posts').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
   return NextResponse.json({ success: true, mode: 'purge' })
+}
+
+// Phuc hoi bai da bi chuyen vao kho luu tru (thay the RPC admin_restore_qa_post
+// da bi xoa trong migration don dep).
+export async function PATCH(request, { params }) {
+  const auth = await requireAdmin(request)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+  const { id } = params
+
+  const { error } = await supabaseAdmin
+    .from('qa_posts')
+    .update({ deleted_by_student: false, deleted_at: null })
+    .eq('id', id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  return NextResponse.json({ success: true })
 }

@@ -98,6 +98,41 @@
   border: 1px solid #eef1f0;
 }
 
+/* --- Khoi bao cao vi pham (them moi, khop voi phan "Bao cao" trong page.jsx) --- */
+.reportsBox {
+  background: #fdeeea;
+  border: 1px solid #f3c8bb;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: #7a3323;
+}
+
+.reportsBox b {
+  display: block;
+  margin-bottom: 6px;
+  color: #b3432b;
+}
+
+.reportRow {
+  padding: 4px 0;
+  line-height: 1.5;
+}
+
+.reportReason {
+  font-weight: 600;
+}
+
+.reportDetails {
+  color: #7a3323;
+}
+
+.reportMeta {
+  color: #9a6a5c;
+  font-size: 12px;
+}
+
 .actions {
   display: flex;
   gap: 10px;
