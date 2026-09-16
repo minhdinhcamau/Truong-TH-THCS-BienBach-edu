@@ -20,7 +20,11 @@ export async function GET(request, { params }) {
     .single()
 
   if (postError || !post) {
-    return NextResponse.json({ error: 'Khong tim thay bai dang nay' }, { status: 404 })
+    // TAM THOI: hien loi that de debug, se doi lai sau khi tim ra nguyen nhan
+    return NextResponse.json(
+      { error: 'Khong tim thay bai dang nay', debug: postError?.message || 'post is null/undefined' },
+      { status: 404 }
+    )
   }
 
   const { data: photos } = await supabaseAdmin
