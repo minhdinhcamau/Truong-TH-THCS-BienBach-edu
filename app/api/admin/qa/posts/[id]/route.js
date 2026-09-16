@@ -14,17 +14,13 @@ export async function GET(request, { params }) {
   const { data: post, error: postError } = await supabaseAdmin
     .from('qa_posts')
     .select(
-      'id, content, photo_url, created_at, deleted_by_student, deleted_at, student_id, profiles!qa_posts_student_id_fkey(full_name, classes(name)), subjects(name)'
+      'id, content, photo_url, created_at, deleted_by_student, deleted_at, student_id, profiles!qa_posts_student_id_fkey(full_name, classes!profiles_class_id_fkey(name)), subjects(name)'
     )
     .eq('id', id)
     .single()
 
   if (postError || !post) {
-    // TAM THOI: hien loi that de debug, se doi lai sau khi tim ra nguyen nhan
-    return NextResponse.json(
-      { error: 'Khong tim thay bai dang nay', debug: postError?.message || 'post is null/undefined' },
-      { status: 404 }
-    )
+    return NextResponse.json({ error: 'Khong tim thay bai dang nay' }, { status: 404 })
   }
 
   const { data: photos } = await supabaseAdmin

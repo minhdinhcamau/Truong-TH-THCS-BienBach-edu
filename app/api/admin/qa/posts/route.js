@@ -27,14 +27,14 @@ export async function GET(request) {
   const archiveDays = settings?.archive_after_days ?? 5
   const archiveCutoff = new Date(Date.now() - archiveDays * 24 * 60 * 60 * 1000).toISOString()
 
-  // Luu y: neu ten khoa ngoai profiles.id <- qa_posts.student_id trong
-  // project cua anh khac "qa_posts_student_id_fkey", doi lai ten trong
-  // chuoi select ben duoi cho khop (xem trong Supabase Dashboard > Database
-  // > Tables > qa_posts > Foreign Keys).
+  // Luu y: profiles co 2 khoa ngoai lien quan toi classes (profiles.class_id
+  // va classes.teacher_id), nen phai ghi ro dung profiles_class_id_fkey,
+  // khong de Supabase tu doan - neu khong se bao loi "more than one
+  // relationship was found for 'profiles' and 'classes'".
   let query = supabaseAdmin
     .from('qa_posts')
     .select(
-      'id, content, photo_url, created_at, deleted_by_student, deleted_at, profiles!qa_posts_student_id_fkey(full_name, classes(name)), subjects(name)',
+      'id, content, photo_url, created_at, deleted_by_student, deleted_at, profiles!qa_posts_student_id_fkey(full_name, classes!profiles_class_id_fkey(name)), subjects(name)',
       { count: 'exact' }
     )
     .order('created_at', { ascending: false })
