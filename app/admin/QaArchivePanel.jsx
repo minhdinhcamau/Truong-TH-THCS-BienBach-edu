@@ -118,6 +118,8 @@ export default function QaArchivePanel() {
   }, [loadArchive])
 
   // ---- Xoa nhanh hang loat (khong can vao kho luu tru) ----
+  // Van dung RPC admin_delete_qa_posts vi ham nay VAN CON TON TAI (khong bi
+  // xoa trong migration don dep), khong can doi sang route API.
   function askQuickDelete(days) {
     setResultMsg('')
     setErrorMsg('')
@@ -149,13 +151,13 @@ export default function QaArchivePanel() {
   }
 
   // ---- Cac thao tac tren 1 bai trong kho luu tru ----
+  // Doi tu RPC admin_restore_qa_post (da bi xoa) sang goi route API moi.
   async function restorePost(postId) {
     setBusy(true)
     setErrorMsg('')
     setResultMsg('')
     try {
-      const { error } = await supabase.rpc('admin_restore_qa_post', { p_post_id: postId })
-      if (error) throw error
+      await authedFetch(`/api/admin/qa/posts/${postId}`, { method: 'PATCH' })
       setResultMsg('Đã phục hồi bài về lại bình thường.')
       loadArchive()
     } catch (err) {
@@ -165,16 +167,18 @@ export default function QaArchivePanel() {
     }
   }
 
+  // Doi tu RPC admin_delete_single_qa_post (da bi xoa) sang goi route API
+  // moi. Luu y: route dung chu "purge" cho xoa vinh vien, khac voi "permanent"
+  // ma RPC cu dung.
   async function deletePostPermanently(postId) {
     setBusy(true)
     setErrorMsg('')
     setResultMsg('')
     try {
-      const { error } = await supabase.rpc('admin_delete_single_qa_post', {
-        p_post_id: postId,
-        p_mode: 'permanent',
+      await authedFetch(`/api/admin/qa/posts/${postId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ mode: 'purge' }),
       })
-      if (error) throw error
       setResultMsg('Đã xoá vĩnh viễn bài này.')
       loadArchive()
     } catch (err) {
@@ -214,14 +218,12 @@ export default function QaArchivePanel() {
     for (const postId of selectedIds) {
       try {
         if (mode === 'permanent') {
-          const { error } = await supabase.rpc('admin_delete_single_qa_post', {
-            p_post_id: postId,
-            p_mode: 'permanent',
+          await authedFetch(`/api/admin/qa/posts/${postId}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ mode: 'purge' }),
           })
-          if (error) throw error
         } else {
-          const { error } = await supabase.rpc('admin_restore_qa_post', { p_post_id: postId })
-          if (error) throw error
+          await authedFetch(`/api/admin/qa/posts/${postId}`, { method: 'PATCH' })
         }
         okCount += 1
       } catch (err) {
@@ -242,11 +244,10 @@ export default function QaArchivePanel() {
     let okCount = 0
     for (const p of archive) {
       try {
-        const { error } = await supabase.rpc('admin_delete_single_qa_post', {
-          p_post_id: p.post_id,
-          p_mode: 'permanent',
+        await authedFetch(`/api/admin/qa/posts/${p.post_id}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ mode: 'purge' }),
         })
-        if (error) throw error
         okCount += 1
       } catch (err) {
         setErrorMsg(err.message || 'Có bài xoá thất bại')
