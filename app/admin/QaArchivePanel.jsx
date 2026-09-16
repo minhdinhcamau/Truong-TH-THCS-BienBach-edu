@@ -19,23 +19,20 @@ function formatDateTime(iso) {
 export default function QaArchivePanel() {
   const [activeTab, setActiveTab] = useState('manage')
 
-  // ---- Cai dat so ngay luu tru / xoa tu dong ----
   const [settings, setSettings] = useState(null)
   const [loadingSettings, setLoadingSettings] = useState(true)
   const [archiveDaysInput, setArchiveDaysInput] = useState('')
   const [deleteDaysInput, setDeleteDaysInput] = useState('')
+  const [autoEnabled, setAutoEnabled] = useState(true)
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [settingsMsg, setSettingsMsg] = useState({ text: '', isError: false })
 
-  // ---- Xoa nhanh hang loat theo so ngay ke tu luc dang (ap dung cho MOI
-  // bai, ke ca bai chua vao kho luu tru) ----
   const [quickCustomDays, setQuickCustomDays] = useState('')
-  const [pendingAction, setPendingAction] = useState(null) // { label, minAgeDays }
+  const [pendingAction, setPendingAction] = useState(null)
   const [busy, setBusy] = useState(false)
   const [resultMsg, setResultMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
-  // ---- Kho luu tru ----
   const [archive, setArchive] = useState(null)
   const [loadingArchive, setLoadingArchive] = useState(true)
   const [archiveError, setArchiveError] = useState('')
@@ -67,6 +64,7 @@ export default function QaArchivePanel() {
       setSettings(data.settings)
       setArchiveDaysInput(String(data.settings.archive_after_days))
       setDeleteDaysInput(String(data.settings.delete_after_days))
+      setAutoEnabled(data.settings.auto_enabled ?? true)
     } catch (err) {
       setSettingsMsg({ text: err.message, isError: true })
     } finally {
@@ -78,7 +76,22 @@ export default function QaArchivePanel() {
     loadSettings()
   }, [loadSettings])
 
+  function computeDaysValidationError() {
+    if (archiveDaysInput === '' || deleteDaysInput === '') return ''
+    const a = Number(archiveDaysInput)
+    const d = Number(deleteDaysInput)
+    if (!Number.isInteger(a) || a < 1) return 'Số ngày ẩn bài phải là số nguyên lớn hơn 0.'
+    if (!Number.isInteger(d) || d < 1) return 'Số ngày xoá vĩnh viễn phải là số nguyên lớn hơn 0.'
+    if (d <= a) return 'Số ngày xoá vĩnh viễn phải LỚN HƠN số ngày ẩn bài.'
+    return ''
+  }
+  const daysValidationError = computeDaysValidationError()
+
   async function saveSettings() {
+    if (daysValidationError) {
+      setSettingsMsg({ text: daysValidationError, isError: true })
+      return
+    }
     setSettingsBusy(true)
     setSettingsMsg({ text: '', isError: false })
     try {
@@ -87,6 +100,7 @@ export default function QaArchivePanel() {
         body: JSON.stringify({
           archiveAfterDays: archiveDaysInput,
           deleteAfterDays: deleteDaysInput,
+          autoEnabled,
         }),
       })
       setSettings(data.settings)
@@ -117,9 +131,6 @@ export default function QaArchivePanel() {
     loadArchive()
   }, [loadArchive])
 
-  // ---- Xoa nhanh hang loat (khong can vao kho luu tru) ----
-  // Van dung RPC admin_delete_qa_posts vi ham nay VAN CON TON TAI (khong bi
-  // xoa trong migration don dep), khong can doi sang route API.
   function askQuickDelete(days) {
     setResultMsg('')
     setErrorMsg('')
@@ -150,8 +161,6 @@ export default function QaArchivePanel() {
     }
   }
 
-  // ---- Cac thao tac tren 1 bai trong kho luu tru ----
-  // Doi tu RPC admin_restore_qa_post (da bi xoa) sang goi route API moi.
   async function restorePost(postId) {
     setBusy(true)
     setErrorMsg('')
@@ -167,9 +176,6 @@ export default function QaArchivePanel() {
     }
   }
 
-  // Doi tu RPC admin_delete_single_qa_post (da bi xoa) sang goi route API
-  // moi. Luu y: route dung chu "purge" cho xoa vinh vien, khac voi "permanent"
-  // ma RPC cu dung.
   async function deletePostPermanently(postId) {
     setBusy(true)
     setErrorMsg('')
@@ -188,7 +194,6 @@ export default function QaArchivePanel() {
     }
   }
 
-  // ---- Chon nhieu: xoa hoac phuc hoi hang loat ----
   function toggleSelect(postId) {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -307,60 +312,83 @@ export default function QaArchivePanel() {
 
       {activeTab === 'manage' && (
         <>
-          {/* ---------------- CÀI ĐẶT SỐ NGÀY ---------------- */}
-          <p style={{ fontSize: 13, color: '#5b6b66', margin: '0 0 10px' }}>
-            Áp dụng cho toàn bộ bài Hỏi bài trong trường. Chỉ chỉnh được ở đây (trang quản trị).
-          </p>
-          {loadingSettings ? (
-            <p className={adminStyles.muted}>Đang tải cài đặt…</p>
-          ) : (
-            <div className={adminStyles.form} style={{ marginBottom: 12 }}>
-              <div className={adminStyles.passwordRow}>
-                <label className={adminStyles.field} style={{ flex: '1 1 200px' }}>
-                  <span>Bao nhiêu ngày sau khi đăng thì ẩn bài (chuyển vào kho lưu trữ)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={archiveDaysInput}
-                    onChange={(e) => setArchiveDaysInput(e.target.value)}
-                  />
-                </label>
-                <label className={adminStyles.field} style={{ flex: '1 1 200px' }}>
-                  <span>Bao nhiêu ngày sau khi đăng thì xoá vĩnh viễn</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={deleteDaysInput}
-                    onChange={(e) => setDeleteDaysInput(e.target.value)}
-                  />
-                </label>
-              </div>
-              <p style={{ fontSize: 12, color: '#8aa39c', margin: 0 }}>
-                Số ngày xoá vĩnh viễn phải lớn hơn số ngày ẩn bài.
-              </p>
-              <button
-                type="button"
-                className={adminStyles.genButton}
-                style={{ alignSelf: 'flex-start' }}
-                onClick={saveSettings}
-                disabled={settingsBusy}
-              >
-                {settingsBusy ? 'Đang lưu…' : 'Lưu cài đặt'}
-              </button>
-              {settingsMsg.text && (
-                <p className={settingsMsg.isError ? adminStyles.error : adminStyles.rowOk}>{settingsMsg.text}</p>
-              )}
-              {settings?.updated_at && (
-                <p style={{ fontSize: 12, color: '#8aa39c', margin: 0 }}>
-                  Cập nhật lần cuối: {formatDateTime(settings.updated_at)}
-                </p>
+          <div className={styles.settingsCard}>
+            <div className={styles.settingsHeadRow}>
+              <span className={styles.settingsTitle}>Tự động xoá bài cũ</span>
+              {!loadingSettings && (
+                <button
+                  type="button"
+                  className={autoEnabled ? `${styles.toggleSwitch} ${styles.toggleSwitchOn}` : styles.toggleSwitch}
+                  onClick={() => setAutoEnabled((v) => !v)}
+                  aria-pressed={autoEnabled}
+                  title={autoEnabled ? 'Đang bật — bấm để tắt' : 'Đang tắt — bấm để bật'}
+                >
+                  <span className={autoEnabled ? `${styles.toggleKnob} ${styles.toggleKnobOn}` : styles.toggleKnob} />
+                </button>
               )}
             </div>
-          )}
+            <p className={styles.settingsDesc}>
+              Khi bật, mỗi đêm hệ thống tự kiểm tra và xoá vĩnh viễn bài đã quá hạn theo 2 mốc bên dưới
+              (ảnh và bình luận cũng bị xoá theo). Khi tắt, không có gì bị xoá tự động — chỉ xoá khi
+              admin bấm nút thủ công ở các mục dưới đây.
+            </p>
 
-          <hr className={adminStyles.sectionDivider} />
+            {loadingSettings ? (
+              <p className={adminStyles.muted}>Đang tải cài đặt…</p>
+            ) : (
+              <div className={autoEnabled ? undefined : styles.disabledOverlay}>
+                <div className={styles.settingsGrid}>
+                  <div className={styles.settingsField}>
+                    <span className={styles.settingsFieldLabel}>Ẩn bài (vào kho lưu trữ) sau</span>
+                    <div className={styles.settingsFieldRow}>
+                      <input
+                        type="number"
+                        min={1}
+                        className={styles.settingsNumberInput}
+                        value={archiveDaysInput}
+                        onChange={(e) => setArchiveDaysInput(e.target.value)}
+                      />
+                      <span className={styles.settingsUnit}>ngày</span>
+                    </div>
+                  </div>
+                  <div className={styles.settingsField}>
+                    <span className={styles.settingsFieldLabel}>Xoá vĩnh viễn sau</span>
+                    <div className={styles.settingsFieldRow}>
+                      <input
+                        type="number"
+                        min={1}
+                        className={styles.settingsNumberInput}
+                        value={deleteDaysInput}
+                        onChange={(e) => setDeleteDaysInput(e.target.value)}
+                      />
+                      <span className={styles.settingsUnit}>ngày</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
-          {/* ---------------- XOÁ NHANH HÀNG LOẠT ---------------- */}
+            {daysValidationError && <p className={styles.inlineError}>{daysValidationError}</p>}
+
+            <button
+              type="button"
+              className={adminStyles.genButton}
+              style={{ marginTop: 14 }}
+              onClick={saveSettings}
+              disabled={settingsBusy || loadingSettings || !!daysValidationError}
+            >
+              {settingsBusy ? 'Đang lưu…' : 'Lưu cài đặt'}
+            </button>
+            {settingsMsg.text && (
+              <p className={settingsMsg.isError ? adminStyles.error : adminStyles.rowOk}>{settingsMsg.text}</p>
+            )}
+            {settings?.updated_at && (
+              <p style={{ fontSize: 12, color: '#8aa39c', margin: '8px 0 0' }}>
+                Cập nhật lần cuối: {formatDateTime(settings.updated_at)}
+              </p>
+            )}
+          </div>
+
           <p style={{ fontSize: 13, color: '#5b6b66', margin: '0 0 10px' }}>
             Xoá vĩnh viễn ngay lập tức những bài <strong>đã đăng từ số ngày dưới đây trở lên</strong> —
             áp dụng cho MỌI bài, kể cả bài chưa bị ẩn/chưa vào kho lưu trữ. Dùng khi cần dọn dẹp gấp,

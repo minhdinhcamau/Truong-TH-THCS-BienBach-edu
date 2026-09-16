@@ -2,24 +2,28 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin'
 import { requireAdmin } from '../../../../lib/authHelpers'
 
-// Doc cau hinh so ngay luu tru / xoa tu dong cua Hoi bai.
+// Doc cau hinh so ngay luu tru / xoa tu dong + trang thai bat/tat cua Hoi bai.
 // Bang qa_settings chi co dung 1 dong (id = 1) - neu vi ly do nao do chua
-// co dong nay (VD chua chay migration insert mac dinh) thi tra ve gia tri
-// mac dinh 5/7 de UI khong bi vo, thay vi bao loi kho hieu.
+// co dong nay thi tra ve gia tri mac dinh 5/7/bat de UI khong bi vo.
 export async function GET(request) {
   const auth = await requireAdmin(request)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const { data, error } = await supabaseAdmin
     .from('qa_settings')
-    .select('archive_after_days, delete_after_days, updated_at')
+    .select('archive_after_days, delete_after_days, auto_enabled, updated_at')
     .eq('id', 1)
     .maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
   return NextResponse.json({
-    settings: data || { archive_after_days: 5, delete_after_days: 7, updated_at: null },
+    settings: data || {
+      archive_after_days: 5,
+      delete_after_days: 7,
+      auto_enabled: true,
+      updated_at: null,
+    },
   })
 }
 
@@ -29,7 +33,7 @@ export async function PATCH(request) {
   const auth = await requireAdmin(request)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { archiveAfterDays, deleteAfterDays } = await request.json()
+  const { archiveAfterDays, deleteAfterDays, autoEnabled } = await request.json()
 
   const archiveDays = Number(archiveAfterDays)
   const deleteDays = Number(deleteAfterDays)
@@ -53,6 +57,7 @@ export async function PATCH(request) {
       id: 1,
       archive_after_days: archiveDays,
       delete_after_days: deleteDays,
+      auto_enabled: typeof autoEnabled === 'boolean' ? autoEnabled : true,
       updated_at: new Date().toISOString(),
       updated_by: auth.user.id,
     })

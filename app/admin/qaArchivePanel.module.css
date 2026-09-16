@@ -193,3 +193,139 @@
   object-fit: contain;
   display: block;
 }
+
+/* --- Khoi cai dat tu dong luu tru/xoa (thiet ke lai, gon gang hon) --- */
+.settingsCard {
+  background: #ffffff;
+  border: 1px solid #dce3e0;
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
+.settingsHeadRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.settingsTitle {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #1b2421;
+}
+
+.settingsDesc {
+  font-size: 12.5px;
+  color: #5b6b66;
+  margin: 2px 0 16px;
+  line-height: 1.5;
+}
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+@media (max-width: 480px) {
+  .settingsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.settingsField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settingsFieldLabel {
+  font-size: 12.5px;
+  color: #5b6b66;
+  font-weight: 600;
+}
+
+.settingsFieldRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settingsNumberInput {
+  width: 84px;
+  padding: 8px 10px;
+  border: 1px solid #dce3e0;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  color: #1b2421;
+}
+
+.settingsNumberInput:focus {
+  outline: none;
+  border-color: #2f6f5e;
+  box-shadow: 0 0 0 3px rgba(47, 111, 94, 0.15);
+}
+
+.settingsUnit {
+  font-size: 12.5px;
+  color: #8aa39c;
+}
+
+.disabledOverlay {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.inlineError {
+  font-size: 12px;
+  color: #b3432b;
+  margin: 8px 0 0;
+}
+
+/* --- Cong tac bat/tat (toggle switch) --- */
+.toggleSwitch {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: #dce3e0;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 0.15s ease;
+}
+
+.toggleSwitch:hover {
+  background: #c7d2ce;
+}
+
+.toggleSwitchOn {
+  background: #2f6f5e;
+}
+
+.toggleSwitchOn:hover {
+  background: #234f42;
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.toggleKnobOn {
+  transform: translateX(18px);
+}
