@@ -117,24 +117,32 @@ function PhotoGrid({ photos, onOpen }) {
     </div>
   );
 
-  // ---------- 1 anh: CAN GIUA, hien DU CA ANH (khong cat) ----------
-  // Khong dat khung ti le cung: cho chinh tam anh quyet dinh kich thuoc, chi
-  // chan chieu cao toi da 320px => anh dung/ngang deu vua man, khong bao gio
-  // co vien xam vi khung om sat anh.
+  // ---------- 1 anh: FULL CHIEU RONG khung bai dang, hien DU CA ANH ----------
+  // Rong = 100% khung bai (giong luoi nhieu anh), cao tu dieu chinh theo ti
+  // le that cua anh (contain) nhung khong vuot maxHeight de tranh anh dung
+  // qua cao chiem het man hinh.
   if (count === 1) {
     return (
-      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'center', width: '100%' }}>
+      <div
+        style={{
+          marginTop: 10,
+          width: '100%',
+          maxHeight: 460,
+          borderRadius: RADIUS,
+          overflow: 'hidden',
+          background: FRAME_BG,
+          display: 'flex',
+          justifyContent: 'center',
+        }}
+      >
         <img
           src={shown[0]}
           alt=""
           onClick={() => onOpen(0)}
           style={{
-            maxHeight: 320,
-            maxWidth: '100%',
-            width: 'auto',
-            height: 'auto',
+            width: '100%',
+            maxHeight: 460,
             objectFit: 'contain',
-            borderRadius: RADIUS,
             cursor: 'zoom-in',
             display: 'block',
           }}
