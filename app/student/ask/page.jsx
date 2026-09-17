@@ -74,7 +74,7 @@ function PhotoGrid({ photos, onOpen }) {
   }
 
   return (
-    <div className="photo-grid-wrap">
+    <div className="photo-grid-wrap" style={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
       {content}
       <style jsx>{`
         .grid {
@@ -83,19 +83,20 @@ function PhotoGrid({ photos, onOpen }) {
           border-radius: 12px;
           overflow: hidden;
           margin-top: 10px;
+          width: 100%;
+          max-width: 100%;
         }
         .grid img {
           width: 100%;
           height: 100%;
+          max-width: 100%;
           object-fit: cover;
           display: block;
           cursor: zoom-in;
         }
         .grid.one {
           grid-template-columns: 1fr;
-          max-height: 320px;
-        }
-        .grid.one img {
+          aspect-ratio: 4 / 3;
           max-height: 320px;
         }
         .grid.two {
@@ -124,13 +125,15 @@ function PhotoGrid({ photos, onOpen }) {
         .grid.four {
           grid-template-columns: 1fr 1fr;
           grid-template-rows: 1fr 1fr;
-          max-height: 260px;
           aspect-ratio: 1 / 1;
+          max-height: 260px;
         }
         .cell {
           position: relative;
           overflow: hidden;
           cursor: zoom-in;
+          width: 100%;
+          height: 100%;
         }
         .cell img {
           width: 100%;
@@ -667,16 +670,7 @@ export default function AskPage() {
         const authorClassName = classNameById[p.author?.class_id];
         const isOwnPost = p.student_id === profile.id;
         return (
-          <div className="post" key={p.id} style={{ position: 'relative' }}>
-            <button
-              type="button"
-              className="corner-report-btn"
-              onClick={() => setReportPrompt(p.id)}
-              title="Báo cáo bài viết"
-            >
-              🚩
-            </button>
-
+          <div className="post" key={p.id}>
             {p.is_pinned && <div className="pin-badge">📌 Đã ghim</div>}
             <div className="post-head">
               <Avatar name={p.author?.full_name} totalXp={p.authorXp} photoUrl={p.author?.photo_url} size={38} />
@@ -686,6 +680,15 @@ export default function AskPage() {
               </div>
               {authorClassName && <span className="post-subject">Lớp {authorClassName}</span>}
               {p.subjectName && <span className="post-subject">{p.subjectName}</span>}
+              <button
+                type="button"
+                className="corner-report-btn"
+                onClick={() => setReportPrompt(p.id)}
+                title="Báo cáo bài viết"
+                style={{ marginLeft: 'auto' }}
+              >
+                🚩
+              </button>
             </div>
             <div className="post-body">{p.content}</div>
 
@@ -851,20 +854,17 @@ export default function AskPage() {
           color: #fff;
         }
         .corner-report-btn {
-          position: absolute;
-          top: 10px;
-          right: 10px;
-          width: 30px;
-          height: 30px;
+          flex-shrink: 0;
+          width: 28px;
+          height: 28px;
           border-radius: 50%;
           border: none;
           background: rgba(0, 0, 0, 0.05);
-          font-size: 14px;
+          font-size: 13px;
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
-          z-index: 2;
           opacity: 0.7;
         }
         .corner-report-btn:hover {
