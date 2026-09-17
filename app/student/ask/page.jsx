@@ -1,10 +1,18 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
+import { compressImage } from '../../../lib/compressImage';
 import { getRankTier, getInitials } from '../../../lib/rankTiers';
 import { useStudent } from '../layout';
 
 const DELETE_REASONS = ['Nội dung không phù hợp', 'Spam', 'Sai môn học', 'Khác'];
+const REPORT_REASONS = [
+  'Nội dung không phù hợp',
+  'Bắt nạt hoặc xúc phạm người khác',
+  'Ảnh/nội dung nhạy cảm',
+  'Khác',
+];
+const MAX_PHOTOS = 8;
 
 function Avatar({ name, totalXp, photoUrl, size = 38 }) {
   const tier = getRankTier(totalXp);
@@ -15,6 +23,219 @@ function Avatar({ name, totalXp, photoUrl, size = 38 }) {
         {photoUrl ? <img src={photoUrl} alt="" /> : getInitials(name)}
       </div>
       {tier.badge && <div className="rank-badge">{tier.badge}</div>}
+    </div>
+  );
+}
+
+// Luoi anh kieu Facebook: 1/2/3/4+ anh, anh thu 4 co dau "+N" neu con nhieu hon.
+function PhotoGrid({ photos, onOpen }) {
+  if (!photos || photos.length === 0) return null;
+  const count = photos.length;
+
+  let content;
+  if (count === 1) {
+    content = (
+      <div className="grid one">
+        <img src={photos[0]} alt="" onClick={() => onOpen(0)} />
+      </div>
+    );
+  } else if (count === 2) {
+    content = (
+      <div className="grid two">
+        {photos.map((url, i) => (
+          <img key={i} src={url} alt="" onClick={() => onOpen(i)} />
+        ))}
+      </div>
+    );
+  } else if (count === 3) {
+    content = (
+      <div className="grid three">
+        <img className="big" src={photos[0]} alt="" onClick={() => onOpen(0)} />
+        <div className="stack">
+          <img src={photos[1]} alt="" onClick={() => onOpen(1)} />
+          <img src={photos[2]} alt="" onClick={() => onOpen(2)} />
+        </div>
+      </div>
+    );
+  } else {
+    const shown = photos.slice(0, 4);
+    const extra = photos.length - 4;
+    content = (
+      <div className="grid four">
+        {shown.map((url, i) => (
+          <div key={i} className="cell" onClick={() => onOpen(i)}>
+            <img src={url} alt="" />
+            {i === 3 && extra > 0 && <div className="more">+{extra}</div>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {content}
+      <style jsx>{`
+        .grid {
+          display: grid;
+          gap: 4px;
+          border-radius: 14px;
+          overflow: hidden;
+          margin-top: 10px;
+        }
+        .grid img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          cursor: zoom-in;
+        }
+        .grid.one {
+          grid-template-columns: 1fr;
+          max-height: 420px;
+        }
+        .grid.one img {
+          max-height: 420px;
+        }
+        .grid.two {
+          grid-template-columns: 1fr 1fr;
+          aspect-ratio: 16 / 9;
+        }
+        .grid.three {
+          grid-template-columns: 1.2fr 1fr;
+          aspect-ratio: 16 / 9;
+        }
+        .grid.three .big {
+          height: 100%;
+        }
+        .grid.three .stack {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          height: 100%;
+        }
+        .grid.three .stack img {
+          flex: 1;
+          min-height: 0;
+        }
+        .grid.four {
+          grid-template-columns: 1fr 1fr;
+          grid-template-rows: 1fr 1fr;
+          aspect-ratio: 1 / 1;
+        }
+        .cell {
+          position: relative;
+          overflow: hidden;
+          cursor: zoom-in;
+        }
+        .cell img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        .more {
+          position: absolute;
+          inset: 0;
+          background: rgba(10, 20, 18, 0.55);
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 22px;
+          font-weight: 700;
+        }
+      `}</style>
+    </>
+  );
+}
+
+// Phong to anh toan man hinh, chuyen qua lai giua cac anh cung bai, tai ve may.
+function Lightbox({ photos, index, onClose, onNav }) {
+  if (index == null) return null;
+  const url = photos[index];
+  return (
+    <div className="lb-bg" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <button type="button" className="lb-close" onClick={onClose}>✕</button>
+      {photos.length > 1 && index > 0 && (
+        <button type="button" className="lb-nav lb-prev" onClick={() => onNav(index - 1)}>‹</button>
+      )}
+      <img src={url} alt="" className="lb-img" />
+      {photos.length > 1 && index < photos.length - 1 && (
+        <button type="button" className="lb-nav lb-next" onClick={() => onNav(index + 1)}>›</button>
+      )}
+      <a href={url} download onClick={(e) => e.stopPropagation()} className="lb-download">Tải ảnh về</a>
+      {photos.length > 1 && <div className="lb-counter">{index + 1}/{photos.length}</div>}
+      <style jsx>{`
+        .lb-bg {
+          position: fixed;
+          inset: 0;
+          background: rgba(10, 20, 18, 0.92);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 200;
+          padding: 24px;
+        }
+        .lb-img {
+          max-width: 100%;
+          max-height: 78vh;
+          object-fit: contain;
+          border-radius: 8px;
+        }
+        .lb-close {
+          position: absolute;
+          top: 16px;
+          right: 20px;
+          background: none;
+          border: none;
+          color: #fff;
+          font-size: 22px;
+          cursor: pointer;
+        }
+        .lb-nav {
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          background: rgba(255, 255, 255, 0.15);
+          border: none;
+          color: #fff;
+          font-size: 28px;
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          cursor: pointer;
+        }
+        .lb-prev {
+          left: 16px;
+        }
+        .lb-next {
+          right: 16px;
+        }
+        .lb-download {
+          position: absolute;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: #fff;
+          color: #17302d;
+          padding: 10px 20px;
+          border-radius: 999px;
+          font-weight: 600;
+          font-size: 13px;
+          text-decoration: none;
+        }
+        .lb-counter {
+          position: absolute;
+          top: 18px;
+          left: 20px;
+          color: #fff;
+          font-size: 13px;
+          background: rgba(255, 255, 255, 0.15);
+          padding: 4px 10px;
+          border-radius: 999px;
+        }
+      `}</style>
     </div>
   );
 }
@@ -37,25 +258,81 @@ function ReasonPrompt({ onConfirm, onCancel }) {
   );
 }
 
+// Bao cao bai viet: 4 ly do goi y + ly do khac bat buoc nhap ro, kem huong
+// dan ngan cho hoc sinh biet khi nao nen bao cao.
+function ReportPrompt({ onSubmit, onCancel }) {
+  const [reason, setReason] = useState(REPORT_REASONS[0]);
+  const [details, setDetails] = useState('');
+  const isOther = reason === 'Khác';
+
+  function submit() {
+    if (isOther && !details.trim()) return;
+    onSubmit(reason, details.trim());
+  }
+
+  return (
+    <div className="modal-bg" onClick={(e) => e.target === e.currentTarget && onCancel()}>
+      <div className="modal" style={{ maxWidth: 380 }}>
+        <h3 style={{ marginTop: 0 }}>Báo cáo bài viết</h3>
+        <p className="section-sub" style={{ marginTop: -4 }}>
+          Em hãy báo cáo khi bài viết có nội dung không phù hợp, xúc phạm bạn khác, spam hoặc chứa
+          ảnh nhạy cảm. Thầy cô sẽ xem lại và xử lý sớm nhất.
+        </p>
+        {REPORT_REASONS.map((r) => (
+          <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, margin: '8px 0' }}>
+            <input type="radio" name="report-reason" checked={reason === r} onChange={() => setReason(r)} />
+            {r}
+          </label>
+        ))}
+        {isOther && (
+          <textarea
+            placeholder="Mô tả lý do của em…"
+            value={details}
+            onChange={(e) => setDetails(e.target.value)}
+            style={{ width: '100%', minHeight: 70, marginTop: 6, padding: 9, borderRadius: 10, border: '1.5px solid var(--line)', boxSizing: 'border-box' }}
+          />
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+          <button className="chip-btn" onClick={onCancel}>Huỷ</button>
+          <button className="cta" style={{ background: '#D6467A' }} onClick={submit} disabled={isOther && !details.trim()}>
+            Gửi báo cáo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AskPage() {
   const { profile, stats } = useStudent();
   const isMod = profile.role === 'teacher' || profile.role === 'admin';
 
   const [subjects, setSubjects] = useState([]);
   const [subjectId, setSubjectId] = useState('');
+  const [classes, setClasses] = useState([]);
   const [text, setText] = useState('');
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState('');
+  const [photoFiles, setPhotoFiles] = useState([]);
+  const [photoPreviews, setPhotoPreviews] = useState([]);
   const [posting, setPosting] = useState(false);
   const [feed, setFeed] = useState(null);
   const [replyDrafts, setReplyDrafts] = useState({});
   const [toast, setToast] = useState('');
   const [deletePrompt, setDeletePrompt] = useState(null); // { type: 'post'|'reply', id }
+  const [reportPrompt, setReportPrompt] = useState(null); // postId
+  const [lightbox, setLightbox] = useState(null); // { photos, index }
+  const [classFilterId, setClassFilterId] = useState('');
+  const [sortMode, setSortMode] = useState('newest'); // 'newest' | 'liked'
 
   function showToast(msg) {
     setToast(msg);
     setTimeout(() => setToast(''), 2600);
   }
+
+  const classNameById = useMemo(() => {
+    const map = {};
+    classes.forEach((c) => { map[c.id] = c.name; });
+    return map;
+  }, [classes]);
 
   async function loadFeed() {
     const { data: posts, error } = await supabase
@@ -73,6 +350,7 @@ export default function AskPage() {
     }
 
     const postIds = (posts || []).map((p) => p.id);
+
     const { data: replies } = postIds.length
       ? await supabase
           .from('qa_replies')
@@ -86,12 +364,23 @@ export default function AskPage() {
       ? await supabase.from('qa_likes').select('post_id, student_id').in('post_id', postIds)
       : { data: [] };
 
+    // Anh cua bai (nhieu anh/bai) - create_qa_post da ghi toan bo vao day,
+    // sap theo sort_order. Bai cu chi co 1 anh (chua tung dung mang) se
+    // khong co dong nao o day, fallback ve qa_posts.photo_url ben duoi.
+    const { data: photoRows } = postIds.length
+      ? await supabase
+          .from('qa_post_photos')
+          .select('post_id, photo_url, sort_order')
+          .in('post_id', postIds)
+          .order('sort_order', { ascending: true })
+      : { data: [] };
+
     const peopleIds = new Set();
     (posts || []).forEach((p) => peopleIds.add(p.student_id));
     (replies || []).forEach((r) => peopleIds.add(r.author_id));
 
     const { data: people } = peopleIds.size
-      ? await supabase.from('public_profiles').select('id, full_name, role, photo_url').in('id', Array.from(peopleIds))
+      ? await supabase.from('public_profiles').select('id, full_name, role, photo_url, class_id').in('id', Array.from(peopleIds))
       : { data: [] };
 
     const { data: statsRows } = peopleIds.size
@@ -115,6 +404,12 @@ export default function AskPage() {
       likesByPost[l.post_id].push(l.student_id);
     });
 
+    const photosByPost = {};
+    (photoRows || []).forEach((r) => {
+      if (!photosByPost[r.post_id]) photosByPost[r.post_id] = [];
+      photosByPost[r.post_id].push(r.photo_url);
+    });
+
     const assembled = (posts || []).map((p) => ({
       ...p,
       author: peopleMap[p.student_id],
@@ -122,6 +417,7 @@ export default function AskPage() {
       subjectName: subjects.find((s) => s.id === p.subject_id)?.name || '',
       replies: repliesByPost[p.id] || [],
       likerIds: likesByPost[p.id] || [],
+      photos: photosByPost[p.id]?.length ? photosByPost[p.id] : (p.photo_url ? [p.photo_url] : []),
     }));
 
     setFeed(assembled);
@@ -132,6 +428,9 @@ export default function AskPage() {
       const { data: subjectsData } = await supabase.from('subjects').select('id, name').order('name');
       setSubjects(subjectsData || []);
       if (subjectsData?.length) setSubjectId(subjectsData[0].id);
+
+      const { data: classesData } = await supabase.from('classes').select('id, name').order('name');
+      setClasses(classesData || []);
     }
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,36 +441,45 @@ export default function AskPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subjects]);
 
-  function onPickPhoto(e) {
-    const file = e.target.files[0];
-    setPhotoFile(file || null);
-    setPhotoPreview(file ? URL.createObjectURL(file) : '');
+  function onPickPhotos(e) {
+    let files = Array.from(e.target.files || []);
+    if (files.length > MAX_PHOTOS) {
+      alert(`Chỉ được đăng tối đa ${MAX_PHOTOS} ảnh cho mỗi bài.`);
+      files = files.slice(0, MAX_PHOTOS);
+    }
+    setPhotoFiles(files);
+    setPhotoPreviews(files.map((f) => URL.createObjectURL(f)));
+  }
+
+  function removePickedPhoto(idx) {
+    setPhotoFiles((prev) => prev.filter((_, i) => i !== idx));
+    setPhotoPreviews((prev) => prev.filter((_, i) => i !== idx));
   }
 
   async function handlePost() {
     if (!text.trim()) return;
     setPosting(true);
     try {
-      let photoUrl = null;
-      let photoPath = null;
-      if (photoFile) {
-        photoPath = `${profile.id}/${Date.now()}-${photoFile.name}`;
-        const { error: uploadError } = await supabase.storage.from('qa-photos').upload(photoPath, photoFile);
+      const photoUrls = [];
+      for (const file of photoFiles) {
+        const compressed = await compressImage(file);
+        const path = `${profile.id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${compressed.name}`;
+        const { error: uploadError } = await supabase.storage.from('qa-photos').upload(path, compressed);
         if (uploadError) throw uploadError;
-        photoUrl = supabase.storage.from('qa-photos').getPublicUrl(photoPath).data.publicUrl;
+        const url = supabase.storage.from('qa-photos').getPublicUrl(path).data.publicUrl;
+        photoUrls.push(url);
       }
 
       const { error } = await supabase.rpc('create_qa_post', {
         p_subject_id: subjectId || null,
         p_content: text.trim(),
-        p_photo_url: photoUrl,
-        p_photo_path: photoPath,
+        p_photo_urls: photoUrls,
       });
       if (error) throw error;
 
       setText('');
-      setPhotoFile(null);
-      setPhotoPreview('');
+      setPhotoFiles([]);
+      setPhotoPreviews([]);
       await loadFeed();
       showToast('Đã đăng câu hỏi của em! +2 KN');
     } catch (err) {
@@ -234,6 +542,33 @@ export default function AskPage() {
     loadFeed();
   }
 
+  async function submitReport(postId, reason, details) {
+    const { error } = await supabase.rpc('report_qa_post', {
+      p_post_id: postId,
+      p_reason: reason,
+      p_details: details || null,
+    });
+    setReportPrompt(null);
+    if (error) { alert(error.message); return; }
+    showToast('Đã gửi báo cáo, cảm ơn em!');
+  }
+
+  const displayedFeed = useMemo(() => {
+    if (!feed) return feed;
+    let list = feed;
+    if (classFilterId) {
+      list = list.filter((p) => p.author?.class_id === classFilterId);
+    }
+    const pinned = list.filter((p) => p.is_pinned);
+    const rest = [...list.filter((p) => !p.is_pinned)];
+    if (sortMode === 'liked') {
+      rest.sort((a, b) => b.likerIds.length - a.likerIds.length || new Date(b.created_at) - new Date(a.created_at));
+    } else {
+      rest.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    }
+    return [...pinned, ...rest];
+  }, [feed, classFilterId, sortMode]);
+
   return (
     <>
       <div>
@@ -255,26 +590,130 @@ export default function AskPage() {
             <label className="chip-btn" style={{ margin: 0 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13" r="3.5" /></svg>
               Thêm ảnh
-              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={onPickPhoto} />
+              <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={onPickPhotos} />
             </label>
             <select className="chip-btn" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
               {subjects.map((s) => <option value={s.id} key={s.id}>{s.name}</option>)}
             </select>
-            {photoPreview && (
-              <span className="photo-preview"><img src={photoPreview} alt="" /> Đã chọn ảnh</span>
+            {photoPreviews.length > 0 && (
+              <span className="photo-preview">Đã chọn {photoPreviews.length} ảnh</span>
             )}
           </div>
           <button className="cta" onClick={handlePost} disabled={posting}>
             {posting ? 'Đang đăng…' : 'Đăng câu hỏi'}
           </button>
         </div>
+        {photoPreviews.length > 0 && (
+          <div className="compose-photo-row">
+            {photoPreviews.map((url, i) => (
+              <div key={i} className="compose-photo-thumb">
+                <img src={url} alt="" />
+                <button type="button" onClick={() => removePickedPhoto(i)}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <style jsx>{`
+          .compose-photo-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+          }
+          .compose-photo-thumb {
+            position: relative;
+            width: 64px;
+            height: 64px;
+            border-radius: 10px;
+            overflow: hidden;
+          }
+          .compose-photo-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+          }
+          .compose-photo-thumb button {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 11px;
+            cursor: pointer;
+            line-height: 1;
+          }
+        `}</style>
       </div>
 
-      {feed === null && <div className="center-loading">Đang tải câu hỏi…</div>}
-      {feed && feed.length === 0 && <div className="empty-note">Chưa có câu hỏi nào — hãy là người đăng đầu tiên!</div>}
+      <div className="qa-filters">
+        <select value={classFilterId} onChange={(e) => setClassFilterId(e.target.value)}>
+          <option value="">Tất cả lớp</option>
+          {classes.map((c) => <option key={c.id} value={c.id}>Lớp {c.name}</option>)}
+        </select>
+        <div className="qa-sort-tabs">
+          <button
+            type="button"
+            className={sortMode === 'newest' ? 'active' : ''}
+            onClick={() => setSortMode('newest')}
+          >
+            Mới nhất
+          </button>
+          <button
+            type="button"
+            className={sortMode === 'liked' ? 'active' : ''}
+            onClick={() => setSortMode('liked')}
+          >
+            Nhiều like nhất
+          </button>
+        </div>
+        <style jsx>{`
+          .qa-filters {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin: 14px 0;
+          }
+          .qa-filters select {
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1.5px solid var(--line);
+            font-size: 13px;
+            background: #fff;
+          }
+          .qa-sort-tabs {
+            display: flex;
+            gap: 6px;
+          }
+          .qa-sort-tabs button {
+            padding: 8px 14px;
+            border-radius: 999px;
+            border: 1.5px solid var(--line);
+            background: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            color: #527169;
+            cursor: pointer;
+          }
+          .qa-sort-tabs button.active {
+            background: #225da3;
+            border-color: #225da3;
+            color: #fff;
+          }
+        `}</style>
+      </div>
 
-      {feed && feed.map((p) => {
+      {displayedFeed === null && <div className="center-loading">Đang tải câu hỏi…</div>}
+      {displayedFeed && displayedFeed.length === 0 && <div className="empty-note">Chưa có câu hỏi nào — hãy là người đăng đầu tiên!</div>}
+
+      {displayedFeed && displayedFeed.map((p) => {
         const liked = p.likerIds.includes(profile.id);
+        const authorClassName = classNameById[p.author?.class_id];
         return (
           <div className="post" key={p.id}>
             {p.is_pinned && <div className="pin-badge">📌 Đã ghim</div>}
@@ -284,14 +723,12 @@ export default function AskPage() {
                 <div className="post-author">{p.author?.full_name || 'Học sinh'}</div>
                 <div className="post-meta">{new Date(p.created_at).toLocaleString('vi-VN')}</div>
               </div>
+              {authorClassName && <span className="post-subject">Lớp {authorClassName}</span>}
               {p.subjectName && <span className="post-subject">{p.subjectName}</span>}
             </div>
             <div className="post-body">{p.content}</div>
-            {p.photo_url && (
-              <div className="post-photo">
-                <img src={p.photo_url} alt="Ảnh bài tập" />
-              </div>
-            )}
+
+            <PhotoGrid photos={p.photos} onOpen={(i) => setLightbox({ photos: p.photos, index: i })} />
 
             <div className="post-actions">
               <button className={`like-btn ${liked ? 'liked' : ''}`} onClick={() => handleToggleLike(p)}>
@@ -300,6 +737,7 @@ export default function AskPage() {
                 </svg>
                 {p.likerIds.length > 0 ? p.likerIds.length : 'Thích'}
               </button>
+              <button className="useful-btn" onClick={() => setReportPrompt(p.id)}>🚩 Báo cáo</button>
               {isMod && (
                 <div className="mod-actions">
                   <button className="mod-btn" onClick={() => handleTogglePin(p.id)}>{p.is_pinned ? 'Bỏ ghim' : 'Ghim'}</button>
@@ -358,6 +796,22 @@ export default function AskPage() {
 
       {deletePrompt && (
         <ReasonPrompt onConfirm={confirmDelete} onCancel={() => setDeletePrompt(null)} />
+      )}
+
+      {reportPrompt && (
+        <ReportPrompt
+          onSubmit={(reason, details) => submitReport(reportPrompt, reason, details)}
+          onCancel={() => setReportPrompt(null)}
+        />
+      )}
+
+      {lightbox && (
+        <Lightbox
+          photos={lightbox.photos}
+          index={lightbox.index}
+          onClose={() => setLightbox(null)}
+          onNav={(i) => setLightbox((prev) => ({ ...prev, index: i }))}
+        />
       )}
 
       <div className={`toast ${toast ? 'show' : ''}`}>
