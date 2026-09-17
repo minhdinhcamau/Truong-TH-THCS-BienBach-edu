@@ -27,7 +27,8 @@ function Avatar({ name, totalXp, photoUrl, size = 38 }) {
   );
 }
 
-// Luoi anh kieu Facebook: 1/2/3/4+ anh, anh thu 4 co dau "+N" neu con nhieu hon.
+// Luoi anh kieu Facebook: 1/2/3/4+ anh, anh thu 4 co dau "+N" neu con nhieu
+// hon. Anh 1 tam gioi han chieu cao vua phai (khong choan het man hinh).
 function PhotoGrid({ photos, onOpen }) {
   if (!photos || photos.length === 0) return null;
   const count = photos.length;
@@ -78,8 +79,8 @@ function PhotoGrid({ photos, onOpen }) {
       <style jsx>{`
         .grid {
           display: grid;
-          gap: 4px;
-          border-radius: 14px;
+          gap: 3px;
+          border-radius: 12px;
           overflow: hidden;
           margin-top: 10px;
         }
@@ -92,18 +93,20 @@ function PhotoGrid({ photos, onOpen }) {
         }
         .grid.one {
           grid-template-columns: 1fr;
-          max-height: 420px;
+          max-height: 320px;
         }
         .grid.one img {
-          max-height: 420px;
+          max-height: 320px;
         }
         .grid.two {
           grid-template-columns: 1fr 1fr;
-          aspect-ratio: 16 / 9;
+          aspect-ratio: 16 / 8;
+          max-height: 220px;
         }
         .grid.three {
           grid-template-columns: 1.2fr 1fr;
-          aspect-ratio: 16 / 9;
+          aspect-ratio: 16 / 8;
+          max-height: 220px;
         }
         .grid.three .big {
           height: 100%;
@@ -111,7 +114,7 @@ function PhotoGrid({ photos, onOpen }) {
         .grid.three .stack {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 3px;
           height: 100%;
         }
         .grid.three .stack img {
@@ -121,6 +124,7 @@ function PhotoGrid({ photos, onOpen }) {
         .grid.four {
           grid-template-columns: 1fr 1fr;
           grid-template-rows: 1fr 1fr;
+          max-height: 260px;
           aspect-ratio: 1 / 1;
         }
         .cell {
@@ -142,7 +146,7 @@ function PhotoGrid({ photos, onOpen }) {
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 22px;
+          font-size: 20px;
           font-weight: 700;
         }
       `}</style>
@@ -542,6 +546,23 @@ export default function AskPage() {
     loadFeed();
   }
 
+  // Hoc sinh tu xoa bai cua chinh minh - dung RPC student_delete_qa_post
+  // (danh dau deleted_by_student = true), bai se bien mat khoi feed cong
+  // khai va xuat hien trong "Kho luu tru" ben trang admin, KHONG mat han.
+  async function handleDeleteOwnPost(postId) {
+    if (
+      !window.confirm(
+        'Xoá bài này? Bài sẽ được ẩn khỏi mọi người, không mất hẳn ngay (nhà trường vẫn lưu trong kho lưu trữ một thời gian).'
+      )
+    ) {
+      return;
+    }
+    const { error } = await supabase.rpc('student_delete_qa_post', { p_post_id: postId });
+    if (error) { alert(error.message); return; }
+    showToast('Đã xoá bài của em.');
+    loadFeed();
+  }
+
   async function submitReport(postId, reason, details) {
     const { error } = await supabase.rpc('report_qa_post', {
       p_post_id: postId,
@@ -671,41 +692,6 @@ export default function AskPage() {
             Nhiều like nhất
           </button>
         </div>
-        <style jsx>{`
-          .qa-filters {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            flex-wrap: wrap;
-            margin: 14px 0;
-          }
-          .qa-filters select {
-            padding: 8px 12px;
-            border-radius: 999px;
-            border: 1.5px solid var(--line);
-            font-size: 13px;
-            background: #fff;
-          }
-          .qa-sort-tabs {
-            display: flex;
-            gap: 6px;
-          }
-          .qa-sort-tabs button {
-            padding: 8px 14px;
-            border-radius: 999px;
-            border: 1.5px solid var(--line);
-            background: #fff;
-            font-size: 13px;
-            font-weight: 600;
-            color: #527169;
-            cursor: pointer;
-          }
-          .qa-sort-tabs button.active {
-            background: #225da3;
-            border-color: #225da3;
-            color: #fff;
-          }
-        `}</style>
       </div>
 
       {displayedFeed === null && <div className="center-loading">Đang tải câu hỏi…</div>}
@@ -714,8 +700,18 @@ export default function AskPage() {
       {displayedFeed && displayedFeed.map((p) => {
         const liked = p.likerIds.includes(profile.id);
         const authorClassName = classNameById[p.author?.class_id];
+        const isOwnPost = p.student_id === profile.id;
         return (
-          <div className="post" key={p.id}>
+          <div className="post" key={p.id} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              className="corner-report-btn"
+              onClick={() => setReportPrompt(p.id)}
+              title="Báo cáo bài viết"
+            >
+              🚩
+            </button>
+
             {p.is_pinned && <div className="pin-badge">📌 Đã ghim</div>}
             <div className="post-head">
               <Avatar name={p.author?.full_name} totalXp={p.authorXp} photoUrl={p.author?.photo_url} size={38} />
@@ -737,7 +733,11 @@ export default function AskPage() {
                 </svg>
                 {p.likerIds.length > 0 ? p.likerIds.length : 'Thích'}
               </button>
-              <button className="useful-btn" onClick={() => setReportPrompt(p.id)}>🚩 Báo cáo</button>
+              {isOwnPost && (
+                <button className="useful-btn" style={{ color: '#D6467A' }} onClick={() => handleDeleteOwnPost(p.id)}>
+                  Xoá bài của em
+                </button>
+              )}
               {isMod && (
                 <div className="mod-actions">
                   <button className="mod-btn" onClick={() => handleTogglePin(p.id)}>{p.is_pinned ? 'Bỏ ghim' : 'Ghim'}</button>
@@ -817,6 +817,63 @@ export default function AskPage() {
       <div className={`toast ${toast ? 'show' : ''}`}>
         <span>🎉 {toast}</span>
       </div>
+
+      <style jsx>{`
+        .qa-filters {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          flex-wrap: wrap;
+          margin: 14px 0;
+        }
+        .qa-filters select {
+          padding: 8px 12px;
+          border-radius: 999px;
+          border: 1.5px solid var(--line);
+          font-size: 13px;
+          background: #fff;
+        }
+        .qa-sort-tabs {
+          display: flex;
+          gap: 6px;
+        }
+        .qa-sort-tabs button {
+          padding: 8px 14px;
+          border-radius: 999px;
+          border: 1.5px solid var(--line);
+          background: #fff;
+          font-size: 13px;
+          font-weight: 600;
+          color: #527169;
+          cursor: pointer;
+        }
+        .qa-sort-tabs button.active {
+          background: #225da3;
+          border-color: #225da3;
+          color: #fff;
+        }
+        .corner-report-btn {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          border: none;
+          background: rgba(0, 0, 0, 0.05);
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          z-index: 2;
+          opacity: 0.7;
+        }
+        .corner-report-btn:hover {
+          background: rgba(214, 70, 122, 0.12);
+          opacity: 1;
+        }
+      `}</style>
     </>
   );
 }
