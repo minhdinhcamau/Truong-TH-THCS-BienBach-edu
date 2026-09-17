@@ -53,11 +53,15 @@ function PhotoGrid({ photos, onOpen }) {
   // Ti le CA KHUNG cho tung bo cuc -> moi o ben trong deu ra gan vuong,
   // nhin can doi ca tren may tinh lan dien thoai.
   const ratio = count === 1 ? '4 / 3' : count === 2 ? '2 / 1' : count === 3 ? '3 / 2' : '1 / 1';
-  const maxH = count === 1 ? 440 : count === 2 ? 340 : count === 3 ? 400 : 460;
+  const maxH = count === 1 ? 300 : count === 2 ? 340 : count === 3 ? 400 : 460;
+  // 1 anh: gioi han them CHIEU RONG (khong tran het the bai viet) de anh don
+  // le khong chiem ca man hinh. Nhieu anh thi van full chieu rong cho dep luoi.
+  const maxW = count === 1 ? 400 : '100%';
 
   const frameStyle = {
     marginTop: 10,
     width: '100%',
+    maxWidth: maxW,
     aspectRatio: ratio,
     maxHeight: maxH,
     borderRadius: RADIUS,
