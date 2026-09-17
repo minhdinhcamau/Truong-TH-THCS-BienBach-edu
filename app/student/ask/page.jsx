@@ -634,41 +634,6 @@ export default function AskPage() {
             ))}
           </div>
         )}
-        <style jsx>{`
-          .compose-photo-row {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 10px;
-          }
-          .compose-photo-thumb {
-            position: relative;
-            width: 64px;
-            height: 64px;
-            border-radius: 10px;
-            overflow: hidden;
-          }
-          .compose-photo-thumb img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-          }
-          .compose-photo-thumb button {
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            border: none;
-            background: rgba(0, 0, 0, 0.6);
-            color: #fff;
-            font-size: 11px;
-            cursor: pointer;
-            line-height: 1;
-          }
-        `}</style>
       </div>
 
       <div className="qa-filters">
@@ -819,6 +784,39 @@ export default function AskPage() {
       </div>
 
       <style jsx>{`
+        .compose-photo-row {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-top: 10px;
+        }
+        .compose-photo-thumb {
+          position: relative;
+          width: 64px;
+          height: 64px;
+          border-radius: 10px;
+          overflow: hidden;
+        }
+        .compose-photo-thumb img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        .compose-photo-thumb button {
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          border: none;
+          background: rgba(0, 0, 0, 0.6);
+          color: #fff;
+          font-size: 11px;
+          cursor: pointer;
+          line-height: 1;
+        }
         .qa-filters {
           display: flex;
           gap: 10px;
