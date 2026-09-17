@@ -23,12 +23,17 @@
   border-bottom: 1px solid #dce3e0;
   gap: 16px;
   flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 3px rgba(20, 30, 27, 0.04);
 }
 
 .header h1 {
   font-size: 20px;
   margin: 0;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.2px;
 }
 
 .headerActions {
@@ -99,17 +104,19 @@
 .listCard {
   background: #ffffff;
   border: 1px solid #dce3e0;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 22px;
   min-width: 0;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(20, 30, 27, 0.03);
 }
 
 .createCard h2,
 .listCard h2 {
   margin: 0 0 16px;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.1px;
 }
 
 .sectionDivider {
@@ -301,13 +308,20 @@
   padding: 10px 12px;
   border-bottom: 1px solid #dce3e0;
   color: #5b6b66;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .table td {
   padding: 10px 12px;
   border-bottom: 1px solid #eef1f0;
   vertical-align: top;
+}
+
+.table tbody tr:hover {
+  background: #f9fbfa;
 }
 
 .muted {
@@ -486,4 +500,41 @@
   font-size: 12.5px;
   color: #5b6b66;
   margin-left: 8px;
+}
+
+/* --- Dải thống kê nhanh (moi them, lap khoang trong tren dau bang tai khoan) --- */
+.statsBar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 640px) {
+  .statsBar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.statChip {
+  background: #f5f7f6;
+  border: 1px solid #eef1f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.statChipValue {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1b2421;
+  letter-spacing: -0.3px;
+}
+
+.statChipLabel {
+  font-size: 12px;
+  color: #5b6b66;
+  font-weight: 600;
 }

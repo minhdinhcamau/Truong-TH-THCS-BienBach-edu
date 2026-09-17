@@ -40,7 +40,6 @@ function ReasonPrompt({ onConfirm, onCancel }) {
 export default function AskPage() {
   const { profile, stats } = useStudent();
   const isMod = profile.role === 'teacher' || profile.role === 'admin';
-  const isAdmin = profile.role === 'admin';
 
   const [subjects, setSubjects] = useState([]);
   const [subjectId, setSubjectId] = useState('');
@@ -52,17 +51,10 @@ export default function AskPage() {
   const [replyDrafts, setReplyDrafts] = useState({});
   const [toast, setToast] = useState('');
   const [deletePrompt, setDeletePrompt] = useState(null); // { type: 'post'|'reply', id }
-  const [settings, setSettings] = useState(null);
-  const [showSettings, setShowSettings] = useState(false);
 
   function showToast(msg) {
     setToast(msg);
     setTimeout(() => setToast(''), 2600);
-  }
-
-  async function loadSettings() {
-    const { data } = await supabase.from('app_settings').select('value').eq('key', 'qa_auto_archive').maybeSingle();
-    setSettings(data?.value || { enabled: false, days: 30 });
   }
 
   async function loadFeed() {
@@ -140,7 +132,6 @@ export default function AskPage() {
       const { data: subjectsData } = await supabase.from('subjects').select('id, name').order('name');
       setSubjects(subjectsData || []);
       if (subjectsData?.length) setSubjectId(subjectsData[0].id);
-      loadSettings();
     }
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -243,23 +234,11 @@ export default function AskPage() {
     loadFeed();
   }
 
-  async function saveSettings(enabled, days) {
-    const { error } = await supabase.rpc('set_qa_auto_archive', { p_enabled: enabled, p_days: days });
-    if (error) { alert(error.message); return; }
-    setSettings({ enabled, days });
-    showToast('Đã lưu cài đặt.');
-  }
-
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-        <div>
-          <h2 className="section-title">Hỏi bài</h2>
-          <p className="section-sub">Chụp ảnh bài khó, đăng lên để thầy cô hoặc các bạn giúp em nhé. Trả lời giúp bạn được xác nhận hữu ích cũng sẽ cộng kinh nghiệm!</p>
-        </div>
-        {isAdmin && (
-          <button className="chip-btn" onClick={() => setShowSettings(true)} style={{ flex: 'none' }}>⚙️ Cài đặt lưu trữ</button>
-        )}
+      <div>
+        <h2 className="section-title">Hỏi bài</h2>
+        <p className="section-sub">Chụp ảnh bài khó, đăng lên để thầy cô hoặc các bạn giúp em nhé. Trả lời giúp bạn được xác nhận hữu ích cũng sẽ cộng kinh nghiệm!</p>
       </div>
 
       <div className="compose">
@@ -379,29 +358,6 @@ export default function AskPage() {
 
       {deletePrompt && (
         <ReasonPrompt onConfirm={confirmDelete} onCancel={() => setDeletePrompt(null)} />
-      )}
-
-      {showSettings && settings && (
-        <div className="modal-bg" onClick={(e) => e.target === e.currentTarget && setShowSettings(false)}>
-          <div className="modal" style={{ maxWidth: 380 }}>
-            <button className="modal-close" onClick={() => setShowSettings(false)}>✕</button>
-            <h3>Tự động lưu trữ bài cũ</h3>
-            <p className="modal-sub">Khi bật, các bài chưa được thầy cô ghim sẽ tự chuyển vào lưu trữ sau số ngày bên dưới để đỡ tốn dung lượng. Bài đã lưu trữ được xoá vĩnh viễn sau 30 ngày.</p>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontWeight: 600, fontSize: 14 }}>
-              <input type="checkbox" checked={settings.enabled} onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })} />
-              Bật tự động lưu trữ
-            </label>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Số ngày trước khi lưu trữ</label>
-            <input
-              type="number"
-              min={1}
-              value={settings.days}
-              onChange={(e) => setSettings({ ...settings, days: Number(e.target.value) })}
-              style={{ width: '100%', padding: 9, borderRadius: 10, border: '1.5px solid var(--line)', marginBottom: 16 }}
-            />
-            <button className="cta" style={{ width: '100%' }} onClick={() => saveSettings(settings.enabled, settings.days)}>Lưu cài đặt</button>
-          </div>
-        </div>
       )}
 
       <div className={`toast ${toast ? 'show' : ''}`}>

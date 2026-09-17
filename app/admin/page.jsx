@@ -316,6 +316,16 @@ export default function AdminPage() {
     return map
   }, [classes])
 
+  // Dai thong ke nhanh o dau bang tai khoan (chi tinh toan tu du lieu users
+  // da co san, khong goi them API nao).
+  const roleCounts = useMemo(() => {
+    const counts = { admin: 0, teacher: 0, student: 0 }
+    users.forEach((u) => {
+      if (counts[u.role] !== undefined) counts[u.role] += 1
+    })
+    return counts
+  }, [users])
+
   // ---------- Môn học ----------
   async function handleCreateSubject() {
     if (!newSubjectName.trim()) return
@@ -1248,6 +1258,27 @@ export default function AdminPage() {
             >
               {accountsOpen ? 'Ẩn danh sách' : 'Hiện danh sách'}
             </button>
+          </div>
+
+          {/* Dai thong ke nhanh - luon hien, giup lap khoang trong khi so
+              luong tai khoan con it, dong thoi cho cai nhin tong quan nhanh. */}
+          <div className={styles.statsBar}>
+            <div className={styles.statChip}>
+              <span className={styles.statChipValue}>{users.length}</span>
+              <span className={styles.statChipLabel}>Tổng tài khoản</span>
+            </div>
+            <div className={styles.statChip}>
+              <span className={styles.statChipValue}>{roleCounts.student}</span>
+              <span className={styles.statChipLabel}>Học sinh</span>
+            </div>
+            <div className={styles.statChip}>
+              <span className={styles.statChipValue}>{roleCounts.teacher}</span>
+              <span className={styles.statChipLabel}>Giáo viên</span>
+            </div>
+            <div className={styles.statChip}>
+              <span className={styles.statChipValue}>{roleCounts.admin}</span>
+              <span className={styles.statChipLabel}>Quản trị viên</span>
+            </div>
           </div>
 
           {accountsOpen && (
