@@ -74,7 +74,7 @@ function PhotoGrid({ photos, onOpen }) {
   }
 
   return (
-    <>
+    <div className="photo-grid-wrap">
       {content}
       <style jsx>{`
         .grid {
@@ -150,7 +150,7 @@ function PhotoGrid({ photos, onOpen }) {
           font-weight: 700;
         }
       `}</style>
-    </>
+    </div>
   );
 }
 
@@ -591,7 +591,7 @@ export default function AskPage() {
   }, [feed, classFilterId, sortMode]);
 
   return (
-    <>
+    <div className="ask-page">
       <div>
         <h2 className="section-title">Hỏi bài</h2>
         <p className="section-sub">Chụp ảnh bài khó, đăng lên để thầy cô hoặc các bạn giúp em nhé. Trả lời giúp bạn được xác nhận hữu ích cũng sẽ cộng kinh nghiệm!</p>
@@ -874,6 +874,6 @@ export default function AskPage() {
           opacity: 1;
         }
       `}</style>
-    </>
+    </div>
   );
 }
