@@ -32,29 +32,33 @@ function Avatar({ name, totalXp, photoUrl, size = 38 }) {
 // CSS ben ngoai / loi trinh bien dich ghi de kich thuoc.
 //
 // Chieu cao khung DUNG TI LE (aspectRatio) thay vi so px cung nhu truoc:
-// px cung khien khung bi keo det thanh dai rat mong tren man hinh rong,
-// cat mat gan het anh chan dung. Dung ti le + maxHeight lam tran (o man
-// hinh rat rong khung se cham tran o maxHeight, van cat bot 2 ben nhung
-// khong bi det qua muc). objectPosition dich len tren mot chut vi mat
-// nguoi trong anh chan dung thuong nam o nua tren khung hinh.
+// px cung khien khung bi keo det thanh dai rat mong tren man hinh rong.
+// Dung ti le + maxHeight lam tran de khung khong bi det qua muc tren man
+// hinh rat rong.
 const PHOTO_RATIO = { one: '4 / 3', twoOrThree: '16 / 10', four: '1 / 1' };
 const PHOTO_MAX_HEIGHT = { one: 460, twoOrThree: 380, four: 420 };
+// Nen nhat lap khoang trong khi anh khong vua khit khung (vi objectFit la
+// "contain" - luon hien DAY DU anh, khong cat mat noi dung), dong bo voi
+// mau nen the bai viet de khong bi choi mat trang/den lo lieu.
+const FRAME_BG = '#eef1f0';
 
 function PhotoGrid({ photos, onOpen }) {
   if (!photos || photos.length === 0) return null;
   const count = photos.length;
+  // "contain" (thay vi "cover"): anh luon duoc THU NHO cho vua khung, giu
+  // nguyen toan bo noi dung - khong bao gio cat mat dau/mat nguoi nhu truoc.
   const imgStyle = {
     width: '100%',
     height: '100%',
-    objectFit: 'cover',
-    objectPosition: '50% 32%',
+    objectFit: 'contain',
     display: 'block',
     cursor: 'zoom-in',
+    background: FRAME_BG,
   };
 
   if (count === 1) {
     return (
-      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', width: '100%', aspectRatio: PHOTO_RATIO.one, maxHeight: PHOTO_MAX_HEIGHT.one }}>
+      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', width: '100%', aspectRatio: PHOTO_RATIO.one, maxHeight: PHOTO_MAX_HEIGHT.one, background: FRAME_BG }}>
         <img src={photos[0]} alt="" style={imgStyle} onClick={() => onOpen(0)} />
       </div>
     );
@@ -62,7 +66,7 @@ function PhotoGrid({ photos, onOpen }) {
 
   if (count === 2) {
     return (
-      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.twoOrThree, maxHeight: PHOTO_MAX_HEIGHT.twoOrThree }}>
+      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.twoOrThree, maxHeight: PHOTO_MAX_HEIGHT.twoOrThree, background: FRAME_BG }}>
         {photos.map((url, i) => (
           <img key={i} src={url} alt="" style={imgStyle} onClick={() => onOpen(i)} />
         ))}
@@ -72,7 +76,7 @@ function PhotoGrid({ photos, onOpen }) {
 
   if (count === 3) {
     return (
-      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.twoOrThree, maxHeight: PHOTO_MAX_HEIGHT.twoOrThree }}>
+      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.twoOrThree, maxHeight: PHOTO_MAX_HEIGHT.twoOrThree, background: FRAME_BG }}>
         <img src={photos[0]} alt="" style={imgStyle} onClick={() => onOpen(0)} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, height: '100%', minWidth: 0 }}>
           <img src={photos[1]} alt="" style={{ ...imgStyle, flex: 1, minHeight: 0 }} onClick={() => onOpen(1)} />
@@ -85,9 +89,9 @@ function PhotoGrid({ photos, onOpen }) {
   const shown = photos.slice(0, 4);
   const extra = photos.length - 4;
   return (
-    <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.four, maxHeight: PHOTO_MAX_HEIGHT.four }}>
+    <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.four, maxHeight: PHOTO_MAX_HEIGHT.four, background: FRAME_BG }}>
       {shown.map((url, i) => (
-        <div key={i} style={{ position: 'relative', overflow: 'hidden', cursor: 'zoom-in' }} onClick={() => onOpen(i)}>
+        <div key={i} style={{ position: 'relative', overflow: 'hidden', cursor: 'zoom-in', background: FRAME_BG }} onClick={() => onOpen(i)}>
           <img src={url} alt="" style={imgStyle} />
           {i === 3 && extra > 0 && (
             <div
