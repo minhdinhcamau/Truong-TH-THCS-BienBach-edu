@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
 import { getSubjectLevel } from '../../lib/rankTiers';
 import { useStudent } from './layout';
+import NotificationBell from '@/components/NotificationBell';
 
 const ICONS = [
   <path key="a" d="M12 22V10M4 10l8-6 8 6M5 10v8a1 1 0 0 0 1 1h2v-6M17 10v9a1 1 0 0 1-1 1h-2v-6" />,
@@ -68,8 +69,20 @@ export default function StudentHome() {
 
   return (
     <>
-      <h2 className="section-title">Chào {firstName}, hôm nay học gì nào?</h2>
-      <p className="section-sub">Mỗi môn học là một chặng trên hành trình của em. Hoàn thành bài tập để lên cấp và giữ chuỗi ngày học.</p>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
+        <div>
+          <h2 className="section-title">Chào {firstName}, hôm nay học gì nào?</h2>
+          <p className="section-sub">Mỗi môn học là một chặng trên hành trình của em. Hoàn thành bài tập để lên cấp và giữ chuỗi ngày học.</p>
+        </div>
+        <NotificationBell studentId={profile.id} />
+      </div>
 
       <div className="subject-grid">
         {subjects.length === 0 && (

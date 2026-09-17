@@ -8,6 +8,7 @@ import { generateStrongPassword } from '../../lib/generatePassword'
 import * as XLSX from 'xlsx'
 import styles from './admin.module.css'
 import QaArchivePanel from './QaArchivePanel'
+import AwardXpForm from '@/components/AwardXpForm'
 
 const ROLE_LABEL = { admin: 'Quản trị viên', teacher: 'Giáo viên', student: 'Học sinh' }
 const GRADE_OPTIONS = [6, 7, 8, 9]
@@ -1479,6 +1480,9 @@ export default function AdminPage() {
                                 >
                                   Gia hạn 1 năm
                                 </button>
+                              )}
+                              {u.role === 'student' && (
+                                <AwardXpForm studentId={u.id} studentName={u.full_name} />
                               )}
                               <button
                                 className={styles.dangerBtn}
