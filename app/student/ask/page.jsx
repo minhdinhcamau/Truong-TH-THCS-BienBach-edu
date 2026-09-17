@@ -35,8 +35,11 @@ function Avatar({ name, totalXp, photoUrl, size = 38 }) {
 // px cung khien khung bi keo det thanh dai rat mong tren man hinh rong.
 // Dung ti le + maxHeight lam tran de khung khong bi det qua muc tren man
 // hinh rat rong.
-const PHOTO_RATIO = { one: '4 / 3', twoOrThree: '16 / 10', four: '1 / 1' };
-const PHOTO_MAX_HEIGHT = { one: 460, twoOrThree: 380, four: 420 };
+// Moi so luong anh co MOT KHUNG RIENG (1/2/3/4/5), khong dung chung 1 khung
+// roi ep vao. Tu 6 anh tro len moi dung lai khung 5 o va phu "+N" len o
+// cuoi cung.
+const PHOTO_RATIO = { one: '4 / 3', two: '16 / 10', three: '16 / 10', four: '1 / 1', five: '1 / 1' };
+const PHOTO_MAX_HEIGHT = { one: 460, two: 380, three: 380, four: 420, five: 420 };
 // Nen nhat lap khoang trong khi anh khong vua khit khung (vi objectFit la
 // "contain" - luon hien DAY DU anh, khong cat mat noi dung), dong bo voi
 // mau nen the bai viet de khong bi choi mat trang/den lo lieu.
@@ -46,7 +49,7 @@ function PhotoGrid({ photos, onOpen }) {
   if (!photos || photos.length === 0) return null;
   const count = photos.length;
   // "contain" (thay vi "cover"): anh luon duoc THU NHO cho vua khung, giu
-  // nguyen toan bo noi dung - khong bao gio cat mat dau/mat nguoi nhu truoc.
+  // nguyen toan bo noi dung - khong bao gio cat mat dau/mat nguoi.
   const imgStyle = {
     width: '100%',
     height: '100%',
@@ -56,6 +59,7 @@ function PhotoGrid({ photos, onOpen }) {
     background: FRAME_BG,
   };
 
+  // ---------- 1 anh: 1 khung full chieu rong ----------
   if (count === 1) {
     return (
       <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', width: '100%', aspectRatio: PHOTO_RATIO.one, maxHeight: PHOTO_MAX_HEIGHT.one, background: FRAME_BG }}>
@@ -64,9 +68,10 @@ function PhotoGrid({ photos, onOpen }) {
     );
   }
 
+  // ---------- 2 anh: 2 khung canh nhau, bang nhau ----------
   if (count === 2) {
     return (
-      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.twoOrThree, maxHeight: PHOTO_MAX_HEIGHT.twoOrThree, background: FRAME_BG }}>
+      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.two, maxHeight: PHOTO_MAX_HEIGHT.two, background: FRAME_BG }}>
         {photos.map((url, i) => (
           <img key={i} src={url} alt="" style={imgStyle} onClick={() => onOpen(i)} />
         ))}
@@ -74,9 +79,10 @@ function PhotoGrid({ photos, onOpen }) {
     );
   }
 
+  // ---------- 3 anh: 1 khung lon ben trai, 2 khung nho xep chong ben phai ----------
   if (count === 3) {
     return (
-      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.twoOrThree, maxHeight: PHOTO_MAX_HEIGHT.twoOrThree, background: FRAME_BG }}>
+      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.three, maxHeight: PHOTO_MAX_HEIGHT.three, background: FRAME_BG }}>
         <img src={photos[0]} alt="" style={imgStyle} onClick={() => onOpen(0)} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, height: '100%', minWidth: 0 }}>
           <img src={photos[1]} alt="" style={{ ...imgStyle, flex: 1, minHeight: 0 }} onClick={() => onOpen(1)} />
@@ -86,14 +92,35 @@ function PhotoGrid({ photos, onOpen }) {
     );
   }
 
-  const shown = photos.slice(0, 4);
-  const extra = photos.length - 4;
+  // ---------- 4 anh: luoi 2x2 deu nhau, hien du ca 4, khong phu gi ca ----------
+  if (count === 4) {
+    return (
+      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.four, maxHeight: PHOTO_MAX_HEIGHT.four, background: FRAME_BG }}>
+        {photos.map((url, i) => (
+          <img key={i} src={url} alt="" style={imgStyle} onClick={() => onOpen(i)} />
+        ))}
+      </div>
+    );
+  }
+
+  // ---------- 5 anh tro len: hang tren 2 khung, hang duoi 3 khung ----------
+  // Dung 5 anh dau tien - neu con du 5, hien du khong phu gi (dung khung
+  // rieng cho 5). Neu nhieu hon 5, o cuoi cung (thu 5) phu lop den + "+N".
+  const shown = photos.slice(0, 5);
+  const extra = photos.length - 5;
+  const fiveCellStyle = [
+    { gridColumn: '1 / 4', gridRow: '1' },
+    { gridColumn: '4 / 7', gridRow: '1' },
+    { gridColumn: '1 / 3', gridRow: '2' },
+    { gridColumn: '3 / 5', gridRow: '2' },
+    { gridColumn: '5 / 7', gridRow: '2' },
+  ];
   return (
-    <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.four, maxHeight: PHOTO_MAX_HEIGHT.four, background: FRAME_BG }}>
+    <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gridTemplateRows: '1fr 1fr', gap: 3, width: '100%', aspectRatio: PHOTO_RATIO.five, maxHeight: PHOTO_MAX_HEIGHT.five, background: FRAME_BG }}>
       {shown.map((url, i) => (
-        <div key={i} style={{ position: 'relative', overflow: 'hidden', cursor: 'zoom-in', background: FRAME_BG }} onClick={() => onOpen(i)}>
+        <div key={i} style={{ position: 'relative', overflow: 'hidden', cursor: 'zoom-in', background: FRAME_BG, ...fiveCellStyle[i] }} onClick={() => onOpen(i)}>
           <img src={url} alt="" style={imgStyle} />
-          {i === 3 && extra > 0 && (
+          {i === 4 && extra > 0 && (
             <div
               style={{
                 position: 'absolute',
