@@ -28,131 +28,71 @@ function Avatar({ name, totalXp, photoUrl, size = 38 }) {
 }
 
 // Luoi anh kieu Facebook: 1/2/3/4+ anh, anh thu 4 co dau "+N" neu con nhieu
-// hon. Anh 1 tam gioi han chieu cao vua phai (khong choan het man hinh).
+// hon. Dung INLINE STYLE (khong dung styled-jsx) de chac chan 100% khong bi
+// CSS ben ngoai / loi trinh bien dich ghi de kich thuoc.
+const PHOTO_HEIGHT = { one: 300, two: 190, three: 190, four: 250 };
+
 function PhotoGrid({ photos, onOpen }) {
   if (!photos || photos.length === 0) return null;
   const count = photos.length;
+  const imgStyle = { width: '100%', height: '100%', objectFit: 'cover', display: 'block', cursor: 'zoom-in' };
 
-  let content;
   if (count === 1) {
-    content = (
-      <div className="grid one">
-        <img src={photos[0]} alt="" onClick={() => onOpen(0)} />
+    return (
+      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', height: PHOTO_HEIGHT.one, width: '100%' }}>
+        <img src={photos[0]} alt="" style={imgStyle} onClick={() => onOpen(0)} />
       </div>
     );
-  } else if (count === 2) {
-    content = (
-      <div className="grid two">
+  }
+
+  if (count === 2) {
+    return (
+      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, height: PHOTO_HEIGHT.two, width: '100%' }}>
         {photos.map((url, i) => (
-          <img key={i} src={url} alt="" onClick={() => onOpen(i)} />
-        ))}
-      </div>
-    );
-  } else if (count === 3) {
-    content = (
-      <div className="grid three">
-        <img className="big" src={photos[0]} alt="" onClick={() => onOpen(0)} />
-        <div className="stack">
-          <img src={photos[1]} alt="" onClick={() => onOpen(1)} />
-          <img src={photos[2]} alt="" onClick={() => onOpen(2)} />
-        </div>
-      </div>
-    );
-  } else {
-    const shown = photos.slice(0, 4);
-    const extra = photos.length - 4;
-    content = (
-      <div className="grid four">
-        {shown.map((url, i) => (
-          <div key={i} className="cell" onClick={() => onOpen(i)}>
-            <img src={url} alt="" />
-            {i === 3 && extra > 0 && <div className="more">+{extra}</div>}
-          </div>
+          <img key={i} src={url} alt="" style={imgStyle} onClick={() => onOpen(i)} />
         ))}
       </div>
     );
   }
 
+  if (count === 3) {
+    return (
+      <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 3, height: PHOTO_HEIGHT.three, width: '100%' }}>
+        <img src={photos[0]} alt="" style={imgStyle} onClick={() => onOpen(0)} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, height: '100%', minWidth: 0 }}>
+          <img src={photos[1]} alt="" style={{ ...imgStyle, flex: 1, minHeight: 0 }} onClick={() => onOpen(1)} />
+          <img src={photos[2]} alt="" style={{ ...imgStyle, flex: 1, minHeight: 0 }} onClick={() => onOpen(2)} />
+        </div>
+      </div>
+    );
+  }
+
+  const shown = photos.slice(0, 4);
+  const extra = photos.length - 4;
   return (
-    <div className="photo-grid-wrap" style={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
-      {content}
-      <style jsx>{`
-        .grid {
-          display: grid;
-          gap: 3px;
-          border-radius: 12px;
-          overflow: hidden;
-          margin-top: 10px;
-          width: 100%;
-          max-width: 100%;
-        }
-        .grid img {
-          width: 100%;
-          height: 100%;
-          max-width: 100%;
-          object-fit: cover;
-          display: block;
-          cursor: zoom-in;
-        }
-        .grid.one {
-          grid-template-columns: 1fr;
-          aspect-ratio: 4 / 3;
-          max-height: 320px;
-        }
-        .grid.two {
-          grid-template-columns: 1fr 1fr;
-          aspect-ratio: 16 / 8;
-          max-height: 220px;
-        }
-        .grid.three {
-          grid-template-columns: 1.2fr 1fr;
-          aspect-ratio: 16 / 8;
-          max-height: 220px;
-        }
-        .grid.three .big {
-          height: 100%;
-        }
-        .grid.three .stack {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-          height: 100%;
-        }
-        .grid.three .stack img {
-          flex: 1;
-          min-height: 0;
-        }
-        .grid.four {
-          grid-template-columns: 1fr 1fr;
-          grid-template-rows: 1fr 1fr;
-          aspect-ratio: 1 / 1;
-          max-height: 260px;
-        }
-        .cell {
-          position: relative;
-          overflow: hidden;
-          cursor: zoom-in;
-          width: 100%;
-          height: 100%;
-        }
-        .cell img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-        }
-        .more {
-          position: absolute;
-          inset: 0;
-          background: rgba(10, 20, 18, 0.55);
-          color: #fff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 20px;
-          font-weight: 700;
-        }
-      `}</style>
+    <div style={{ marginTop: 10, borderRadius: 14, overflow: 'hidden', display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 3, height: PHOTO_HEIGHT.four, width: '100%' }}>
+      {shown.map((url, i) => (
+        <div key={i} style={{ position: 'relative', overflow: 'hidden', cursor: 'zoom-in' }} onClick={() => onOpen(i)}>
+          <img src={url} alt="" style={imgStyle} />
+          {i === 3 && extra > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgba(10, 20, 18, 0.55)',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 20,
+                fontWeight: 700,
+              }}
+            >
+              +{extra}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -678,17 +618,18 @@ export default function AskPage() {
                 <div className="post-author">{p.author?.full_name || 'Học sinh'}</div>
                 <div className="post-meta">{new Date(p.created_at).toLocaleString('vi-VN')}</div>
               </div>
-              {authorClassName && <span className="post-subject">Lớp {authorClassName}</span>}
-              {p.subjectName && <span className="post-subject">{p.subjectName}</span>}
-              <button
-                type="button"
-                className="corner-report-btn"
-                onClick={() => setReportPrompt(p.id)}
-                title="Báo cáo bài viết"
-                style={{ marginLeft: 'auto' }}
-              >
-                🚩
-              </button>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {authorClassName && <span className="post-subject" style={{ marginLeft: 0 }}>Lớp {authorClassName}</span>}
+                {p.subjectName && <span className="post-subject" style={{ marginLeft: 0 }}>{p.subjectName}</span>}
+                <button
+                  type="button"
+                  className="corner-report-btn"
+                  onClick={() => setReportPrompt(p.id)}
+                  title="Báo cáo bài viết"
+                >
+                  🚩
+                </button>
+              </div>
             </div>
             <div className="post-body">{p.content}</div>
 

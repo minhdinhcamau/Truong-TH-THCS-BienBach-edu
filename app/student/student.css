@@ -179,3 +179,69 @@
 
 footer.student-footer{text-align:center;color:var(--ink-faint);font-size:12.5px;margin-top:38px;}
 .center-loading{padding:60px 20px;text-align:center;color:var(--ink-soft);}
+/* ============================================================
+   NÂNG CẤP KHUNG AVATAR — dán đoạn này vào CUỐI file student.css
+   (không xoá gì ở trên, CSS phía dưới sẽ tự động ghi đè khung cũ)
+   ============================================================ */
+
+.avatar-frame {
+  position: relative;
+}
+
+.frame-tanbinh {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+
+.frame-thuythu {
+  box-shadow: 0 0 0 3px #c1793f;
+}
+
+.frame-hoatieu {
+  box-shadow: 0 0 0 3px #aebbcb, 0 0 10px 1px rgba(174, 187, 203, 0.7);
+}
+
+.frame-thuyentruong {
+  box-shadow: 0 0 0 3px #e8af2e, 0 0 12px 2px rgba(232, 175, 46, 0.6);
+}
+
+.frame-hopdoc,
+.frame-huyenthoai {
+  box-shadow: 0 0 0 3px transparent;
+}
+
+.frame-hopdoc::before,
+.frame-huyenthoai::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #6fe3ff, #9e8cff, #ff8cd9, #ffd36f, #6fe3ff);
+  animation: qa-spin 5s linear infinite;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+}
+
+.frame-huyenthoai {
+  filter: drop-shadow(0 0 6px rgba(158, 140, 255, 0.65));
+}
+
+@keyframes qa-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.rank-badge {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
