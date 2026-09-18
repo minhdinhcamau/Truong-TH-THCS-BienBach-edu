@@ -12,6 +12,7 @@ export default function NotificationBell({ studentId }) {
   const [ring, setRing] = useState(false);
   const shownRef = useRef(new Set()); // tránh hiện popup 2 lần cho cùng 1 thông báo
   const audioCtxRef = useRef(null);
+  const [debugErr, setDebugErr] = useState(null);
 
   const unread = list.filter((n) => !n.is_read).length;
 
@@ -70,7 +71,13 @@ export default function NotificationBell({ studentId }) {
       .eq("student_id", studentId)
       .order("created_at", { ascending: false })
       .limit(30);
-    if (error || !data) return;
+    if (error) {
+      setDebugErr(error.message || JSON.stringify(error));
+      console.error("Lỗi tải thông báo:", error);
+      return;
+    }
+    setDebugErr(null);
+    if (!data) return;
     setList(data);
     const latestUnread = data.find((n) => !n.is_read && !shownRef.current.has(n.id));
     if (latestUnread) {
@@ -129,7 +136,13 @@ export default function NotificationBell({ studentId }) {
       .eq("student_id", studentId)
       .order("created_at", { ascending: false })
       .limit(30);
-    if (error || !data) return;
+    if (error) {
+      setDebugErr(error.message || JSON.stringify(error));
+      console.error("Lỗi tải thông báo:", error);
+      return;
+    }
+    setDebugErr(null);
+    if (!data) return;
     setList(data);
     const unreadIds = data.filter((n) => !n.is_read).map((n) => n.id);
     if (unreadIds.length > 0) {
@@ -179,7 +192,19 @@ export default function NotificationBell({ studentId }) {
               </button>
             </div>
           </div>
-          {list.length === 0 && <div className="empty">Chưa có thông báo nào, cố lên nhé! 🌱</div>}
+          {debugErr && (
+            <div style={{ padding: "10px 16px", background: "#fff1ee", color: "#c0392b", fontSize: 12.5 }}>
+              Lỗi tải thông báo: {debugErr}
+            </div>
+          )}
+          {list.length === 0 && !debugErr && (
+            <div className="empty">
+              Chưa có thông báo nào, cố lên nhé! 🌱
+              <div style={{ marginTop: 6, fontSize: 10.5, color: "#c3d1e0", wordBreak: "break-all" }}>
+                ID: {studentId}
+              </div>
+            </div>
+          )}
           <div className="panel-list">
             {list.map((n) => (
               <div key={n.id} className={`item ${n.is_read ? "" : "unread"}`}>
@@ -381,6 +406,14 @@ export default function NotificationBell({ studentId }) {
         @keyframes shrink {
           from { transform: scaleX(1); }
           to { transform: scaleX(0); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .toast {
+            animation: popIn 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+                       fadeOut 0.4s cubic-bezier(0.4, 0, 1, 1) ${TOAST_DURATION - 400}ms forwards !important;
+          }
+          .toast-progress { animation: shrink ${TOAST_DURATION}ms linear forwards !important; }
         }
 
         @media (max-width: 480px) {
