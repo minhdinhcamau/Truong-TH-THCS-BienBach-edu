@@ -91,8 +91,11 @@ export default function NotificationBell({ studentId }) {
   }, [displayToast]);
 
   // Ham dung chung: tai thong bao tu server, cap nhat danh sach, va bat popup
-  // cho thong bao MOI (chua tung hien) neu co. Day la nguon du lieu "chinh",
-  // khong phu thuoc vao Realtime (mot so mang truong hoc chan ket noi kieu nay).
+  // cho thong bao MOI (chua tung hien popup) neu co. Dung "do moi" (2 phut gan
+  // nhat) + "chua tung hien" thay vi dua vao is_read - vi neu hoc sinh lo bam
+  // chuong xem truoc khi popup kip bat len, thong bao se bi danh dau da doc
+  // nhung VAN chua tung thuc su hien popup, nen van phai bat popup binh thuong.
+  const RECENT_MS = 2 * 60 * 1000;
   const fetchAndMaybeToast = useCallback(async () => {
     if (!studentId) return;
     const { data, error } = await supabase
@@ -109,10 +112,12 @@ export default function NotificationBell({ studentId }) {
     setDebugErr(null);
     if (!data) return;
     setList(data);
-    const latestUnread = data.find((n) => !n.is_read && !shownRef.current.has(n.id));
-    if (latestUnread) {
-      showToast(latestUnread);
-    }
+    const now = Date.now();
+    const fresh = data.filter(
+      (n) => !shownRef.current.has(n.id) && now - new Date(n.created_at).getTime() < RECENT_MS
+    );
+    // Cu the nhat truoc (data da sap xep created_at desc, dao lai de hien theo dung thu tu thoi gian)
+    fresh.reverse().forEach((n) => showToast(n));
   }, [studentId, showToast]);
 
   // Tai lan dau khi vao trang
@@ -122,12 +127,12 @@ export default function NotificationBell({ studentId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId]);
 
-  // Du phong: cu 20 giay tu kiem tra lai 1 lan bang API thuong (khong dung
+  // Du phong: cu 8 giay tu kiem tra lai 1 lan bang API thuong (khong dung
   // Realtime) - dam bao khong bao gio bo lo thong bao moi du mang co chan
   // websocket hay khong.
   useEffect(() => {
     if (!studentId) return;
-    const id = setInterval(fetchAndMaybeToast, 20000);
+    const id = setInterval(fetchAndMaybeToast, 8000);
     return () => clearInterval(id);
   }, [studentId, fetchAndMaybeToast]);
 
