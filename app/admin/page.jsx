@@ -9,7 +9,7 @@ import * as XLSX from 'xlsx'
 import styles from './admin.module.css'
 import QaArchivePanel from './QaArchivePanel'
 import AwardXpForm from '@/components/AwardXpForm'
-import SendNotificationForm from '@/components/SendNotificationForm'
+import SendNotificationPanel from '@/components/SendNotificationPanel'
 
 const ROLE_LABEL = { admin: 'Quản trị viên', teacher: 'Giáo viên', student: 'Học sinh' }
 const GRADE_OPTIONS = [6, 7, 8, 9]
@@ -1254,14 +1254,37 @@ export default function AdminPage() {
         <section className={styles.listCard}>
           <div className={styles.sectionHeader}>
             <h2>Danh sách tài khoản ({filteredUsers.length})</h2>
-            <button
-              type="button"
-              className={styles.linkBtn}
-              onClick={() => setAccountsOpen((prev) => !prev)}
-            >
-              {accountsOpen ? 'Ẩn danh sách' : 'Hiện danh sách'}
-            </button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                className={styles.linkBtn}
+                onClick={() => setSendNotifOpen((v) => !v)}
+              >
+                {sendNotifOpen ? 'Đóng gửi thông báo' : '📢 Gửi thông báo'}
+              </button>
+              <button
+                type="button"
+                className={styles.linkBtn}
+                onClick={() => setAccountsOpen((prev) => !prev)}
+              >
+                {accountsOpen ? 'Ẩn danh sách' : 'Hiện danh sách'}
+              </button>
+            </div>
           </div>
+
+          {sendNotifOpen && (
+            <SendNotificationPanel
+              students={users.filter((u) => u.role === 'student').map((u) => ({
+                id: u.id,
+                full_name: u.full_name,
+                student_code: u.student_code,
+                className: classNameById[u.class_id] || '',
+              }))}
+              classes={classes}
+              gradeOptions={GRADE_OPTIONS}
+              onClose={() => setSendNotifOpen(false)}
+            />
+          )}
 
           {/* Dai thong ke nhanh - luon hien, giup lap khoang trong khi so
               luong tai khoan con it, dong thoi cho cai nhin tong quan nhanh. */}
@@ -1363,12 +1386,6 @@ export default function AdminPage() {
               <span style={{ fontSize: 13, color: '#37423e' }}>
                 Đã chọn {selectedUserIds.size} tài khoản học sinh
               </span>
-              <button
-                className={styles.linkBtn}
-                onClick={() => setSendNotifOpen((v) => !v)}
-              >
-                📢 Gửi thông báo
-              </button>
               <button className={styles.dangerBtn} onClick={handleBulkDelete} disabled={bulkDeleting}>
                 {bulkDeleting ? 'Đang xoá…' : 'Xoá các mục đã chọn'}
               </button>
@@ -1379,15 +1396,6 @@ export default function AdminPage() {
               >
                 Bỏ chọn
               </button>
-            </div>
-          )}
-          {sendNotifOpen && selectedUserIds.size > 0 && (
-            <div style={{ margin: '0 0 16px' }}>
-              <SendNotificationForm
-                studentIds={Array.from(selectedUserIds)}
-                onDone={() => setSendNotifOpen(false)}
-                onClose={() => setSendNotifOpen(false)}
-              />
             </div>
           )}
           {bulkError && <p className={styles.error}>{bulkError}</p>}
