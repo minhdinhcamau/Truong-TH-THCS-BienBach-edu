@@ -12,6 +12,9 @@ export default function UnitLessonsPage() {
   const [passScore, setPassScore] = useState(80);
   const [maxHearts, setMaxHearts] = useState(5);
 
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ title: '', pass_score: 80, max_hearts: 5 });
+
   useEffect(() => {
     load();
   }, [unitId]);
@@ -41,6 +44,22 @@ export default function UnitLessonsPage() {
     load();
   }
 
+  function startEdit(l) {
+    setEditingId(l.id);
+    setEditForm({ title: l.title, pass_score: l.pass_score, max_hearts: l.max_hearts });
+  }
+
+  async function saveEdit(id) {
+    if (!editForm.title.trim()) return;
+    await supabase.from('eng_lessons').update({
+      title: editForm.title,
+      pass_score: Number(editForm.pass_score) || 80,
+      max_hearts: Number(editForm.max_hearts) || 5,
+    }).eq('id', id);
+    setEditingId(null);
+    load();
+  }
+
   async function moveLesson(lesson, direction) {
     const idx = lessons.findIndex((l) => l.id === lesson.id);
     const swapWith = lessons[idx + direction];
@@ -67,13 +86,43 @@ export default function UnitLessonsPage() {
       <div style={{ display: 'grid', gap: 8 }}>
         {lessons.map((l, idx) => (
           <div key={l.id} style={row}>
-            <Link href={`/teacher/english/lessons/${l.id}`} style={{ flex: 1 }}>
-              {idx + 1}. {l.title}
-            </Link>
-            <span style={{ fontSize: 12, color: '#666' }}>Qua bài ≥{l.pass_score}% · {l.max_hearts} tim</span>
-            <button onClick={() => moveLesson(l, -1)} disabled={idx === 0} style={iconBtn}>↑</button>
-            <button onClick={() => moveLesson(l, 1)} disabled={idx === lessons.length - 1} style={iconBtn}>↓</button>
-            <button onClick={() => deleteLesson(l.id)} style={{ ...iconBtn, color: 'crimson' }}>Xóa</button>
+            {editingId === l.id ? (
+              <div style={{ flex: 1, display: 'grid', gap: 8 }}>
+                <input
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  style={input}
+                  autoFocus
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <label style={{ flex: 1, fontSize: 12 }}>
+                    Điểm qua bài (%)
+                    <input type="number" value={editForm.pass_score}
+                      onChange={(e) => setEditForm({ ...editForm, pass_score: e.target.value })} style={input} />
+                  </label>
+                  <label style={{ flex: 1, fontSize: 12 }}>
+                    Số tim
+                    <input type="number" value={editForm.max_hearts}
+                      onChange={(e) => setEditForm({ ...editForm, max_hearts: e.target.value })} style={input} />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => saveEdit(l.id)} style={btnPrimary}>Lưu</button>
+                  <button onClick={() => setEditingId(null)} style={iconBtn}>Hủy</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Link href={`/teacher/english/lessons/${l.id}`} style={{ flex: 1 }}>
+                  {idx + 1}. {l.title}
+                </Link>
+                <span style={{ fontSize: 12, color: '#666' }}>Qua bài ≥{l.pass_score}% · {l.max_hearts} tim</span>
+                <button onClick={() => startEdit(l)} style={iconBtn}>✎</button>
+                <button onClick={() => moveLesson(l, -1)} disabled={idx === 0} style={iconBtn}>↑</button>
+                <button onClick={() => moveLesson(l, 1)} disabled={idx === lessons.length - 1} style={iconBtn}>↓</button>
+                <button onClick={() => deleteLesson(l.id)} style={{ ...iconBtn, color: 'crimson' }}>Xóa</button>
+              </>
+            )}
           </div>
         ))}
       </div>

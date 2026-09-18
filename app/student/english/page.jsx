@@ -40,7 +40,7 @@ export default function StudentEnglishHome() {
       .from('eng_courses')
       .select('id, title, description')
       .eq('class_id', p.class_id)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(1);
     const c = courses?.[0] || null;
     setCourse(c);

@@ -12,6 +12,9 @@ export default function LessonVocabPage() {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(emptyForm);
 
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(emptyForm);
+
   useEffect(() => {
     load();
   }, [lessonId]);
@@ -39,6 +42,23 @@ export default function LessonVocabPage() {
     load();
   }
 
+  function startEdit(it) {
+    setEditingId(it.id);
+    setEditForm({
+      word: it.word || '',
+      phonetic: it.phonetic || '',
+      meaning: it.meaning || '',
+      example_sentence: it.example_sentence || '',
+    });
+  }
+
+  async function saveEdit(id) {
+    if (!editForm.word.trim() || !editForm.meaning.trim()) return;
+    await supabase.from('eng_vocab_items').update(editForm).eq('id', id);
+    setEditingId(null);
+    load();
+  }
+
   async function deleteItem(id) {
     await supabase.from('eng_vocab_items').delete().eq('id', id);
     load();
@@ -47,7 +67,7 @@ export default function LessonVocabPage() {
   if (!lesson) return <p style={{ padding: 24 }}>Đang tải...</p>;
 
   return (
-    <div style={{ padding: 24, maxWidth: 700, margin: '0 auto' }}>
+    <div style={{ padding: 24, maxWidth: 760, margin: '0 auto' }}>
       <Link href={`/teacher/english/units/${lesson.eng_units.id}`}>← {lesson.eng_units.title}</Link>
       <h1>{lesson.title}</h1>
       <p style={{ color: '#666' }}>{items.length} từ vựng — cần tối thiểu 3 từ để tạo trắc nghiệm có đáp án nhiễu</p>
@@ -60,13 +80,29 @@ export default function LessonVocabPage() {
         </thead>
         <tbody>
           {items.map((it) => (
-            <tr key={it.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-              <td>{it.word}</td>
-              <td>{it.phonetic}</td>
-              <td>{it.meaning}</td>
-              <td>{it.example_sentence}</td>
-              <td><button onClick={() => deleteItem(it.id)} style={{ color: 'crimson', border: 0, background: 'none', cursor: 'pointer' }}>Xóa</button></td>
-            </tr>
+            editingId === it.id ? (
+              <tr key={it.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                <td><input value={editForm.word} onChange={(e) => setEditForm({ ...editForm, word: e.target.value })} style={cellInput} /></td>
+                <td><input value={editForm.phonetic} onChange={(e) => setEditForm({ ...editForm, phonetic: e.target.value })} style={cellInput} /></td>
+                <td><input value={editForm.meaning} onChange={(e) => setEditForm({ ...editForm, meaning: e.target.value })} style={cellInput} /></td>
+                <td><input value={editForm.example_sentence} onChange={(e) => setEditForm({ ...editForm, example_sentence: e.target.value })} style={cellInput} /></td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button onClick={() => saveEdit(it.id)} style={{ ...linkBtn, color: '#2563eb' }}>Lưu</button>{' '}
+                  <button onClick={() => setEditingId(null)} style={linkBtn}>Hủy</button>
+                </td>
+              </tr>
+            ) : (
+              <tr key={it.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                <td>{it.word}</td>
+                <td>{it.phonetic}</td>
+                <td>{it.meaning}</td>
+                <td>{it.example_sentence}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button onClick={() => startEdit(it)} style={linkBtn}>Sửa</button>{' '}
+                  <button onClick={() => deleteItem(it.id)} style={{ ...linkBtn, color: 'crimson' }}>Xóa</button>
+                </td>
+              </tr>
+            )
           ))}
         </tbody>
       </table>
@@ -88,4 +124,6 @@ export default function LessonVocabPage() {
 }
 
 const input = { display: 'block', width: '100%', padding: 8, borderRadius: 6, border: '1px solid #d1d5db' };
+const cellInput = { width: '100%', padding: 6, borderRadius: 6, border: '1px solid #d1d5db' };
 const btnPrimary = { background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, padding: '8px 16px', cursor: 'pointer' };
+const linkBtn = { border: 0, background: 'none', cursor: 'pointer', padding: 0, fontSize: 13 };
