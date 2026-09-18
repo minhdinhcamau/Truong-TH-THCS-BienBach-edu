@@ -21,11 +21,19 @@ export default function StudentEnglishHome() {
 
     const { data: p } = await supabase
       .from('profiles')
-      .select('id, full_name, class_id, xp, streak_days')
+      .select('id, full_name, class_id')
       .eq('id', user.id)
       .single();
-    setProfile(p);
-    setRank(await getRankForXp(p?.xp || 0));
+
+    const { data: stats } = await supabase
+      .from('student_stats')
+      .select('total_xp, current_streak')
+      .eq('student_id', user.id)
+      .maybeSingle();
+
+    const totalXp = stats?.total_xp || 0;
+    setProfile({ ...p, xp: totalXp, streak_days: stats?.current_streak || 0 });
+    setRank(await getRankForXp(totalXp));
 
     // Lấy khóa học đầu tiên gán cho lớp của học sinh (tuỳ chỉnh nếu 1 lớp có nhiều khóa)
     const { data: courses } = await supabase
