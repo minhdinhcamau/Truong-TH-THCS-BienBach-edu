@@ -256,31 +256,31 @@ export default function NotificationBell({ studentId }) {
       {toast && (
         <div
           key={toast.id}
-          className={`toast ${toastClosing ? "toast-closing" : ""} ${
+          className={`nbpop ${toastClosing ? "nbpop-closing" : ""} ${
             toast.xp_amount === null || toast.xp_amount === undefined
-              ? "toast-info"
+              ? "nbpop-info"
               : isUp
-              ? "toast-up"
-              : "toast-down"
+              ? "nbpop-up"
+              : "nbpop-down"
           }`}
         >
-          <div className="toast-row">
-            <div className="toast-emoji">
+          <div className="nbpop-row">
+            <div className="nbpop-emoji">
               {toast.xp_amount === null || toast.xp_amount === undefined ? "📢" : isUp ? "🎉" : "📌"}
             </div>
-            <div className="toast-body">
-              <div className="toast-title">{toast.title}</div>
-              {toast.content && <div className="toast-content">{toast.content}</div>}
+            <div className="nbpop-body">
+              <div className="nbpop-title">{toast.title}</div>
+              {toast.content && <div className="nbpop-content">{toast.content}</div>}
               {toast.xp_amount !== null && toast.xp_amount !== undefined && (
-                <div className={`toast-xp ${isUp ? "" : "toast-xp-down"}`}>
+                <div className={`nbpop-xp ${isUp ? "" : "nbpop-xp-down"}`}>
                   {isUp ? "+" : ""}
                   {toast.xp_amount} KN
                 </div>
               )}
             </div>
           </div>
-          <button className="toast-ack" onClick={dismissToast}>
-            <span className="toast-ack-check">✓</span> Đã rõ
+          <button className="nbpop-ack" onClick={dismissToast}>
+            <span className="nbpop-ack-check">✓</span> Đã rõ
           </button>
         </div>
       )}
@@ -360,43 +360,44 @@ export default function NotificationBell({ studentId }) {
         }
         .item-delete:hover { color: var(--coral, #ff6b4d); background: rgba(255,107,77,0.1); }
 
-        .toast {
+        .nbpop {
           position: fixed; top: 20px; right: 20px; z-index: 200;
           display: flex; flex-direction: column; gap: 12px;
           background: var(--card, #fff); border-radius: 18px; padding: 16px 16px 14px;
           box-shadow: 0 20px 44px -10px rgba(15,42,68,0.4);
           width: 360px; max-width: calc(100vw - 24px); max-height: 220px;
           box-sizing: border-box; overflow: hidden;
+          opacity: 1;
           animation: popIn 0.45s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        .toast.toast-closing {
+        .nbpop.nbpop-closing {
           animation: popOut 0.32s cubic-bezier(0.4, 0, 1, 1) forwards;
         }
-        .toast-row { display: flex; gap: 12px; align-items: flex-start; }
-        .toast-up {
+        .nbpop-row { display: flex; gap: 12px; align-items: flex-start; }
+        .nbpop-up {
           border: 1.5px solid var(--gold, #e8af2e);
           background: linear-gradient(180deg, #fff 0%, #fffaf0 100%);
         }
-        .toast-down { border: 1.5px solid var(--coral, #ff6b4d); }
-        .toast-info { border: 1.5px solid var(--ocean, #1b6fb8); }
-        .toast-emoji { font-size: 30px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.12)); }
-        .toast-body { flex: 1; min-width: 0; }
-        .toast-title {
+        .nbpop-down { border: 1.5px solid var(--coral, #ff6b4d); }
+        .nbpop-info { border: 1.5px solid var(--ocean, #1b6fb8); }
+        .nbpop-emoji { font-size: 30px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.12)); }
+        .nbpop-body { flex: 1; min-width: 0; }
+        .nbpop-title {
           font-weight: 700; font-size: 14.5px; font-family: 'Baloo 2', sans-serif;
           color: var(--ink, #0f2a44);
         }
-        .toast-content { font-size: 13px; color: var(--ink-soft, #4e6a88); margin-top: 3px; line-height: 1.4; }
-        .toast-xp {
+        .nbpop-content { font-size: 13px; color: var(--ink-soft, #4e6a88); margin-top: 3px; line-height: 1.4; }
+        .nbpop-xp {
           display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px;
           font-weight: 800; font-size: 13px; color: #fff;
           background: linear-gradient(135deg, var(--gold-dark,#b9820e), var(--gold,#e8af2e));
           box-shadow: 0 3px 8px rgba(232,175,46,0.4);
           animation: popNum 0.4s ease 0.15s both;
         }
-        .toast-xp-down { background: linear-gradient(135deg,#c94a34, var(--coral,#ff6b4d)); box-shadow: 0 3px 8px rgba(255,107,77,0.4); }
+        .nbpop-xp-down { background: linear-gradient(135deg,#c94a34, var(--coral,#ff6b4d)); box-shadow: 0 3px 8px rgba(255,107,77,0.4); }
         @keyframes popNum { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-        .toast-ack {
+        .nbpop-ack {
           align-self: flex-end; display: flex; align-items: center; gap: 6px;
           border: none; cursor: pointer; padding: 8px 18px; border-radius: 999px;
           font-weight: 700; font-size: 13.5px; color: #fff;
@@ -404,12 +405,12 @@ export default function NotificationBell({ studentId }) {
           box-shadow: 0 6px 16px -4px rgba(27,111,184,0.55);
           transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
-        .toast-ack:hover { transform: translateY(-1px); box-shadow: 0 8px 20px -4px rgba(27,111,184,0.6); }
-        .toast-ack:active {
+        .nbpop-ack:hover { transform: translateY(-1px); box-shadow: 0 8px 20px -4px rgba(27,111,184,0.6); }
+        .nbpop-ack:active {
           transform: scale(0.94);
           animation: ackPulse 0.35s ease;
         }
-        .toast-ack-check {
+        .nbpop-ack-check {
           display: inline-flex; align-items: center; justify-content: center;
           width: 16px; height: 16px; border-radius: 50%; background: rgba(255,255,255,0.25);
           font-size: 11px; line-height: 1;
@@ -430,7 +431,7 @@ export default function NotificationBell({ studentId }) {
 
         @media (max-width: 480px) {
           .panel { width: 88vw; right: 6px; top: 70px; }
-          .toast { left: 12px; right: 12px; top: 12px; width: auto; max-width: none; }
+          .nbpop { left: 12px; right: 12px; top: 12px; width: auto; max-width: none; }
         }
       `}</style>
     </div>
