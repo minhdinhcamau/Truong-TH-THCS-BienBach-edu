@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
 import { getRankTier, getInitials } from '../../lib/rankTiers';
+import NotificationBell from '../../components/NotificationBell';
 import './student.css';
 
 export const StudentContext = createContext(null);
@@ -149,6 +150,7 @@ export default function StudentLayout({ children }) {
                   ← Quay về trang quản trị
                 </Link>
               )}
+              {!isAdminViewing && <NotificationBell studentId={profile.id} />}
               <button className="logout-btn" onClick={handleLogout}>Đăng xuất</button>
             </div>
           </div>
