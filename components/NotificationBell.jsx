@@ -59,33 +59,43 @@ export default function NotificationBell({ studentId }) {
     [playDing]
   );
 
-  // Tải thông báo cũ khi vào trang. Nếu có thông báo CHƯA ĐỌC (kể cả được
-  // tạo lúc em chưa mở web), hiện popup luôn cho thông báo mới nhất -
-  // đây là chỗ trước đây bị thiếu nên popup không bao giờ hiện khi tải lại trang.
-  useEffect(() => {
+  // Ham dung chung: tai thong bao tu server, cap nhat danh sach, va bat popup
+  // cho thong bao MOI (chua tung hien) neu co. Day la nguon du lieu "chinh",
+  // khong phu thuoc vao Realtime (mot so mang truong hoc chan ket noi kieu nay).
+  const fetchAndMaybeToast = useCallback(async () => {
     if (!studentId) return;
-    let cancelled = false;
-    supabase
+    const { data, error } = await supabase
       .from("notifications")
       .select("*")
       .eq("student_id", studentId)
       .order("created_at", { ascending: false })
-      .limit(20)
-      .then(({ data, error }) => {
-        if (cancelled || error || !data) return;
-        setList(data);
-        const latestUnread = data.find((n) => !n.is_read);
-        if (latestUnread) {
-          // cho UI kịp render bell trước khi bay popup vào, mượt hơn
-          setTimeout(() => showToast(latestUnread), 400);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
+      .limit(30);
+    if (error || !data) return;
+    setList(data);
+    const latestUnread = data.find((n) => !n.is_read && !shownRef.current.has(n.id));
+    if (latestUnread) {
+      showToast(latestUnread);
+    }
   }, [studentId, showToast]);
 
+  // Tai lan dau khi vao trang
+  useEffect(() => {
+    if (!studentId) return;
+    setTimeout(() => fetchAndMaybeToast(), 400);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentId]);
+
+  // Du phong: cu 20 giay tu kiem tra lai 1 lan bang API thuong (khong dung
+  // Realtime) - dam bao khong bao gio bo lo thong bao moi du mang co chan
+  // websocket hay khong.
+  useEffect(() => {
+    if (!studentId) return;
+    const id = setInterval(fetchAndMaybeToast, 20000);
+    return () => clearInterval(id);
+  }, [studentId, fetchAndMaybeToast]);
+
   // Lắng nghe realtime: có thông báo mới trong lúc đang mở web -> hiện popup ngay
+  // (chi la lop "nhanh hon" - neu mang chan realtime thi da co polling ben tren lo)
   useEffect(() => {
     if (!studentId) return;
     const channel = supabase
@@ -99,7 +109,7 @@ export default function NotificationBell({ studentId }) {
           filter: `student_id=eq.${studentId}`,
         },
         (payload) => {
-          setList((cur) => [payload.new, ...cur]);
+          setList((cur) => (cur.some((n) => n.id === payload.new.id) ? cur : [payload.new, ...cur]));
           showToast(payload.new);
         }
       )
@@ -108,14 +118,23 @@ export default function NotificationBell({ studentId }) {
   }, [studentId, showToast]);
 
   const openPanel = async () => {
-    setOpen((v) => !v);
-    if (!open && unread > 0) {
-      await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("student_id", studentId)
-        .eq("is_read", false);
-      setList((cur) => cur.map((n) => ({ ...n, is_read: true })));
+    const willOpen = !open;
+    setOpen(willOpen);
+    if (!willOpen) return;
+    // Luon tai lai moi khi mo chuong, khong chi dua vao du lieu da co san
+    // trong bo nho trinh duyet - tranh tinh trang "mo ra khong thay gi".
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("student_id", studentId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error || !data) return;
+    setList(data);
+    const unreadIds = data.filter((n) => !n.is_read).map((n) => n.id);
+    if (unreadIds.length > 0) {
+      await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
+      setList((cur) => cur.map((n) => (unreadIds.includes(n.id) ? { ...n, is_read: true } : n)));
     }
   };
 
