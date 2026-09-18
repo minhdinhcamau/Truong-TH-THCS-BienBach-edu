@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
-const emptyForm = { word: '', phonetic: '', meaning: '', example_sentence: '' };
+const emptyForm = { word: '', meaning: '', example_sentence: '' };
 
 export default function LessonVocabPage() {
   const { lessonId } = useParams();
@@ -15,22 +15,12 @@ export default function LessonVocabPage() {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(emptyForm);
 
-  useEffect(() => {
-    load();
-  }, [lessonId]);
+  useEffect(() => { load(); }, [lessonId]);
 
   async function load() {
-    const { data: l } = await supabase
-      .from('eng_lessons')
-      .select('*, eng_units(id, title, course_id)')
-      .eq('id', lessonId)
-      .single();
+    const { data: l } = await supabase.from('eng_lessons').select('*, eng_units(id, title, course_id)').eq('id', lessonId).single();
     setLesson(l);
-    const { data: v } = await supabase
-      .from('eng_vocab_items')
-      .select('*')
-      .eq('lesson_id', lessonId)
-      .order('order_index', { ascending: true });
+    const { data: v } = await supabase.from('eng_vocab_items').select('*').eq('lesson_id', lessonId).order('order_index', { ascending: true });
     setItems(v || []);
   }
 
@@ -44,14 +34,8 @@ export default function LessonVocabPage() {
 
   function startEdit(it) {
     setEditingId(it.id);
-    setEditForm({
-      word: it.word || '',
-      phonetic: it.phonetic || '',
-      meaning: it.meaning || '',
-      example_sentence: it.example_sentence || '',
-    });
+    setEditForm({ word: it.word || '', meaning: it.meaning || '', example_sentence: it.example_sentence || '' });
   }
-
   async function saveEdit(id) {
     if (!editForm.word.trim() || !editForm.meaning.trim()) return;
     await supabase.from('eng_vocab_items').update(editForm).eq('id', id);
@@ -64,66 +48,89 @@ export default function LessonVocabPage() {
     load();
   }
 
-  if (!lesson) return <p style={{ padding: 24 }}>Đang tải...</p>;
+  if (!lesson) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Đang tải...</div>;
+
+  const notEnough = items.length < 3;
 
   return (
-    <div style={{ padding: 24, maxWidth: 760, margin: '0 auto' }}>
-      <Link href={`/teacher/english/units/${lesson.eng_units.id}`}>← {lesson.eng_units.title}</Link>
-      <h1>{lesson.title}</h1>
-      <p style={{ color: '#666' }}>{items.length} từ vựng — cần tối thiểu 3 từ để tạo trắc nghiệm có đáp án nhiễu</p>
+    <div className="wrap">
+      <style jsx>{`
+        .wrap { max-width: 820px; margin: 0 auto; padding: 28px 24px 64px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
+        .back-link { color: #225da3; font-weight: 600; font-size: 13.5px; text-decoration: none; }
+        h1 { font-size: 22px; color: #17302d; margin: 14px 0 4px; }
+        .count-note { font-size: 13.5px; margin: 0 0 20px; padding: 8px 14px; border-radius: 10px; display: inline-block; }
+        .count-note.ok { color: #1a7f4e; background: #EAFBEA; }
+        .count-note.warn { color: #b45309; background: #FEF3E2; }
+        .vocab-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 26px; }
+        .vocab-card { background: #fff; border: 1px solid #e5eeec; border-radius: 14px; padding: 16px; box-shadow: 0 1px 4px rgba(23,48,45,0.03); }
+        .vocab-card:hover { box-shadow: 0 4px 12px rgba(23,48,45,0.07); }
+        .vc-word { font-weight: 700; font-size: 17px; color: #17302d; }
+        .vc-meaning { color: #225da3; font-weight: 600; font-size: 14px; margin-top: 2px; }
+        .vc-example { color: #6b7f7a; font-size: 12.5px; margin-top: 8px; font-style: italic; line-height: 1.4; }
+        .vc-actions { display: flex; gap: 8px; margin-top: 12px; }
+        .link-btn { border: none; background: none; cursor: pointer; font-size: 12.5px; font-weight: 600; padding: 0; color: #225da3; }
+        .link-btn.danger { color: #a3374a; }
+        .edit-card { background: #fff; border: 2px solid #225da3; border-radius: 14px; padding: 14px; }
+        input { width: 100%; padding: 9px 11px; border-radius: 9px; border: 1.5px solid #e2e8f0; font-size: 13.5px; font-family: inherit; box-sizing: border-box; margin-bottom: 8px; }
+        input:focus { outline: none; border-color: #225da3; }
+        .add-card { background: #fff; border-radius: 16px; padding: 22px; border: 1px solid #e5eeec; }
+        .add-card h4 { margin: 0 0 16px; font-size: 15px; color: #17302d; }
+        label { display: block; font-size: 12.5px; font-weight: 600; color: #374151; margin-bottom: 4px; margin-top: 12px; }
+        label:first-of-type { margin-top: 0; }
+        .add-input { width: 100%; padding: 11px 13px; border-radius: 11px; border: 1.5px solid #e2e8f0; font-size: 14px; font-family: inherit; box-sizing: border-box; }
+        .add-input:focus { outline: none; border-color: #225da3; }
+        .add-btn { width: 100%; margin-top: 18px; background: #225da3; color: #fff; border: none; border-radius: 11px; padding: 12px; font-weight: 700; cursor: pointer; }
+        .tip { margin-top: 20px; font-size: 12.5px; color: #9ca3af; text-align: center; }
+      `}</style>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 16 }}>
-        <thead>
-          <tr style={{ textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>
-            <th>Từ</th><th>Phiên âm</th><th>Nghĩa</th><th>Câu ví dụ</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((it) => (
-            editingId === it.id ? (
-              <tr key={it.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                <td><input value={editForm.word} onChange={(e) => setEditForm({ ...editForm, word: e.target.value })} style={cellInput} /></td>
-                <td><input value={editForm.phonetic} onChange={(e) => setEditForm({ ...editForm, phonetic: e.target.value })} style={cellInput} /></td>
-                <td><input value={editForm.meaning} onChange={(e) => setEditForm({ ...editForm, meaning: e.target.value })} style={cellInput} /></td>
-                <td><input value={editForm.example_sentence} onChange={(e) => setEditForm({ ...editForm, example_sentence: e.target.value })} style={cellInput} /></td>
-                <td style={{ whiteSpace: 'nowrap' }}>
-                  <button onClick={() => saveEdit(it.id)} style={{ ...linkBtn, color: '#2563eb' }}>Lưu</button>{' '}
-                  <button onClick={() => setEditingId(null)} style={linkBtn}>Hủy</button>
-                </td>
-              </tr>
-            ) : (
-              <tr key={it.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                <td>{it.word}</td>
-                <td>{it.phonetic}</td>
-                <td>{it.meaning}</td>
-                <td>{it.example_sentence}</td>
-                <td style={{ whiteSpace: 'nowrap' }}>
-                  <button onClick={() => startEdit(it)} style={linkBtn}>Sửa</button>{' '}
-                  <button onClick={() => deleteItem(it.id)} style={{ ...linkBtn, color: 'crimson' }}>Xóa</button>
-                </td>
-              </tr>
-            )
-          ))}
-        </tbody>
-      </table>
+      <Link href={`/teacher/english/units/${lesson.eng_units.id}`} className="back-link">← {lesson.eng_units.title}</Link>
+      <h1>📝 {lesson.title}</h1>
+      <span className={`count-note ${notEnough ? 'warn' : 'ok'}`}>
+        {notEnough
+          ? `⚠️ Mới có ${items.length} từ — cần tối thiểu 3 từ để tạo trắc nghiệm có đáp án nhiễu`
+          : `✓ ${items.length} từ vựng — đủ để tạo trắc nghiệm`}
+      </span>
 
-      <form onSubmit={addItem} style={{ marginTop: 20, display: 'grid', gap: 8, maxWidth: 420 }}>
-        <h4>+ Thêm từ vựng</h4>
-        <input placeholder="Từ (vd: mother)" value={form.word} onChange={(e) => setForm({ ...form, word: e.target.value })} style={input} />
-        <input placeholder="Phiên âm (vd: /ˈmʌðər/)" value={form.phonetic} onChange={(e) => setForm({ ...form, phonetic: e.target.value })} style={input} />
-        <input placeholder="Nghĩa (vd: mẹ)" value={form.meaning} onChange={(e) => setForm({ ...form, meaning: e.target.value })} style={input} />
-        <input placeholder="Câu ví dụ (vd: My mother is a teacher.)" value={form.example_sentence} onChange={(e) => setForm({ ...form, example_sentence: e.target.value })} style={input} />
-        <button type="submit" style={btnPrimary}>Thêm từ</button>
-      </form>
+      <div className="vocab-grid">
+        {items.map((it) => (
+          editingId === it.id ? (
+            <div key={it.id} className="edit-card">
+              <input value={editForm.word} onChange={(e) => setEditForm({ ...editForm, word: e.target.value })} placeholder="Từ tiếng Anh" autoFocus />
+              <input value={editForm.meaning} onChange={(e) => setEditForm({ ...editForm, meaning: e.target.value })} placeholder="Nghĩa" />
+              <input value={editForm.example_sentence} onChange={(e) => setEditForm({ ...editForm, example_sentence: e.target.value })} placeholder="Câu ví dụ" />
+              <div className="vc-actions">
+                <button className="link-btn" onClick={() => saveEdit(it.id)}>💾 Lưu</button>
+                <button className="link-btn" onClick={() => setEditingId(null)}>Hủy</button>
+              </div>
+            </div>
+          ) : (
+            <div key={it.id} className="vocab-card">
+              <div className="vc-word">{it.word}</div>
+              <div className="vc-meaning">{it.meaning}</div>
+              {it.example_sentence && <div className="vc-example">"{it.example_sentence}"</div>}
+              <div className="vc-actions">
+                <button className="link-btn" onClick={() => startEdit(it)}>✎ Sửa</button>
+                <button className="link-btn danger" onClick={() => deleteItem(it.id)}>🗑 Xóa</button>
+              </div>
+            </div>
+          )
+        ))}
+      </div>
 
-      <p style={{ marginTop: 24, fontSize: 13, color: '#999' }}>
-        Gợi ý nâng cấp sau: thêm nút "Import từ Excel/CSV" để dán nhiều từ cùng lúc thay vì nhập tay từng dòng.
-      </p>
+      <div className="add-card">
+        <h4>＋ Thêm từ vựng mới</h4>
+        <form onSubmit={addItem}>
+          <label>Từ tiếng Anh</label>
+          <input className="add-input" placeholder="Ví dụ: mother" value={form.word} onChange={(e) => setForm({ ...form, word: e.target.value })} />
+          <label>Nghĩa tiếng Việt</label>
+          <input className="add-input" placeholder="Ví dụ: mẹ" value={form.meaning} onChange={(e) => setForm({ ...form, meaning: e.target.value })} />
+          <label>Câu ví dụ (tùy chọn)</label>
+          <input className="add-input" placeholder="Ví dụ: My mother is a teacher." value={form.example_sentence} onChange={(e) => setForm({ ...form, example_sentence: e.target.value })} />
+          <button type="submit" className="add-btn">＋ Thêm từ</button>
+        </form>
+      </div>
+
+      <p className="tip">Gợi ý nâng cấp sau: thêm nút "Import từ Excel/CSV" để dán nhiều từ cùng lúc thay vì nhập tay từng dòng.</p>
     </div>
   );
 }
-
-const input = { display: 'block', width: '100%', padding: 8, borderRadius: 6, border: '1px solid #d1d5db' };
-const cellInput = { width: '100%', padding: 6, borderRadius: 6, border: '1px solid #d1d5db' };
-const btnPrimary = { background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, padding: '8px 16px', cursor: 'pointer' };
-const linkBtn = { border: 0, background: 'none', cursor: 'pointer', padding: 0, fontSize: 13 };

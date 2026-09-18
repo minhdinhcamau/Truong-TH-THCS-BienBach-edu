@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { ENGLISH_SUBJECT_ID } from '@/lib/englishXp';
 
@@ -13,29 +14,18 @@ export default function NewCoursePage() {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  useEffect(() => {
-    loadClasses();
-  }, []);
+  useEffect(() => { loadClasses(); }, []);
 
   async function loadClasses() {
     const { data: { user } } = await supabase.auth.getUser();
-
-    // Lấy đúng các lớp mà giáo viên này ĐANG DẠY MÔN TIẾNG ANH, theo bảng
-    // phân công giảng dạy (teacher_assignments) — không dùng classes.teacher_id
-    // vì cột đó là giáo viên CHỦ NHIỆM, không phải giáo viên bộ môn.
     const { data } = await supabase
       .from('teacher_assignments')
-      .select('school_year, classes(id, name, grade)')
+      .select('classes(id, name, grade)')
       .eq('teacher_id', user.id)
       .eq('subject_id', ENGLISH_SUBJECT_ID);
-
-    // Có thể 1 lớp xuất hiện nhiều năm học khác nhau -> lọc trùng theo class id
     const uniqueMap = new Map();
-    (data || []).forEach((row) => {
-      if (row.classes) uniqueMap.set(row.classes.id, row.classes);
-    });
-    const uniqueClasses = Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-    setClasses(uniqueClasses);
+    (data || []).forEach((row) => { if (row.classes) uniqueMap.set(row.classes.id, row.classes); });
+    setClasses(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
   }
 
   async function handleSubmit(e) {
@@ -49,51 +39,63 @@ export default function NewCoursePage() {
       .select()
       .single();
     setSaving(false);
-    if (error) {
-      setErrorMsg(error.message);
-      return;
-    }
+    if (error) { setErrorMsg(error.message); return; }
     router.push(`/teacher/english/courses/${data.id}`);
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 500, margin: '0 auto' }}>
-      <h1>Tạo khóa học Tiếng Anh</h1>
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12, marginTop: 16 }}>
-        <label>
-          Tên khóa học
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required style={input}
-                 placeholder="Ví dụ: Tiếng Anh lớp 6" />
-        </label>
-        <label>
-          Mô tả (tùy chọn)
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} style={input} />
-        </label>
-        <label>
-          Gán cho lớp
-          <select value={classId} onChange={(e) => setClassId(e.target.value)} style={input}>
+    <div className="wrap">
+      <style jsx>{`
+        .wrap { max-width: 520px; margin: 0 auto; padding: 28px 24px 64px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
+        .back-link { color: #225da3; font-weight: 600; font-size: 13.5px; text-decoration: none; }
+        .card { background: #fff; border-radius: 20px; padding: 28px; margin-top: 16px; box-shadow: 0 2px 10px rgba(23,48,45,0.05); border: 1px solid #e5eeec; }
+        .card h1 { margin: 0 0 4px; font-size: 22px; color: #17302d; }
+        .card .sub { color: #6b7f7a; font-size: 13.5px; margin: 0 0 22px; }
+        label { display: block; font-size: 13.5px; font-weight: 600; color: #374151; margin-bottom: 6px; margin-top: 16px; }
+        label:first-of-type { margin-top: 0; }
+        input, textarea, select {
+          width: 100%; padding: 12px 14px; border-radius: 12px; border: 1.5px solid #e2e8f0; font-size: 14.5px;
+          font-family: inherit; box-sizing: border-box; transition: border-color 0.15s;
+        }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: #225da3; }
+        .hint { font-size: 12px; color: #9ca3af; margin-top: 6px; }
+        .error { color: #a3374a; font-size: 13.5px; background: #fdeef0; padding: 10px 14px; border-radius: 10px; margin-top: 16px; }
+        .submit-btn { width: 100%; margin-top: 22px; padding: 13px; background: #225da3; color: #fff; border: none;
+          border-radius: 12px; font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 3px 0 #184270; }
+        .submit-btn:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; }
+      `}</style>
+
+      <Link href="/teacher/english" className="back-link">← Lộ trình Tiếng Anh</Link>
+
+      <div className="card">
+        <h1>📘 Tạo khóa học mới</h1>
+        <p className="sub">Ví dụ: một khóa học cho mỗi khối lớp bạn phụ trách.</p>
+
+        <form onSubmit={handleSubmit}>
+          <label>Tên khóa học</label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Ví dụ: Tiếng Anh lớp 6" />
+
+          <label>Mô tả (tùy chọn)</label>
+          <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ghi chú ngắn về nội dung khóa học..." />
+
+          <label>Gán cho lớp</label>
+          <select value={classId} onChange={(e) => setClassId(e.target.value)}>
             <option value="">-- Chưa gán lớp --</option>
             {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}{c.grade ? ` (Khối ${c.grade})` : ''}
-              </option>
+              <option key={c.id} value={c.id}>{c.name}{c.grade ? ` (Khối ${c.grade})` : ''}</option>
             ))}
           </select>
           {classes.length === 0 && (
-            <span style={{ fontSize: 12, color: '#999' }}>
-              Bạn chưa được phân công dạy môn Tiếng Anh ở lớp nào (kiểm tra mục
-              "Phân công giảng dạy" trong trang Admin).
-            </span>
+            <p className="hint">Bạn chưa được phân công dạy môn Tiếng Anh ở lớp nào — kiểm tra mục "Phân công giảng dạy" trong trang Admin.</p>
           )}
-        </label>
-        {errorMsg && <p style={{ color: 'red' }}>{errorMsg}</p>}
-        <button type="submit" disabled={saving} style={btnPrimary}>
-          {saving ? 'Đang lưu...' : 'Tạo khóa học'}
-        </button>
-      </form>
+
+          {errorMsg && <div className="error">{errorMsg}</div>}
+
+          <button type="submit" disabled={saving} className="submit-btn">
+            {saving ? 'Đang lưu...' : 'Tạo khóa học'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
-
-const input = { display: 'block', width: '100%', padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid #d1d5db' };
-const btnPrimary = { background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, padding: '10px 16px', cursor: 'pointer' };

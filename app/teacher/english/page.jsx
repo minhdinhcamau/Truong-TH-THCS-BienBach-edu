@@ -1,99 +1,87 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
-import { ENGLISH_SUBJECT_ID } from '@/lib/englishXp';
 
-export default function NewCoursePage() {
-  const router = useRouter();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [classId, setClassId] = useState('');
-  const [classes, setClasses] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+export default function TeacherEnglishHome() {
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadClasses();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  async function loadClasses() {
+  async function load() {
+    setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-
-    // Lấy đúng các lớp mà giáo viên này ĐANG DẠY MÔN TIẾNG ANH, theo bảng
-    // phân công giảng dạy (teacher_assignments) — không dùng classes.teacher_id
-    // vì cột đó là giáo viên CHỦ NHIỆM, không phải giáo viên bộ môn.
     const { data } = await supabase
-      .from('teacher_assignments')
-      .select('school_year, classes(id, name, grade)')
-      .eq('teacher_id', user.id)
-      .eq('subject_id', ENGLISH_SUBJECT_ID);
-
-    // Có thể 1 lớp xuất hiện nhiều năm học khác nhau -> lọc trùng theo class id
-    const uniqueMap = new Map();
-    (data || []).forEach((row) => {
-      if (row.classes) uniqueMap.set(row.classes.id, row.classes);
-    });
-    const uniqueClasses = Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-    setClasses(uniqueClasses);
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSaving(true);
-    setErrorMsg('');
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data, error } = await supabase
       .from('eng_courses')
-      .insert({ title, description, class_id: classId || null, created_by: user.id })
-      .select()
-      .single();
-    setSaving(false);
-    if (error) {
-      setErrorMsg(error.message);
-      return;
-    }
-    router.push(`/teacher/english/courses/${data.id}`);
+      .select('id, title, description, created_at, classes(name, grade)')
+      .eq('created_by', user.id)
+      .order('created_at', { ascending: false });
+    setCourses(data || []);
+    setLoading(false);
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 500, margin: '0 auto' }}>
-      <h1>Tạo khóa học Tiếng Anh</h1>
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12, marginTop: 16 }}>
-        <label>
-          Tên khóa học
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required style={input}
-                 placeholder="Ví dụ: Tiếng Anh lớp 6" />
-        </label>
-        <label>
-          Mô tả (tùy chọn)
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} style={input} />
-        </label>
-        <label>
-          Gán cho lớp
-          <select value={classId} onChange={(e) => setClassId(e.target.value)} style={input}>
-            <option value="">-- Chưa gán lớp --</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}{c.grade ? ` (Khối ${c.grade})` : ''}
-              </option>
-            ))}
-          </select>
-          {classes.length === 0 && (
-            <span style={{ fontSize: 12, color: '#999' }}>
-              Bạn chưa được phân công dạy môn Tiếng Anh ở lớp nào (kiểm tra mục
-              "Phân công giảng dạy" trong trang Admin).
+    <div className="wrap">
+      <style jsx>{`
+        .wrap { max-width: 1040px; margin: 0 auto; padding: 28px 24px 64px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
+        .back-link { color: #225da3; font-weight: 600; font-size: 13.5px; text-decoration: none; }
+        .head { display: flex; justify-content: space-between; align-items: flex-end; margin: 14px 0 28px; flex-wrap: wrap; gap: 14px; }
+        .head h1 { margin: 0; font-size: 26px; color: #17302d; display: flex; align-items: center; gap: 10px; }
+        .head p { margin: 6px 0 0; color: #6b7f7a; font-size: 14px; }
+        .new-btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px; background: #225da3; color: #fff;
+          border: none; border-radius: 999px; font-weight: 700; font-size: 14px; cursor: pointer; box-shadow: 0 3px 0 #184270; text-decoration: none; }
+        .new-btn:hover { background: #1c4f8c; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+        .course-card { display: block; background: #fff; border-radius: 16px; padding: 20px; text-decoration: none; color: inherit;
+          border: 1px solid #e5eeec; box-shadow: 0 2px 6px rgba(23,48,45,0.04); transition: transform 0.15s, box-shadow 0.15s; }
+        .course-card:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(34,93,163,0.12); border-color: #b9d4ee; }
+        .cc-icon { width: 44px; height: 44px; border-radius: 12px; background: #E9F2FC; display: flex; align-items: center;
+          justify-content: center; font-size: 22px; margin-bottom: 12px; }
+        .cc-title { font-weight: 700; font-size: 17px; color: #17302d; margin-bottom: 4px; }
+        .cc-class { display: inline-block; font-size: 12px; font-weight: 600; color: #225da3; background: #E9F2FC;
+          padding: 3px 10px; border-radius: 999px; margin-top: 2px; }
+        .cc-desc { color: #6b7f7a; font-size: 13.5px; margin-top: 10px; line-height: 1.5; }
+        .empty { text-align: center; padding: 60px 20px; background: #fff; border-radius: 20px; border: 1px dashed #cfe2f7; }
+        .empty-emoji { font-size: 44px; margin-bottom: 10px; }
+        .empty h3 { margin: 0 0 6px; color: #17302d; }
+        .empty p { color: #6b7f7a; font-size: 14px; margin: 0 0 20px; }
+        .skeleton { text-align: center; padding: 60px; color: #9ca3af; }
+      `}</style>
+
+      <Link href="/teacher" className="back-link">← Trang giáo viên</Link>
+
+      <div className="head">
+        <div>
+          <h1>📘 Lộ trình Tiếng Anh</h1>
+          <p>Soạn khóa học theo cấu trúc Khóa học → Chủ đề → Bài học → Từ vựng, học sinh học theo kiểu chinh phục từng chặng.</p>
+        </div>
+        <Link href="/teacher/english/courses/new" className="new-btn">＋ Tạo khóa học</Link>
+      </div>
+
+      {loading && <div className="skeleton">Đang tải...</div>}
+
+      {!loading && courses.length === 0 && (
+        <div className="empty">
+          <div className="empty-emoji">📚</div>
+          <h3>Chưa có khóa học nào</h3>
+          <p>Tạo khóa học đầu tiên để bắt đầu soạn lộ trình cho lớp bạn dạy.</p>
+          <Link href="/teacher/english/courses/new" className="new-btn">＋ Tạo khóa học</Link>
+        </div>
+      )}
+
+      <div className="grid">
+        {courses.map((c) => (
+          <Link key={c.id} href={`/teacher/english/courses/${c.id}`} className="course-card">
+            <div className="cc-icon">🇬🇧</div>
+            <div className="cc-title">{c.title}</div>
+            <span className="cc-class">
+              {c.classes ? `${c.classes.name}${c.classes.grade ? ` · Khối ${c.classes.grade}` : ''}` : 'Chưa gán lớp'}
             </span>
-          )}
-        </label>
-        {errorMsg && <p style={{ color: 'red' }}>{errorMsg}</p>}
-        <button type="submit" disabled={saving} style={btnPrimary}>
-          {saving ? 'Đang lưu...' : 'Tạo khóa học'}
-        </button>
-      </form>
+            {c.description && <div className="cc-desc">{c.description}</div>}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
-
-const input = { display: 'block', width: '100%', padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid #d1d5db' };
-const btnPrimary = { background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, padding: '10px 16px', cursor: 'pointer' };
