@@ -2,13 +2,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-// Thoi gian popup tu dong tat (ms)
-const TOAST_DURATION = 5000;
-
 export default function NotificationBell({ studentId }) {
   const [list, setList] = useState([]);
   const [open, setOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const [toastClosing, setToastClosing] = useState(false);
   const [ring, setRing] = useState(false);
   const shownRef = useRef(new Set()); // tránh hiện popup 2 lần cho cùng 1 thông báo
   const audioCtxRef = useRef(null);
@@ -51,14 +49,23 @@ export default function NotificationBell({ studentId }) {
     (n) => {
       if (shownRef.current.has(n.id)) return;
       shownRef.current.add(n.id);
+      setToastClosing(false);
       setToast(n);
       setRing(true);
       playDing((n.xp_amount ?? 0) >= 0);
       setTimeout(() => setRing(false), 800);
-      setTimeout(() => setToast((cur) => (cur?.id === n.id ? null : cur)), TOAST_DURATION);
     },
     [playDing]
   );
+
+  // Dong popup thu cong: choi hieu ung thoat mot chut roi moi go khoi man hinh
+  const dismissToast = useCallback(() => {
+    setToastClosing(true);
+    setTimeout(() => {
+      setToast(null);
+      setToastClosing(false);
+    }, 320);
+  }, []);
 
   // Ham dung chung: tai thong bao tu server, cap nhat danh sach, va bat popup
   // cho thong bao MOI (chua tung hien) neu co. Day la nguon du lieu "chinh",
@@ -221,7 +228,7 @@ export default function NotificationBell({ studentId }) {
       {toast && (
         <div
           key={toast.id}
-          className={`toast ${
+          className={`toast ${toastClosing ? "toast-closing" : ""} ${
             toast.xp_amount === null || toast.xp_amount === undefined
               ? "toast-info"
               : isUp
@@ -229,23 +236,24 @@ export default function NotificationBell({ studentId }) {
               : "toast-down"
           }`}
         >
-          <div className="toast-emoji">
-            {toast.xp_amount === null || toast.xp_amount === undefined ? "📢" : isUp ? "🎉" : "📌"}
+          <div className="toast-row">
+            <div className="toast-emoji">
+              {toast.xp_amount === null || toast.xp_amount === undefined ? "📢" : isUp ? "🎉" : "📌"}
+            </div>
+            <div className="toast-body">
+              <div className="toast-title">{toast.title}</div>
+              {toast.content && <div className="toast-content">{toast.content}</div>}
+              {toast.xp_amount !== null && toast.xp_amount !== undefined && (
+                <div className={`toast-xp ${isUp ? "" : "toast-xp-down"}`}>
+                  {isUp ? "+" : ""}
+                  {toast.xp_amount} KN
+                </div>
+              )}
+            </div>
           </div>
-          <div className="toast-body">
-            <div className="toast-title">{toast.title}</div>
-            {toast.content && <div className="toast-content">{toast.content}</div>}
-            {toast.xp_amount !== null && toast.xp_amount !== undefined && (
-              <div className={`toast-xp ${isUp ? "" : "toast-xp-down"}`}>
-                {isUp ? "+" : ""}
-                {toast.xp_amount} KN
-              </div>
-            )}
-          </div>
-          <button className="toast-close" aria-label="Đóng thông báo" onClick={() => setToast(null)}>
-            ✕
+          <button className="toast-ack" onClick={dismissToast}>
+            <span className="toast-ack-check">✓</span> Đã rõ
           </button>
-          <div className="toast-progress" />
         </div>
       )}
 
@@ -326,14 +334,17 @@ export default function NotificationBell({ studentId }) {
 
         .toast {
           position: fixed; top: 20px; right: 20px; z-index: 200;
-          display: flex; flex-direction: row; gap: 12px; align-items: flex-start;
-          background: var(--card, #fff); border-radius: 18px; padding: 16px 32px 18px 16px;
+          display: flex; flex-direction: column; gap: 12px;
+          background: var(--card, #fff); border-radius: 18px; padding: 16px 16px 14px;
           box-shadow: 0 20px 44px -10px rgba(15,42,68,0.4);
-          width: 360px; max-width: calc(100vw - 24px); max-height: 140px;
+          width: 360px; max-width: calc(100vw - 24px); max-height: 220px;
           box-sizing: border-box; overflow: hidden;
-          animation: popIn 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-                     fadeOut 0.4s cubic-bezier(0.4, 0, 1, 1) ${TOAST_DURATION - 400}ms forwards;
+          animation: popIn 0.45s cubic-bezier(0.22, 1, 0.36, 1);
         }
+        .toast.toast-closing {
+          animation: popOut 0.32s cubic-bezier(0.4, 0, 1, 1) forwards;
+        }
+        .toast-row { display: flex; gap: 12px; align-items: flex-start; }
         .toast-up {
           border: 1.5px solid var(--gold, #e8af2e);
           background: linear-gradient(180deg, #fff 0%, #fffaf0 100%);
@@ -357,39 +368,36 @@ export default function NotificationBell({ studentId }) {
         .toast-xp-down { background: linear-gradient(135deg,#c94a34, var(--coral,#ff6b4d)); box-shadow: 0 3px 8px rgba(255,107,77,0.4); }
         @keyframes popNum { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-        .toast-close {
-          position: absolute; top: 8px; right: 10px;
-          border: none; background: transparent; color: var(--ink-faint, #bbb);
-          font-size: 13px; cursor: pointer; padding: 4px; line-height: 1;
-          transition: color 0.15s ease;
+        .toast-ack {
+          align-self: flex-end; display: flex; align-items: center; gap: 6px;
+          border: none; cursor: pointer; padding: 8px 18px; border-radius: 999px;
+          font-weight: 700; font-size: 13.5px; color: #fff;
+          background: linear-gradient(135deg, var(--ocean-dark,#0f4c82), var(--ocean,#1b6fb8));
+          box-shadow: 0 6px 16px -4px rgba(27,111,184,0.55);
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
-        .toast-close:hover { color: var(--ink-soft, #666); }
-        .toast-progress {
-          position: absolute; left: 0; bottom: 0; height: 3px; width: 100%;
-          background: linear-gradient(90deg, var(--gold,#e8af2e), var(--coral,#ff6b4d));
-          transform-origin: left;
-          animation: shrink ${TOAST_DURATION}ms linear forwards;
+        .toast-ack:hover { transform: translateY(-1px); box-shadow: 0 8px 20px -4px rgba(27,111,184,0.6); }
+        .toast-ack:active {
+          transform: scale(0.94);
+          animation: ackPulse 0.35s ease;
+        }
+        .toast-ack-check {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 16px; height: 16px; border-radius: 50%; background: rgba(255,255,255,0.25);
+          font-size: 11px; line-height: 1;
+        }
+        @keyframes ackPulse {
+          0% { box-shadow: 0 0 0 0 rgba(27,111,184,0.55); }
+          100% { box-shadow: 0 0 0 14px rgba(27,111,184,0); }
         }
 
         @keyframes popIn {
           from { opacity: 0; transform: translateX(48px) scale(0.9); }
           to { opacity: 1; transform: translateX(0) scale(1); }
         }
-        @keyframes fadeOut {
-          from { opacity: 1; transform: translateX(0) scale(1); }
-          to { opacity: 0; transform: translateX(24px) scale(0.96); }
-        }
-        @keyframes shrink {
-          from { transform: scaleX(1); }
-          to { transform: scaleX(0); }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .toast {
-            animation: popIn 0.5s cubic-bezier(0.22, 1, 0.36, 1),
-                       fadeOut 0.4s cubic-bezier(0.4, 0, 1, 1) ${TOAST_DURATION - 400}ms forwards !important;
-          }
-          .toast-progress { animation: shrink ${TOAST_DURATION}ms linear forwards !important; }
+        @keyframes popOut {
+          from { opacity: 1; transform: translateX(0) scale(1); max-height: 220px; }
+          to { opacity: 0; transform: translateX(24px) scale(0.94); max-height: 220px; }
         }
 
         @media (max-width: 480px) {
