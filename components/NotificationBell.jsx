@@ -198,12 +198,7 @@ export default function NotificationBell({ studentId }) {
             </div>
           )}
           {list.length === 0 && !debugErr && (
-            <div className="empty">
-              Chưa có thông báo nào, cố lên nhé! 🌱
-              <div style={{ marginTop: 6, fontSize: 10.5, color: "#c3d1e0", wordBreak: "break-all" }}>
-                ID: {studentId}
-              </div>
-            </div>
+            <div className="empty">Chưa có thông báo nào, cố lên nhé! 🌱</div>
           )}
           <div className="panel-list">
             {list.map((n) => (
@@ -290,10 +285,10 @@ export default function NotificationBell({ studentId }) {
         .backdrop { display: none; }
 
         .panel {
-          position: absolute; right: 0; top: 50px; width: 320px; max-height: 420px;
+          position: fixed; top: 80px; right: 20px; width: 320px; max-height: 420px;
           overflow: hidden; display: flex; flex-direction: column;
           background: var(--card, #fff); border-radius: var(--radius-lg, 18px);
-          box-shadow: 0 18px 40px -12px rgba(15,42,68,0.35); z-index: 50;
+          box-shadow: 0 18px 40px -12px rgba(15,42,68,0.35); z-index: 250;
           border: 1px solid var(--line, #d9e7f5);
           animation: slideDown 0.22s cubic-bezier(0.22, 1, 0.36, 1);
         }
@@ -417,7 +412,7 @@ export default function NotificationBell({ studentId }) {
         }
 
         @media (max-width: 480px) {
-          .panel { width: 88vw; right: -4px; }
+          .panel { width: 88vw; right: 6px; top: 70px; }
           .toast { left: 12px; right: 12px; max-width: none; top: 12px; }
         }
       `}</style>
