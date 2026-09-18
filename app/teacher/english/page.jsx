@@ -1,98 +1,75 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
-export default function CourseUnitsPage() {
-  const { courseId } = useParams();
-  const [course, setCourse] = useState(null);
-  const [units, setUnits] = useState([]);
-  const [newTitle, setNewTitle] = useState('');
+export default function TeacherEnglishHome() {
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     load();
-  }, [courseId]);
+  }, []);
 
   async function load() {
-    const { data: c } = await supabase
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data } = await supabase
       .from('eng_courses')
-      .select('*, classes(name, grade)')
-      .eq('id', courseId)
-      .single();
-    setCourse(c);
-    const { data: u } = await supabase
-      .from('eng_units')
-      .select('*')
-      .eq('course_id', courseId)
-      .order('order_index', { ascending: true });
-    setUnits(u || []);
+      .select('id, title, description, created_at, classes(name, grade)')
+      .eq('created_by', user.id)
+      .order('created_at', { ascending: false });
+    setCourses(data || []);
+    setLoading(false);
   }
 
-  async function addUnit(e) {
-    e.preventDefault();
-    if (!newTitle.trim()) return;
-    await supabase.from('eng_units').insert({
-      course_id: courseId,
-      title: newTitle,
-      order_index: units.length,
-    });
-    setNewTitle('');
-    load();
-  }
-
-  async function moveUnit(unit, direction) {
-    const idx = units.findIndex((u) => u.id === unit.id);
-    const swapWith = units[idx + direction];
-    if (!swapWith) return;
-    await supabase.from('eng_units').update({ order_index: swapWith.order_index }).eq('id', unit.id);
-    await supabase.from('eng_units').update({ order_index: unit.order_index }).eq('id', swapWith.id);
-    load();
-  }
-
-  async function deleteUnit(id) {
-    if (!confirm('Xóa chủ đề này và toàn bộ bài học/từ vựng bên trong?')) return;
-    await supabase.from('eng_units').delete().eq('id', id);
-    load();
-  }
-
-  if (!course) return <p style={{ padding: 24 }}>Đang tải...</p>;
+  if (loading) return <p style={{ padding: 24 }}>Đang tải...</p>;
 
   return (
-    <div style={{ padding: 24, maxWidth: 700, margin: '0 auto' }}>
-      <Link href="/teacher/english">← Danh sách khóa học</Link>
-      <h1>{course.title}</h1>
-      <p style={{ color: '#666' }}>
-        Lớp: {course.classes ? `${course.classes.name}${course.classes.grade ? ` (Khối ${course.classes.grade})` : ''}` : '(chưa gán)'}
-      </p>
-
-      <h3 style={{ marginTop: 24 }}>Các chủ đề (Unit)</h3>
-      <div style={{ display: 'grid', gap: 8 }}>
-        {units.map((u, idx) => (
-          <div key={u.id} style={row}>
-            <Link href={`/teacher/english/units/${u.id}`} style={{ flex: 1 }}>
-              {idx + 1}. {u.title}
-            </Link>
-            <button onClick={() => moveUnit(u, -1)} disabled={idx === 0} style={iconBtn}>↑</button>
-            <button onClick={() => moveUnit(u, 1)} disabled={idx === units.length - 1} style={iconBtn}>↓</button>
-            <button onClick={() => deleteUnit(u.id)} style={{ ...iconBtn, color: 'crimson' }}>Xóa</button>
-          </div>
-        ))}
+    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>Môn Tiếng Anh — Lộ trình học</h1>
+        <Link href="/teacher/english/courses/new">
+          <button style={btnPrimary}>+ Tạo khóa học</button>
+        </Link>
       </div>
 
-      <form onSubmit={addUnit} style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-        <input
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-          placeholder="Tên chủ đề mới (vd: Gia đình)"
-          style={{ flex: 1, padding: 8, borderRadius: 6, border: '1px solid #d1d5db' }}
-        />
-        <button type="submit" style={btnPrimary}>+ Thêm chủ đề</button>
-      </form>
+      {courses.length === 0 && (
+        <p style={{ color: '#666', marginTop: 24 }}>
+          Chưa có khóa học nào. Bấm "Tạo khóa học" để bắt đầu soạn lộ trình
+          (Khóa học → Chủ đề → Bài học → Từ vựng).
+        </p>
+      )}
+
+      <div style={{ marginTop: 24, display: 'grid', gap: 12 }}>
+        {courses.map((c) => (
+          <Link key={c.id} href={`/teacher/english/courses/${c.id}`} style={card}>
+            <strong>{c.title}</strong>
+            <div style={{ color: '#666', fontSize: 14 }}>
+              Lớp: {c.classes ? `${c.classes.name}${c.classes.grade ? ` (Khối ${c.classes.grade})` : ''}` : '(chưa gán lớp)'}
+            </div>
+            {c.description && <div style={{ marginTop: 4 }}>{c.description}</div>}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
 
-const row = { display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e5e7eb', borderRadius: 6, padding: 10 };
-const iconBtn = { border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', cursor: 'pointer', padding: '4px 8px' };
-const btnPrimary = { background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, padding: '8px 16px', cursor: 'pointer' };
+const card = {
+  display: 'block',
+  border: '1px solid #e5e7eb',
+  borderRadius: 8,
+  padding: 16,
+  textDecoration: 'none',
+  color: '#111',
+};
+
+const btnPrimary = {
+  background: '#2563eb',
+  color: '#fff',
+  border: 0,
+  borderRadius: 6,
+  padding: '8px 16px',
+  cursor: 'pointer',
+};
