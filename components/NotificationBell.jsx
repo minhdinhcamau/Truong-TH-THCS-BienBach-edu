@@ -11,6 +11,8 @@ export default function NotificationBell({ studentId }) {
   const shownRef = useRef(new Set()); // tránh hiện popup 2 lần cho cùng 1 thông báo
   const audioCtxRef = useRef(null);
   const [debugErr, setDebugErr] = useState(null);
+  const queueRef = useRef([]); // thong bao dang cho, chua den luot hien
+  const toastRef = useRef(null); // phan chieu dong bo cua state "toast" hien tai
 
   const unread = list.filter((n) => !n.is_read).length;
 
@@ -45,10 +47,9 @@ export default function NotificationBell({ studentId }) {
     }
   }, []);
 
-  const showToast = useCallback(
+  const displayToast = useCallback(
     (n) => {
-      if (shownRef.current.has(n.id)) return;
-      shownRef.current.add(n.id);
+      toastRef.current = n;
       setToastClosing(false);
       setToast(n);
       setRing(true);
@@ -58,14 +59,36 @@ export default function NotificationBell({ studentId }) {
     [playDing]
   );
 
-  // Dong popup thu cong: choi hieu ung thoat mot chut roi moi go khoi man hinh
+  // Hien 1 thong bao. Neu dang co cai khac hien san (chua bam "Da ro"),
+  // xep vao hang doi thay vi de bi thay the ngay lap tuc (day chinh la
+  // nguyen nhan gay cam giac "nhap nhay roi tat" khi co nhieu thong bao don ve cung luc).
+  const showToast = useCallback(
+    (n) => {
+      if (shownRef.current.has(n.id)) return;
+      shownRef.current.add(n.id);
+      if (toastRef.current) {
+        queueRef.current.push(n);
+      } else {
+        displayToast(n);
+      }
+    },
+    [displayToast]
+  );
+
+  // Dong popup thu cong: choi hieu ung thoat mot chut, roi hien tiep thong bao
+  // ke tiep trong hang doi (neu co), hoac go han neu het hang doi.
   const dismissToast = useCallback(() => {
     setToastClosing(true);
     setTimeout(() => {
+      toastRef.current = null;
       setToast(null);
       setToastClosing(false);
+      const next = queueRef.current.shift();
+      if (next) {
+        setTimeout(() => displayToast(next), 250);
+      }
     }, 320);
-  }, []);
+  }, [displayToast]);
 
   // Ham dung chung: tai thong bao tu server, cap nhat danh sach, va bat popup
   // cho thong bao MOI (chua tung hien) neu co. Day la nguon du lieu "chinh",
