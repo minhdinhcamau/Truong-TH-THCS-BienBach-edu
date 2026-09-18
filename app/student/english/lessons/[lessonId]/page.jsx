@@ -291,7 +291,7 @@ export default function LessonPlayPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, maxWidth: 640, margin: '0 auto', padding: '14px 20px' }}>
             <span style={{ fontSize: 28 }}>{isCorrect ? '✅' : '❌'}</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 800, color: isCorrect ? '#58A700' : '#EA2B2B', fontSize: 17 }}>
+              <div style={{ fontWeight: 700, color: isCorrect ? '#58A700' : '#EA2B2B', fontSize: 17 }}>
                 {isCorrect ? 'Chính xác!' : 'Chưa đúng!'}
               </div>
               {!isCorrect && (
@@ -319,7 +319,7 @@ const styles = {
     maxWidth: 640,
     margin: '0 auto',
     position: 'relative',
-    fontFamily: "'Be Vietnam Pro', sans-serif",
+    fontFamily: "'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
   },
   center: { padding: 40, textAlign: 'center', color: '#6b7280' },
   topBar: { display: 'flex', alignItems: 'center', marginBottom: 28 },
@@ -336,7 +336,7 @@ const styles = {
     width: 48, height: 48, borderRadius: '50%', border: 'none', background: '#E0F2FE',
     color: '#0EA5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
   },
-  word: { fontSize: 34, fontWeight: 800, color: '#17302D', textAlign: 'center' },
+  word: { fontSize: 34, fontWeight: 700, color: '#17302D', textAlign: 'center' },
   phonetic: { fontSize: 15, color: '#9CA3AF', textAlign: 'center', marginTop: 2 },
   prompt: { textAlign: 'center', color: '#6b7280', marginTop: 12, fontSize: 15 },
   option: {
@@ -348,13 +348,13 @@ const styles = {
   optionWrong: { border: '2px solid #FF4B4B', background: '#FFDFE0', color: '#EA2B2B' },
   checkBtn: {
     position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 48px)', maxWidth: 592,
-    background: '#58CC02', color: '#fff', border: 'none', borderRadius: 16, padding: '16px', fontSize: 17, fontWeight: 800,
-    letterSpacing: 0.5, cursor: 'pointer', boxShadow: '0 4px 0 #58A700',
+    background: '#58CC02', color: '#fff', border: 'none', borderRadius: 16, padding: '16px', fontSize: 17, fontWeight: 700,
+    cursor: 'pointer', boxShadow: '0 4px 0 #58A700',
   },
   checkBtnDisabled: { background: '#E5E7EB', color: '#9CA3AF', boxShadow: '0 4px 0 #D1D5DB', cursor: 'not-allowed' },
   feedbackBar: { position: 'fixed', left: 0, right: 0, bottom: 0 },
   primaryBtn: {
     background: '#58CC02', color: '#fff', border: 'none', borderRadius: 14, padding: '14px 24px', fontSize: 16,
-    fontWeight: 800, cursor: 'pointer', marginTop: 16, boxShadow: '0 4px 0 #58A700',
+    fontWeight: 700, cursor: 'pointer', marginTop: 16, boxShadow: '0 4px 0 #58A700',
   },
 };
