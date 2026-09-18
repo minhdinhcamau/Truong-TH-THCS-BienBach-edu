@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
 import { getSubjectLevel } from '../../lib/rankTiers';
 import { useStudent } from './layout';
+import { ENGLISH_SUBJECT_ID } from '../../lib/englishXp';
 
 const ICONS = [
   <path key="a" d="M12 22V10M4 10l8-6 8 6M5 10v8a1 1 0 0 0 1 1h2v-6M17 10v9a1 1 0 0 1-1 1h-2v-6" />,
@@ -90,8 +91,10 @@ export default function StudentHome() {
           const xp = progressBySubject[s.id] || 0;
           const { level, nextThreshold, percent } = getSubjectLevel(xp);
           const pendingCount = pending.filter((a) => a.subject_id === s.id).length;
-          return (
-            <div className="subject-card" key={s.id}>
+          const isEnglish = s.id === ENGLISH_SUBJECT_ID;
+
+          const cardInner = (
+            <>
               <div className="sc-top">
                 <div className="sc-id">
                   <div className={`sc-icon ${ICON_CLASSES[i % ICON_CLASSES.length]}`}>
@@ -101,7 +104,11 @@ export default function StudentHome() {
                   </div>
                   <div>
                     <div className="sc-title">{s.name}</div>
-                    <div className="sc-tasks">{pendingCount > 0 ? `${pendingCount} bài tập đang chờ` : 'Không có bài tập mới'}</div>
+                    <div className="sc-tasks">
+                      {isEnglish
+                        ? '📘 Học theo lộ trình — bấm để vào học'
+                        : (pendingCount > 0 ? `${pendingCount} bài tập đang chờ` : 'Không có bài tập mới')}
+                    </div>
                   </div>
                 </div>
                 <span className="level-badge">Cấp {level}</span>
@@ -111,6 +118,25 @@ export default function StudentHome() {
               <div className="sc-foot">
                 <span className="bar-caption">Tổng {xp.toLocaleString('vi-VN')} KN đã tích luỹ</span>
               </div>
+            </>
+          );
+
+          if (isEnglish) {
+            return (
+              <Link
+                href="/student/english"
+                className="subject-card"
+                key={s.id}
+                style={{ textDecoration: 'none', color: 'inherit', display: 'block', cursor: 'pointer' }}
+              >
+                {cardInner}
+              </Link>
+            );
+          }
+
+          return (
+            <div className="subject-card" key={s.id}>
+              {cardInner}
             </div>
           );
         })}
