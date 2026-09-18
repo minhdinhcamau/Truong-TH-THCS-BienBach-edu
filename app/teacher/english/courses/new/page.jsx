@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import { ENGLISH_SUBJECT_ID } from '@/lib/englishXp';
 
 export default function NewCoursePage() {
   const router = useRouter();
@@ -18,12 +19,23 @@ export default function NewCoursePage() {
 
   async function loadClasses() {
     const { data: { user } } = await supabase.auth.getUser();
+
+    // Lấy đúng các lớp mà giáo viên này ĐANG DẠY MÔN TIẾNG ANH, theo bảng
+    // phân công giảng dạy (teacher_assignments) — không dùng classes.teacher_id
+    // vì cột đó là giáo viên CHỦ NHIỆM, không phải giáo viên bộ môn.
     const { data } = await supabase
-      .from('classes')
-      .select('id, name, grade')
+      .from('teacher_assignments')
+      .select('school_year, classes(id, name, grade)')
       .eq('teacher_id', user.id)
-      .order('name', { ascending: true });
-    setClasses(data || []);
+      .eq('subject_id', ENGLISH_SUBJECT_ID);
+
+    // Có thể 1 lớp xuất hiện nhiều năm học khác nhau -> lọc trùng theo class id
+    const uniqueMap = new Map();
+    (data || []).forEach((row) => {
+      if (row.classes) uniqueMap.set(row.classes.id, row.classes);
+    });
+    const uniqueClasses = Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    setClasses(uniqueClasses);
   }
 
   async function handleSubmit(e) {
@@ -69,7 +81,8 @@ export default function NewCoursePage() {
           </select>
           {classes.length === 0 && (
             <span style={{ fontSize: 12, color: '#999' }}>
-              Bạn chưa tạo lớp nào trong hệ thống, hoặc lớp đó không do bạn chủ nhiệm.
+              Bạn chưa được phân công dạy môn Tiếng Anh ở lớp nào (kiểm tra mục
+              "Phân công giảng dạy" trong trang Admin).
             </span>
           )}
         </label>
