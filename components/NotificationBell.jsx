@@ -229,11 +229,6 @@ export default function NotificationBell({ studentId }) {
               : "toast-down"
           }`}
         >
-          {toast.xp_amount > 0 && (
-            <div className="sparkles" aria-hidden="true">
-              <span>✨</span><span>⭐</span><span>✨</span><span>🌟</span>
-            </div>
-          )}
           <div className="toast-emoji">
             {toast.xp_amount === null || toast.xp_amount === undefined ? "📢" : isUp ? "🎉" : "📌"}
           </div>
@@ -331,10 +326,11 @@ export default function NotificationBell({ studentId }) {
 
         .toast {
           position: fixed; top: 20px; right: 20px; z-index: 200;
-          display: flex; gap: 12px; align-items: flex-start;
+          display: flex; flex-direction: row; gap: 12px; align-items: flex-start;
           background: var(--card, #fff); border-radius: 18px; padding: 16px 32px 18px 16px;
-          box-shadow: 0 20px 44px -10px rgba(15,42,68,0.4); max-width: 340px;
-          overflow: hidden;
+          box-shadow: 0 20px 44px -10px rgba(15,42,68,0.4);
+          width: 360px; max-width: calc(100vw - 24px); max-height: 140px;
+          box-sizing: border-box; overflow: hidden;
           animation: popIn 0.5s cubic-bezier(0.22, 1, 0.36, 1),
                      fadeOut 0.4s cubic-bezier(0.4, 0, 1, 1) ${TOAST_DURATION - 400}ms forwards;
         }
@@ -375,21 +371,6 @@ export default function NotificationBell({ studentId }) {
           animation: shrink ${TOAST_DURATION}ms linear forwards;
         }
 
-        .sparkles { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
-        .sparkles span {
-          position: absolute; font-size: 14px; opacity: 0;
-          animation: sparkleFly 1.1s ease-out forwards;
-        }
-        .sparkles span:nth-child(1) { left: 18%; top: 10%; animation-delay: 0.05s; }
-        .sparkles span:nth-child(2) { left: 55%; top: 4%;  animation-delay: 0.15s; }
-        .sparkles span:nth-child(3) { left: 78%; top: 14%; animation-delay: 0.25s; }
-        .sparkles span:nth-child(4) { left: 38%; top: 8%;  animation-delay: 0.35s; }
-        @keyframes sparkleFly {
-          0% { opacity: 0; transform: translateY(6px) scale(0.4) rotate(0deg); }
-          35% { opacity: 1; }
-          100% { opacity: 0; transform: translateY(-26px) scale(1.1) rotate(35deg); }
-        }
-
         @keyframes popIn {
           from { opacity: 0; transform: translateX(48px) scale(0.9); }
           to { opacity: 1; transform: translateX(0) scale(1); }
@@ -413,7 +394,7 @@ export default function NotificationBell({ studentId }) {
 
         @media (max-width: 480px) {
           .panel { width: 88vw; right: 6px; top: 70px; }
-          .toast { left: 12px; right: 12px; max-width: none; top: 12px; }
+          .toast { left: 12px; right: 12px; top: 12px; width: auto; max-width: none; }
         }
       `}</style>
     </div>
