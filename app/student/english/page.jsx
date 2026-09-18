@@ -21,7 +21,7 @@ export default function StudentEnglishHome() {
 
     const { data: p } = await supabase
       .from('profiles')
-      .select('id, full_name, class_name, xp, streak_days')
+      .select('id, full_name, class_id, xp, streak_days')
       .eq('id', user.id)
       .single();
     setProfile(p);
@@ -31,7 +31,7 @@ export default function StudentEnglishHome() {
     const { data: courses } = await supabase
       .from('eng_courses')
       .select('id, title, description')
-      .eq('class_name', p.class_name)
+      .eq('class_id', p.class_id)
       .order('created_at', { ascending: true })
       .limit(1);
     const c = courses?.[0] || null;

@@ -1,60 +1,75 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 
-export default function NewCoursePage() {
-  const router = useRouter();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [className, setClassName] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+export default function TeacherEnglishHome() {
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSaving(true);
-    setErrorMsg('');
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function load() {
+    setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('eng_courses')
-      .insert({ title, description, class_name: className, created_by: user.id })
-      .select()
-      .single();
-    setSaving(false);
-    if (error) {
-      setErrorMsg(error.message);
-      return;
-    }
-    router.push(`/teacher/english/courses/${data.id}`);
+      .select('id, title, description, created_at, classes(name, grade)')
+      .eq('created_by', user.id)
+      .order('created_at', { ascending: false });
+    setCourses(data || []);
+    setLoading(false);
   }
 
+  if (loading) return <p style={{ padding: 24 }}>Đang tải...</p>;
+
   return (
-    <div style={{ padding: 24, maxWidth: 500, margin: '0 auto' }}>
-      <h1>Tạo khóa học Tiếng Anh</h1>
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 12, marginTop: 16 }}>
-        <label>
-          Tên khóa học
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required style={input}
-                 placeholder="Ví dụ: Tiếng Anh lớp 6" />
-        </label>
-        <label>
-          Mô tả (tùy chọn)
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} style={input} />
-        </label>
-        <label>
-          Gán cho lớp (class_name, để trống nếu chưa gán)
-          <input value={className} onChange={(e) => setClassName(e.target.value)} style={input}
-                 placeholder="Ví dụ: 6A1" />
-        </label>
-        {errorMsg && <p style={{ color: 'red' }}>{errorMsg}</p>}
-        <button type="submit" disabled={saving} style={btnPrimary}>
-          {saving ? 'Đang lưu...' : 'Tạo khóa học'}
-        </button>
-      </form>
+    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>Môn Tiếng Anh — Lộ trình học</h1>
+        <Link href="/teacher/english/courses/new">
+          <button style={btnPrimary}>+ Tạo khóa học</button>
+        </Link>
+      </div>
+
+      {courses.length === 0 && (
+        <p style={{ color: '#666', marginTop: 24 }}>
+          Chưa có khóa học nào. Bấm "Tạo khóa học" để bắt đầu soạn lộ trình
+          (Khóa học → Chủ đề → Bài học → Từ vựng).
+        </p>
+      )}
+
+      <div style={{ marginTop: 24, display: 'grid', gap: 12 }}>
+        {courses.map((c) => (
+          <Link key={c.id} href={`/teacher/english/courses/${c.id}`} style={card}>
+            <strong>{c.title}</strong>
+            <div style={{ color: '#666', fontSize: 14 }}>
+              Lớp: {c.classes ? `${c.classes.name}${c.classes.grade ? ` (Khối ${c.classes.grade})` : ''}` : '(chưa gán lớp)'}
+            </div>
+            {c.description && <div style={{ marginTop: 4 }}>{c.description}</div>}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
 
-const input = { display: 'block', width: '100%', padding: 8, marginTop: 4, borderRadius: 6, border: '1px solid #d1d5db' };
-const btnPrimary = { background: '#2563eb', color: '#fff', border: 0, borderRadius: 6, padding: '10px 16px', cursor: 'pointer' };
+const card = {
+  display: 'block',
+  border: '1px solid #e5e7eb',
+  borderRadius: 8,
+  padding: 16,
+  textDecoration: 'none',
+  color: '#111',
+};
+
+const btnPrimary = {
+  background: '#2563eb',
+  color: '#fff',
+  border: 0,
+  borderRadius: 6,
+  padding: '8px 16px',
+  cursor: 'pointer',
+};
