@@ -119,6 +119,23 @@ export default function NotificationBell({ studentId }) {
     }
   };
 
+  const iconFor = (amount) => {
+    if (amount === null || amount === undefined) return "📢";
+    return amount < 0 ? "📉" : "🌟";
+  };
+
+  const deleteOne = async (id) => {
+    setList((cur) => cur.filter((n) => n.id !== id));
+    await supabase.from("notifications").delete().eq("id", id).eq("student_id", studentId);
+  };
+
+  const deleteAll = async () => {
+    if (list.length === 0) return;
+    if (!window.confirm("Xoá tất cả thông báo? Không thể hoàn tác.")) return;
+    setList([]);
+    await supabase.from("notifications").delete().eq("student_id", studentId);
+  };
+
   const isUp = (toast?.xp_amount ?? 0) >= 0;
 
   return (
@@ -129,35 +146,58 @@ export default function NotificationBell({ studentId }) {
       </button>
 
       {open && (
-        <>
-          <div className="backdrop" onClick={() => setOpen(false)} />
-          <div className="panel">
-            <div className="panel-header">🔔 Thông báo của em</div>
-            {list.length === 0 && <div className="empty">Chưa có thông báo nào, cố lên nhé! 🌱</div>}
-            <div className="panel-list">
-              {list.map((n) => (
-                <div key={n.id} className={`item ${n.is_read ? "" : "unread"}`}>
-                  <div className="item-icon">{(n.xp_amount ?? 0) < 0 ? "📉" : "🌟"}</div>
-                  <div className="item-body">
-                    <div className="item-title">{n.title}</div>
-                    {n.content && <div className="item-content">{n.content}</div>}
-                    <div className="item-time">{new Date(n.created_at).toLocaleString("vi-VN")}</div>
-                  </div>
-                </div>
-              ))}
+        <div className="panel">
+          <div className="panel-header">
+            <span>🔔 Thông báo của em</span>
+            <div className="panel-header-actions">
+              {list.length > 0 && (
+                <button className="clear-all" onClick={deleteAll} title="Xoá tất cả">
+                  Xoá hết
+                </button>
+              )}
+              <button className="panel-close" onClick={() => setOpen(false)} aria-label="Đóng">
+                ✕
+              </button>
             </div>
           </div>
-        </>
+          {list.length === 0 && <div className="empty">Chưa có thông báo nào, cố lên nhé! 🌱</div>}
+          <div className="panel-list">
+            {list.map((n) => (
+              <div key={n.id} className={`item ${n.is_read ? "" : "unread"}`}>
+                <div className="item-icon">{iconFor(n.xp_amount)}</div>
+                <div className="item-body">
+                  <div className="item-title">{n.title}</div>
+                  {n.content && <div className="item-content">{n.content}</div>}
+                  <div className="item-time">{new Date(n.created_at).toLocaleString("vi-VN")}</div>
+                </div>
+                <button className="item-delete" onClick={() => deleteOne(n.id)} aria-label="Xoá thông báo" title="Xoá">
+                  🗑
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {toast && (
-        <div key={toast.id} className={`toast ${isUp ? "toast-up" : "toast-down"}`}>
-          {isUp && (
+        <div
+          key={toast.id}
+          className={`toast ${
+            toast.xp_amount === null || toast.xp_amount === undefined
+              ? "toast-info"
+              : isUp
+              ? "toast-up"
+              : "toast-down"
+          }`}
+        >
+          {toast.xp_amount > 0 && (
             <div className="sparkles" aria-hidden="true">
               <span>✨</span><span>⭐</span><span>✨</span><span>🌟</span>
             </div>
           )}
-          <div className="toast-emoji">{isUp ? "🎉" : "📌"}</div>
+          <div className="toast-emoji">
+            {toast.xp_amount === null || toast.xp_amount === undefined ? "📢" : isUp ? "🎉" : "📌"}
+          </div>
           <div className="toast-body">
             <div className="toast-title">{toast.title}</div>
             {toast.content && <div className="toast-content">{toast.content}</div>}
@@ -203,7 +243,7 @@ export default function NotificationBell({ studentId }) {
           border: 2px solid var(--bg-deep2, #124e80);
         }
 
-        .backdrop { position: fixed; inset: 0; z-index: 49; background: transparent; }
+        .backdrop { display: none; }
 
         .panel {
           position: absolute; right: 0; top: 50px; width: 320px; max-height: 420px;
@@ -218,18 +258,37 @@ export default function NotificationBell({ studentId }) {
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
         .panel-header {
-          padding: 14px 16px; font-weight: 700; font-family: 'Baloo 2', sans-serif;
-          font-size: 16px; color: #fff;
+          padding: 12px 8px 12px 16px; font-weight: 700; font-family: 'Baloo 2', sans-serif;
+          font-size: 16px; color: #fff; display: flex; align-items: center; justify-content: space-between; gap: 8px;
           background: linear-gradient(135deg, var(--bg-deep, #0b3c63), var(--ocean, #1b6fb8));
         }
+        .panel-header-actions { display: flex; align-items: center; gap: 4px; }
+        .clear-all {
+          border: 1px solid rgba(255,255,255,0.45); background: rgba(255,255,255,0.12); color: #fff;
+          font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 4px 10px; cursor: pointer;
+          white-space: nowrap; transition: background 0.15s ease;
+        }
+        .clear-all:hover { background: rgba(255,255,255,0.24); }
+        .panel-close {
+          border: none; background: transparent; color: #fff; opacity: 0.85;
+          font-size: 14px; cursor: pointer; padding: 4px 6px; line-height: 1;
+        }
+        .panel-close:hover { opacity: 1; }
         .panel-list { overflow-y: auto; }
         .empty { padding: 28px 16px; text-align: center; color: var(--ink-faint, #93aac4); font-size: 14px; }
-        .item { padding: 12px 16px; border-bottom: 1px solid var(--line, #eef4fb); display: flex; gap: 10px; }
+        .item { padding: 12px 16px; border-bottom: 1px solid var(--line, #eef4fb); display: flex; gap: 10px; align-items: flex-start; }
         .item.unread { background: var(--ocean-tint, #eaf4fc); }
         .item-icon { font-size: 18px; margin-top: 1px; }
+        .item-body { flex: 1; min-width: 0; }
         .item-title { font-weight: 700; font-size: 13.5px; color: var(--ink, #0f2a44); }
         .item-content { font-size: 12.5px; color: var(--ink-soft, #4e6a88); margin-top: 2px; line-height: 1.4; }
         .item-time { font-size: 11px; color: var(--ink-faint, #93aac4); margin-top: 4px; }
+        .item-delete {
+          border: none; background: transparent; color: var(--ink-faint, #b7c4d6);
+          font-size: 13px; cursor: pointer; padding: 3px 4px; border-radius: 6px; line-height: 1;
+          transition: color 0.15s ease, background 0.15s ease; flex: none;
+        }
+        .item-delete:hover { color: var(--coral, #ff6b4d); background: rgba(255,107,77,0.1); }
 
         .toast {
           position: fixed; top: 20px; right: 20px; z-index: 200;
@@ -245,6 +304,7 @@ export default function NotificationBell({ studentId }) {
           background: linear-gradient(180deg, #fff 0%, #fffaf0 100%);
         }
         .toast-down { border: 1.5px solid var(--coral, #ff6b4d); }
+        .toast-info { border: 1.5px solid var(--ocean, #1b6fb8); }
         .toast-emoji { font-size: 30px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.12)); }
         .toast-body { flex: 1; min-width: 0; }
         .toast-title {

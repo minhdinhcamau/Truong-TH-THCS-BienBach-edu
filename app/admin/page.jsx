@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx'
 import styles from './admin.module.css'
 import QaArchivePanel from './QaArchivePanel'
 import AwardXpForm from '@/components/AwardXpForm'
+import SendNotificationForm from '@/components/SendNotificationForm'
 
 const ROLE_LABEL = { admin: 'Quản trị viên', teacher: 'Giáo viên', student: 'Học sinh' }
 const GRADE_OPTIONS = [6, 7, 8, 9]
@@ -90,6 +91,7 @@ export default function AdminPage() {
 
   // ---- Chọn nhiều để xoá hàng loạt ----
   const [selectedUserIds, setSelectedUserIds] = useState(new Set())
+  const [sendNotifOpen, setSendNotifOpen] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkError, setBulkError] = useState('')
 
@@ -1357,10 +1359,16 @@ export default function AdminPage() {
           </div>
 
           {selectedUserIds.size > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '0 0 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '0 0 12px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, color: '#37423e' }}>
                 Đã chọn {selectedUserIds.size} tài khoản học sinh
               </span>
+              <button
+                className={styles.linkBtn}
+                onClick={() => setSendNotifOpen((v) => !v)}
+              >
+                📢 Gửi thông báo
+              </button>
               <button className={styles.dangerBtn} onClick={handleBulkDelete} disabled={bulkDeleting}>
                 {bulkDeleting ? 'Đang xoá…' : 'Xoá các mục đã chọn'}
               </button>
@@ -1371,6 +1379,15 @@ export default function AdminPage() {
               >
                 Bỏ chọn
               </button>
+            </div>
+          )}
+          {sendNotifOpen && selectedUserIds.size > 0 && (
+            <div style={{ margin: '0 0 16px' }}>
+              <SendNotificationForm
+                studentIds={Array.from(selectedUserIds)}
+                onDone={() => setSendNotifOpen(false)}
+                onClose={() => setSendNotifOpen(false)}
+              />
             </div>
           )}
           {bulkError && <p className={styles.error}>{bulkError}</p>}
