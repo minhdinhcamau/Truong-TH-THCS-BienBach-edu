@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
 import { ENGLISH_SUBJECT_ID } from '../../lib/englishXp';
 
@@ -31,7 +31,7 @@ export default function TeacherDashboard() {
         // chi danh cho giao vien.
         const { data: prof } = await supabase
           .from('profiles')
-          .select('full_name, role')
+          .select('full_name, role, is_tpt')
           .eq('id', session.user.id)
           .single();
         setProfile(prof);
@@ -287,6 +287,19 @@ export default function TeacherDashboard() {
           </div>
         </div>
         <div className="profile-row">
+          {!isAdminViewing && profile?.is_tpt && (
+            <Link
+              href="/tpt"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '8px 16px', borderRadius: 999, border: '1px solid #e8af2e',
+                background: '#fff8e8', color: '#8a5b0a', fontWeight: 700, fontSize: 13,
+                textDecoration: 'none', whiteSpace: 'nowrap',
+              }}
+            >
+              🎖️ Trang Tổng phụ trách Đội
+            </Link>
+          )}
           {!isAdminViewing && (
             <div className="profile">
               <div className="avatar">{initialsOf(profile?.full_name)}</div>
@@ -351,7 +364,7 @@ export default function TeacherDashboard() {
       )}
 
       <div className="section-top">
-        <h2>Bài tập trắc nghiệm đã giao</h2>
+        <h2>Bài tập đã giao</h2>
         <Link href="/teacher/assignments/new">
           <button className="new-btn">+ Tạo bài tập mới</button>
         </Link>

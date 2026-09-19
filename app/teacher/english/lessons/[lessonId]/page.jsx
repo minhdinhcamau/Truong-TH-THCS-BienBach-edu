@@ -20,7 +20,6 @@ export default function LessonVocabPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [draftItems, setDraftItems] = useState([]);
-  const [aiProvider, setAiProvider] = useState('');
   const [savingDraft, setSavingDraft] = useState(false);
 
   useEffect(() => { load(); }, [lessonId]);
@@ -77,7 +76,6 @@ export default function LessonVocabPage() {
         return;
       }
       setDraftItems(data.items.map((it) => ({ word: it.word, meaning: it.meaning, example: it.example || '' })));
-      setAiProvider(data.provider || '');
     } catch (e) {
       setAiError('Không kết nối được tới AI. Kiểm tra lại kết nối mạng.');
     } finally {
@@ -223,7 +221,7 @@ export default function LessonVocabPage() {
 
       {draftItems.length > 0 && (
         <div className="draft-section">
-          <h4>Kết quả AI — kiểm tra và chỉnh sửa trước khi lưu {aiProvider && <span style={{ fontWeight: 500, fontSize: 12, color: '#6d3fd6' }}>(xử lý bởi {aiProvider})</span>}</h4>
+          <h4>Kết quả AI — kiểm tra và chỉnh sửa trước khi lưu</h4>
           <p className="draft-sub">Sửa lại nếu AI chưa đúng, xóa dòng thừa, rồi bấm "Lưu tất cả" để thêm vào bài học.</p>
           {draftItems.map((d, i) => (
             <div key={i} className="draft-row">

@@ -48,21 +48,39 @@ async function callGemini(text) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Chưa cấu hình GEMINI_API_KEY');
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: 'user', parts: [{ text }] }],
-      }),
+  const maxAttempts = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ role: 'user', parts: [{ text }] }],
+        }),
+      }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      const rawText = data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('\n') || '';
+      return extractJsonArray(rawText);
     }
-  );
-  if (!res.ok) throw new Error(`Gemini lỗi ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  const rawText = data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('\n') || '';
-  return extractJsonArray(rawText);
+
+    // Lỗi 503 (quá tải tạm thời) hoặc 429 (vượt hạn mức tức thời) -> thử lại sau vài giây
+    if ((res.status === 503 || res.status === 429) && attempt < maxAttempts) {
+      lastError = new Error(`Gemini lỗi ${res.status}: ${await res.text()}`);
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+      continue;
+    }
+
+    throw new Error(`Gemini lỗi ${res.status}: ${await res.text()}`);
+  }
+
+  throw lastError;
 }
 
 export async function POST(request) {
@@ -79,6 +97,9 @@ export async function POST(request) {
     }
     return NextResponse.json({ items, provider: 'Gemini' });
   } catch (e) {
-    return NextResponse.json({ error: e.message || 'Lỗi không xác định khi gọi Gemini' }, { status: 500 });
+    const msg = (e.message || '').includes('503') || (e.message || '').includes('UNAVAILABLE')
+      ? 'Gemini đang quá tải tạm thời (đã tự thử lại 3 lần). Vui lòng đợi khoảng 1 phút rồi bấm lại.'
+      : (e.message || 'Lỗi không xác định khi gọi Gemini');
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
