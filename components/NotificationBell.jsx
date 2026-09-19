@@ -16,6 +16,31 @@ export default function NotificationBell({ studentId }) {
 
   const unread = list.filter((n) => !n.is_read).length;
 
+  // Trinh duyet chan am thanh tu phat khi trang chua co tuong tac nao cua
+  // nguoi dung. "Mo khoa" AudioContext ngay o lan cham/bam DAU TIEN bat ky
+  // dau tren trang, de khi popup tu bat len sau do van co tieng "ting".
+  useEffect(() => {
+    const unlock = () => {
+      try {
+        if (!audioCtxRef.current) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          if (Ctx) audioCtxRef.current = new Ctx();
+        }
+        audioCtxRef.current?.resume?.();
+      } catch {
+        // bo qua neu trinh duyet van tu choi - khong lam vo giao dien
+      }
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
   const playDing = useCallback((isPositive) => {
     try {
       if (!audioCtxRef.current) {
@@ -254,17 +279,22 @@ export default function NotificationBell({ studentId }) {
       )}
 
       {toast && (
-        <div
-          key={toast.id}
-          className={`nbpop ${toastClosing ? "nbpop-closing" : ""} ${
-            toast.xp_amount === null || toast.xp_amount === undefined
-              ? "nbpop-info"
-              : isUp
-              ? "nbpop-up"
-              : "nbpop-down"
-          }`}
-        >
-          <div className="nbpop-row">
+        <div className={`nbpop-backdrop ${toastClosing ? "nbpop-backdrop-closing" : ""}`}>
+          <div
+            key={toast.id}
+            className={`nbpop ${
+              toast.xp_amount === null || toast.xp_amount === undefined
+                ? "nbpop-info"
+                : isUp
+                ? "nbpop-up"
+                : "nbpop-down"
+            }`}
+          >
+            {toast.xp_amount > 0 && (
+              <div className="nbpop-confetti" aria-hidden="true">
+                <span>🎊</span><span>⭐</span><span>✨</span><span>🎉</span><span>🌟</span><span>✨</span>
+              </div>
+            )}
             <div className="nbpop-emoji">
               {toast.xp_amount === null || toast.xp_amount === undefined ? "📢" : isUp ? "🎉" : "📌"}
             </div>
@@ -278,10 +308,10 @@ export default function NotificationBell({ studentId }) {
                 </div>
               )}
             </div>
+            <button className="nbpop-ack" onClick={dismissToast}>
+              <span className="nbpop-ack-check">✓</span> Đã rõ
+            </button>
           </div>
-          <button className="nbpop-ack" onClick={dismissToast}>
-            <span className="nbpop-ack-check">✓</span> Đã rõ
-          </button>
         </div>
       )}
 
@@ -360,78 +390,111 @@ export default function NotificationBell({ studentId }) {
         }
         .item-delete:hover { color: var(--coral, #ff6b4d); background: rgba(255,107,77,0.1); }
 
+        .nbpop-backdrop {
+          position: fixed; inset: 0; z-index: 300;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(11,32,52,0.52);
+          padding: 20px; box-sizing: border-box;
+          animation: nbpopFadeIn 0.25s ease;
+        }
+        .nbpop-backdrop.nbpop-backdrop-closing {
+          animation: nbpopFadeOut 0.28s ease forwards;
+        }
+        @keyframes nbpopFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes nbpopFadeOut { from { opacity: 1; } to { opacity: 0; } }
+
         .nbpop {
-          position: fixed; top: 20px; right: 20px; z-index: 200;
-          display: flex; flex-direction: column; gap: 12px;
-          background: var(--card, #fff); border-radius: 18px; padding: 16px 16px 14px;
-          box-shadow: 0 20px 44px -10px rgba(15,42,68,0.4);
-          width: 360px; max-width: calc(100vw - 24px); max-height: 220px;
-          box-sizing: border-box; overflow: hidden;
-          opacity: 1;
-          animation: popIn 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+          position: relative;
+          display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px;
+          background: var(--card, #fff); border-radius: 26px; padding: 34px 28px 26px;
+          box-shadow: 0 30px 70px -14px rgba(0,0,0,0.5);
+          width: 380px; max-width: 100%;
+          overflow: visible;
+          animation: nbpopPopIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
-        .nbpop.nbpop-closing {
-          animation: popOut 0.32s cubic-bezier(0.4, 0, 1, 1) forwards;
-        }
-        .nbpop-row { display: flex; gap: 12px; align-items: flex-start; }
         .nbpop-up {
-          border: 1.5px solid var(--gold, #e8af2e);
+          border: 2px solid var(--gold, #e8af2e);
           background: linear-gradient(180deg, #fff 0%, #fffaf0 100%);
         }
-        .nbpop-down { border: 1.5px solid var(--coral, #ff6b4d); }
-        .nbpop-info { border: 1.5px solid var(--ocean, #1b6fb8); }
-        .nbpop-emoji { font-size: 30px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.12)); }
-        .nbpop-body { flex: 1; min-width: 0; }
+        .nbpop-down { border: 2px solid var(--coral, #ff6b4d); }
+        .nbpop-info { border: 2px solid var(--ocean, #1b6fb8); }
+        .nbpop-emoji {
+          font-size: 52px; line-height: 1;
+          filter: drop-shadow(0 4px 8px rgba(0,0,0,0.15));
+          animation: nbpopBounce 0.6s ease 0.15s both;
+        }
+        .nbpop-body { display: flex; flex-direction: column; align-items: center; gap: 4px; }
         .nbpop-title {
-          font-weight: 700; font-size: 14.5px; font-family: 'Baloo 2', sans-serif;
-          color: var(--ink, #0f2a44);
+          font-weight: 800; font-size: 19px; font-family: 'Baloo 2', sans-serif;
+          color: var(--ink, #0f2a44); line-height: 1.3;
         }
-        .nbpop-content { font-size: 13px; color: var(--ink-soft, #4e6a88); margin-top: 3px; line-height: 1.4; }
+        .nbpop-content { font-size: 14px; color: var(--ink-soft, #4e6a88); line-height: 1.5; }
         .nbpop-xp {
-          display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px;
-          font-weight: 800; font-size: 13px; color: #fff;
+          display: inline-block; margin-top: 4px; padding: 5px 16px; border-radius: 999px;
+          font-weight: 800; font-size: 16px; color: #fff;
           background: linear-gradient(135deg, var(--gold-dark,#b9820e), var(--gold,#e8af2e));
-          box-shadow: 0 3px 8px rgba(232,175,46,0.4);
-          animation: popNum 0.4s ease 0.15s both;
+          box-shadow: 0 4px 12px rgba(232,175,46,0.45);
+          animation: popNum 0.4s ease 0.25s both;
         }
-        .nbpop-xp-down { background: linear-gradient(135deg,#c94a34, var(--coral,#ff6b4d)); box-shadow: 0 3px 8px rgba(255,107,77,0.4); }
+        .nbpop-xp-down { background: linear-gradient(135deg,#c94a34, var(--coral,#ff6b4d)); box-shadow: 0 4px 12px rgba(255,107,77,0.4); }
         @keyframes popNum { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
         .nbpop-ack {
-          align-self: flex-end; display: flex; align-items: center; gap: 6px;
-          border: none; cursor: pointer; padding: 8px 18px; border-radius: 999px;
-          font-weight: 700; font-size: 13.5px; color: #fff;
+          margin-top: 10px; display: flex; align-items: center; gap: 7px;
+          border: none; cursor: pointer; padding: 11px 30px; border-radius: 999px;
+          font-weight: 700; font-size: 15px; color: #fff;
           background: linear-gradient(135deg, var(--ocean-dark,#0f4c82), var(--ocean,#1b6fb8));
-          box-shadow: 0 6px 16px -4px rgba(27,111,184,0.55);
+          box-shadow: 0 8px 20px -4px rgba(27,111,184,0.55);
           transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
-        .nbpop-ack:hover { transform: translateY(-1px); box-shadow: 0 8px 20px -4px rgba(27,111,184,0.6); }
+        .nbpop-ack:hover { transform: translateY(-1px); box-shadow: 0 10px 24px -4px rgba(27,111,184,0.6); }
         .nbpop-ack:active {
           transform: scale(0.94);
           animation: ackPulse 0.35s ease;
         }
         .nbpop-ack-check {
           display: inline-flex; align-items: center; justify-content: center;
-          width: 16px; height: 16px; border-radius: 50%; background: rgba(255,255,255,0.25);
-          font-size: 11px; line-height: 1;
+          width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.25);
+          font-size: 12px; line-height: 1;
         }
         @keyframes ackPulse {
           0% { box-shadow: 0 0 0 0 rgba(27,111,184,0.55); }
-          100% { box-shadow: 0 0 0 14px rgba(27,111,184,0); }
+          100% { box-shadow: 0 0 0 16px rgba(27,111,184,0); }
         }
 
-        @keyframes popIn {
-          from { opacity: 0; transform: translateX(48px) scale(0.9); }
-          to { opacity: 1; transform: translateX(0) scale(1); }
+        .nbpop-confetti { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+        .nbpop-confetti span {
+          position: absolute; font-size: 20px; opacity: 0; top: 50%; left: 50%;
+          animation: nbpopConfetti 1.1s ease-out forwards;
         }
-        @keyframes popOut {
-          from { opacity: 1; transform: translateX(0) scale(1); max-height: 220px; }
-          to { opacity: 0; transform: translateX(24px) scale(0.94); max-height: 220px; }
+        .nbpop-confetti span:nth-child(1) { animation-delay: 0.05s; --tx: -120px; --ty: -90px; }
+        .nbpop-confetti span:nth-child(2) { animation-delay: 0.12s; --tx: 110px; --ty: -100px; }
+        .nbpop-confetti span:nth-child(3) { animation-delay: 0.02s; --tx: -80px; --ty: 40px; }
+        .nbpop-confetti span:nth-child(4) { animation-delay: 0.18s; --tx: 130px; --ty: 20px; }
+        .nbpop-confetti span:nth-child(5) { animation-delay: 0.09s; --tx: -20px; --ty: -130px; }
+        .nbpop-confetti span:nth-child(6) { animation-delay: 0.22s; --tx: 40px; --ty: -60px; }
+        @keyframes nbpopConfetti {
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3) rotate(0deg); }
+          25% { opacity: 1; }
+          100% {
+            opacity: 0;
+            transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(1.15) rotate(50deg);
+          }
+        }
+
+        @keyframes nbpopPopIn {
+          from { opacity: 0; transform: scale(0.72) translateY(16px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes nbpopBounce {
+          0% { transform: scale(0); }
+          60% { transform: scale(1.18); }
+          100% { transform: scale(1); }
         }
 
         @media (max-width: 480px) {
           .panel { width: 88vw; right: 6px; top: 70px; }
-          .nbpop { left: 12px; right: 12px; top: 12px; width: auto; max-width: none; }
+          .nbpop { width: 100%; padding: 28px 20px 22px; }
         }
       `}</style>
     </div>

@@ -10,6 +10,7 @@ import styles from './admin.module.css'
 import QaArchivePanel from './QaArchivePanel'
 import AwardXpForm from '@/components/AwardXpForm'
 import SendNotificationPanel from '@/components/SendNotificationPanel'
+import NotificationHistoryPanel from '@/components/NotificationHistoryPanel'
 
 const ROLE_LABEL = { admin: 'Quản trị viên', teacher: 'Giáo viên', student: 'Học sinh' }
 const GRADE_OPTIONS = [6, 7, 8, 9]
@@ -92,6 +93,7 @@ export default function AdminPage() {
   // ---- Chọn nhiều để xoá hàng loạt ----
   const [selectedUserIds, setSelectedUserIds] = useState(new Set())
   const [sendNotifOpen, setSendNotifOpen] = useState(false)
+  const [notifHistoryOpen, setNotifHistoryOpen] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkError, setBulkError] = useState('')
 
@@ -1265,6 +1267,13 @@ export default function AdminPage() {
               <button
                 type="button"
                 className={styles.linkBtn}
+                onClick={() => setNotifHistoryOpen((v) => !v)}
+              >
+                {notifHistoryOpen ? 'Đóng lịch sử' : '🕘 Lịch sử thông báo'}
+              </button>
+              <button
+                type="button"
+                className={styles.linkBtn}
                 onClick={() => setAccountsOpen((prev) => !prev)}
               >
                 {accountsOpen ? 'Ẩn danh sách' : 'Hiện danh sách'}
@@ -1284,6 +1293,10 @@ export default function AdminPage() {
               gradeOptions={GRADE_OPTIONS}
               onClose={() => setSendNotifOpen(false)}
             />
+          )}
+
+          {notifHistoryOpen && (
+            <NotificationHistoryPanel onClose={() => setNotifHistoryOpen(false)} />
           )}
 
           {/* Dai thong ke nhanh - luon hien, giup lap khoang trong khi so
