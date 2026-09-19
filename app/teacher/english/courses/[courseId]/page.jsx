@@ -5,18 +5,20 @@ import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { ENGLISH_SUBJECT_ID } from '@/lib/englishXp';
 
+const backLinkStyle = { color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' };
+
 export default function CourseUnitsPage() {
   const { courseId } = useParams();
   const router = useRouter();
   const [course, setCourse] = useState(null);
   const [units, setUnits] = useState([]);
-  const [classes, setClasses] = useState([]);
+  const [grades, setGrades] = useState([]);
   const [newTitle, setNewTitle] = useState('');
 
   const [editingCourse, setEditingCourse] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [editDesc, setEditDesc] = useState('');
-  const [editClassId, setEditClassId] = useState('');
+  const [editGrade, setEditGrade] = useState('');
 
   const [editingUnitId, setEditingUnitId] = useState(null);
   const [editUnitTitle, setEditUnitTitle] = useState('');
@@ -24,27 +26,26 @@ export default function CourseUnitsPage() {
   useEffect(() => { load(); }, [courseId]);
 
   async function load() {
-    const { data: c } = await supabase.from('eng_courses').select('*, classes(name, grade)').eq('id', courseId).single();
+    const { data: c } = await supabase.from('eng_courses').select('*').eq('id', courseId).single();
     setCourse(c);
     setEditTitle(c?.title || '');
     setEditDesc(c?.description || '');
-    setEditClassId(c?.class_id || '');
+    setEditGrade(c?.grade || '');
 
     const { data: u } = await supabase.from('eng_units').select('*').eq('course_id', courseId).order('order_index', { ascending: true });
     setUnits(u || []);
 
     const { data: { user } } = await supabase.auth.getUser();
     const { data: ta } = await supabase
-      .from('teacher_assignments').select('classes(id, name, grade)')
+      .from('teacher_assignments').select('classes(grade)')
       .eq('teacher_id', user.id).eq('subject_id', ENGLISH_SUBJECT_ID);
-    const uniqueMap = new Map();
-    (ta || []).forEach((row) => { if (row.classes) uniqueMap.set(row.classes.id, row.classes); });
-    setClasses(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+    const uniqueGrades = Array.from(new Set((ta || []).map((r) => r.classes?.grade).filter((g) => g != null))).sort((a, b) => a - b);
+    setGrades(uniqueGrades);
   }
 
   async function saveCourseEdit(e) {
     e.preventDefault();
-    await supabase.from('eng_courses').update({ title: editTitle, description: editDesc, class_id: editClassId || null }).eq('id', courseId);
+    await supabase.from('eng_courses').update({ title: editTitle, description: editDesc, grade: editGrade ? Number(editGrade) : null }).eq('id', courseId);
     setEditingCourse(false);
     load();
   }
@@ -92,12 +93,11 @@ export default function CourseUnitsPage() {
     <div className="wrap">
       <style jsx>{`
         .wrap { max-width: 760px; margin: 0 auto; padding: 28px 24px 64px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
-        .back-link { color: #225da3; font-weight: 600; font-size: 13.5px; text-decoration: none; }
         .course-head { background: #fff; border-radius: 18px; padding: 22px 24px; margin: 14px 0 28px; border: 1px solid #e5eeec;
           box-shadow: 0 2px 8px rgba(23,48,45,0.04); display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
         .course-head h1 { margin: 0 0 4px; font-size: 22px; color: #17302d; }
         .course-head p.desc { color: #4b5563; font-size: 14px; margin: 2px 0 8px; }
-        .class-badge { display: inline-block; font-size: 12px; font-weight: 600; color: #225da3; background: #E9F2FC; padding: 3px 10px; border-radius: 999px; }
+        .grade-badge { display: inline-block; font-size: 12px; font-weight: 600; color: #225da3; background: #E9F2FC; padding: 3px 10px; border-radius: 999px; }
         .head-actions { display: flex; gap: 8px; flex-shrink: 0; }
         .icon-btn { border: 1.5px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 8px 14px; font-size: 13px;
           font-weight: 600; cursor: pointer; color: #374151; display: inline-flex; align-items: center; gap: 6px; }
@@ -117,8 +117,6 @@ export default function CourseUnitsPage() {
         .unit-row:hover { box-shadow: 0 4px 12px rgba(23,48,45,0.07); }
         .unit-num { width: 30px; height: 30px; border-radius: 50%; background: #E9F2FC; color: #225da3; font-weight: 700;
           font-size: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .unit-link { flex: 1; color: #17302d; font-weight: 600; text-decoration: none; font-size: 15px; }
-        .unit-link:hover { color: #225da3; }
         .mini-btn { border: none; background: #f3f4f6; border-radius: 8px; width: 30px; height: 30px; cursor: pointer;
           font-size: 14px; color: #4b5563; display: flex; align-items: center; justify-content: center; }
         .mini-btn:hover { background: #e5e7eb; }
@@ -131,16 +129,14 @@ export default function CourseUnitsPage() {
         .empty-units { text-align: center; padding: 40px 20px; color: #9ca3af; background: #fff; border-radius: 14px; border: 1px dashed #cfe2f7; }
       `}</style>
 
-      <Link href="/teacher/english" className="back-link" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← Lộ trình Tiếng Anh</Link>
+      <Link href="/teacher/english" style={backLinkStyle}>← Lộ trình Tiếng Anh</Link>
 
       {!editingCourse ? (
         <div className="course-head">
           <div>
             <h1>{course.title}</h1>
             {course.description && <p className="desc">{course.description}</p>}
-            <span className="class-badge">
-              {course.classes ? `${course.classes.name}${course.classes.grade ? ` · Khối ${course.classes.grade}` : ''}` : 'Chưa gán lớp'}
-            </span>
+            <span className="grade-badge">{course.grade ? `Khối ${course.grade}` : 'Chưa chọn khối'}</span>
           </div>
           <div className="head-actions">
             <button className="icon-btn" onClick={() => setEditingCourse(true)}>✎ Sửa</button>
@@ -153,10 +149,10 @@ export default function CourseUnitsPage() {
           <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} required />
           <label>Mô tả</label>
           <textarea rows={2} value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
-          <label>Lớp</label>
-          <select value={editClassId} onChange={(e) => setEditClassId(e.target.value)}>
-            <option value="">-- Chưa gán lớp --</option>
-            {classes.map((c) => <option key={c.id} value={c.id}>{c.name}{c.grade ? ` (Khối ${c.grade})` : ''}</option>)}
+          <label>Khối</label>
+          <select value={editGrade} onChange={(e) => setEditGrade(e.target.value)}>
+            <option value="">-- Chưa chọn khối --</option>
+            {grades.map((g) => <option key={g} value={g}>Khối {g}</option>)}
           </select>
           <div className="btn-row">
             <button type="submit" className="save-btn">Lưu thay đổi</button>
@@ -165,7 +161,7 @@ export default function CourseUnitsPage() {
         </form>
       )}
 
-      <h2 className="section-title">📂 Các chủ đề (Unit)</h2>
+      <h2 className="section-title">Các chủ đề (Unit)</h2>
 
       {units.length === 0 && <div className="empty-units">Chưa có chủ đề nào — thêm chủ đề đầu tiên bên dưới.</div>}
 
@@ -181,7 +177,7 @@ export default function CourseUnitsPage() {
             ) : (
               <>
                 <div className="unit-num">{idx + 1}</div>
-                <Link href={`/teacher/english/units/${u.id}`} className="unit-link" style={{ color: '#17302d', fontWeight: 600, fontSize: 15, textDecoration: 'none', flex: 1 }}>{u.title}</Link>
+                <Link href={`/teacher/english/units/${u.id}`} style={{ color: '#17302d', fontWeight: 600, fontSize: 15, textDecoration: 'none', flex: 1 }}>{u.title}</Link>
                 <button className="mini-btn" onClick={() => startEditUnit(u)} title="Sửa">✎</button>
                 <button className="mini-btn" onClick={() => moveUnit(u, -1)} disabled={idx === 0} title="Lên">↑</button>
                 <button className="mini-btn" onClick={() => moveUnit(u, 1)} disabled={idx === units.length - 1} title="Xuống">↓</button>

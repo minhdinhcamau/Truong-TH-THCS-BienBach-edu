@@ -9,23 +9,24 @@ export default function NewCoursePage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [classId, setClassId] = useState('');
-  const [classes, setClasses] = useState([]);
+  const [grade, setGrade] = useState('');
+  const [grades, setGrades] = useState([]);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  useEffect(() => { loadClasses(); }, []);
+  useEffect(() => { loadGrades(); }, []);
 
-  async function loadClasses() {
+  async function loadGrades() {
     const { data: { user } } = await supabase.auth.getUser();
     const { data } = await supabase
       .from('teacher_assignments')
-      .select('classes(id, name, grade)')
+      .select('classes(grade)')
       .eq('teacher_id', user.id)
       .eq('subject_id', ENGLISH_SUBJECT_ID);
-    const uniqueMap = new Map();
-    (data || []).forEach((row) => { if (row.classes) uniqueMap.set(row.classes.id, row.classes); });
-    setClasses(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+    const uniqueGrades = Array.from(
+      new Set((data || []).map((r) => r.classes?.grade).filter((g) => g != null))
+    ).sort((a, b) => a - b);
+    setGrades(uniqueGrades);
   }
 
   async function handleSubmit(e) {
@@ -35,7 +36,7 @@ export default function NewCoursePage() {
     const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from('eng_courses')
-      .insert({ title, description, class_id: classId || null, created_by: user.id })
+      .insert({ title, description, grade: grade ? Number(grade) : null, created_by: user.id })
       .select()
       .single();
     setSaving(false);
@@ -47,7 +48,6 @@ export default function NewCoursePage() {
     <div className="wrap">
       <style jsx>{`
         .wrap { max-width: 520px; margin: 0 auto; padding: 28px 24px 64px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
-        .back-link { color: #225da3; font-weight: 600; font-size: 13.5px; text-decoration: none; }
         .card { background: #fff; border-radius: 20px; padding: 28px; margin-top: 16px; box-shadow: 0 2px 10px rgba(23,48,45,0.05); border: 1px solid #e5eeec; }
         .card h1 { margin: 0 0 4px; font-size: 22px; color: #17302d; }
         .card .sub { color: #6b7f7a; font-size: 13.5px; margin: 0 0 22px; }
@@ -65,28 +65,28 @@ export default function NewCoursePage() {
         .submit-btn:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; }
       `}</style>
 
-      <Link href="/teacher/english" className="back-link" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← Lộ trình Tiếng Anh</Link>
+      <Link href="/teacher/english" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← Lộ trình Tiếng Anh</Link>
 
       <div className="card">
         <h1>Tạo khóa học mới</h1>
-        <p className="sub">Ví dụ: một khóa học cho mỗi khối lớp bạn phụ trách.</p>
+        <p className="sub">Khóa học áp dụng chung cho cả khối, không gán riêng từng lớp (việc giao bài theo từng lớp sẽ làm ở tính năng "Giao bài tập về nhà").</p>
 
         <form onSubmit={handleSubmit}>
           <label>Tên khóa học</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Ví dụ: Tiếng Anh lớp 6" />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Ví dụ: Tiếng Anh Khối 6" />
 
           <label>Mô tả (tùy chọn)</label>
           <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ghi chú ngắn về nội dung khóa học..." />
 
-          <label>Gán cho lớp</label>
-          <select value={classId} onChange={(e) => setClassId(e.target.value)}>
-            <option value="">-- Chưa gán lớp --</option>
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}{c.grade ? ` (Khối ${c.grade})` : ''}</option>
+          <label>Áp dụng cho khối</label>
+          <select value={grade} onChange={(e) => setGrade(e.target.value)}>
+            <option value="">-- Chưa chọn khối --</option>
+            {grades.map((g) => (
+              <option key={g} value={g}>Khối {g}</option>
             ))}
           </select>
-          {classes.length === 0 && (
-            <p className="hint">Bạn chưa được phân công dạy môn Tiếng Anh ở lớp nào — kiểm tra mục "Phân công giảng dạy" trong trang Admin.</p>
+          {grades.length === 0 && (
+            <p className="hint">Bạn chưa được phân công dạy môn Tiếng Anh ở khối nào — kiểm tra mục "Phân công giảng dạy" trong trang Admin.</p>
           )}
 
           {errorMsg && <div className="error">{errorMsg}</div>}

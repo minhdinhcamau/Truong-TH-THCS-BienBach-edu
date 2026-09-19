@@ -14,7 +14,7 @@ export default function TeacherEnglishHome() {
     const { data: { user } } = await supabase.auth.getUser();
     const { data } = await supabase
       .from('eng_courses')
-      .select('id, title, description, created_at, classes(name, grade)')
+      .select('id, title, description, created_at, grade')
       .eq('created_by', user.id)
       .order('created_at', { ascending: false });
     setCourses(data || []);
@@ -76,7 +76,7 @@ export default function TeacherEnglishHome() {
             <div className="cc-icon">🇬🇧</div>
             <div className="cc-title">{c.title}</div>
             <span className="cc-class">
-              {c.classes ? `${c.classes.name}${c.classes.grade ? ` · Khối ${c.classes.grade}` : ''}` : 'Chưa gán lớp'}
+              {c.grade ? `Khối ${c.grade}` : 'Chưa chọn khối'}
             </span>
             {c.description && <div className="cc-desc">{c.description}</div>}
           </Link>
