@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
-const backLinkStyle = { color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' };
+const backLinkStyle = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999, border: '1.5px solid #dbe7f3', background: '#fff', color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none', boxShadow: '0 1px 3px rgba(23,48,45,0.04)' };
 const ALL_GRADES = [6, 7, 8, 9];
 
 export default function CourseUnitsPage() {

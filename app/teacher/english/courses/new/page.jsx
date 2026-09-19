@@ -1,6 +1,6 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -8,9 +8,10 @@ const ALL_GRADES = [6, 7, 8, 9];
 
 export default function NewCoursePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [grade, setGrade] = useState('');
+  const [grade, setGrade] = useState(searchParams.get('grade') || '');
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -50,7 +51,11 @@ export default function NewCoursePage() {
         .submit-btn:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; }
       `}</style>
 
-      <Link href="/teacher/english" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← Lộ trình Tiếng Anh</Link>
+      <Link href="/teacher/english" style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999,
+        border: '1.5px solid #dbe7f3', background: '#fff', color: '#225da3', fontWeight: 600, fontSize: 13.5,
+        textDecoration: 'none', boxShadow: '0 1px 3px rgba(23,48,45,0.04)',
+      }}>← Lộ trình Tiếng Anh</Link>
 
       <div className="card">
         <h1>Tạo khóa học mới</h1>

@@ -83,7 +83,11 @@ export default function LessonVocabPage() {
         .tip { margin-top: 20px; font-size: 12.5px; color: #9ca3af; text-align: center; }
       `}</style>
 
-      <Link href={`/teacher/english/units/${lesson.eng_units.id}`} className="back-link" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← {lesson.eng_units.title}</Link>
+      <Link href={`/teacher/english/units/${lesson.eng_units.id}`} className="back-link" style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999,
+        border: '1.5px solid #dbe7f3', background: '#fff', color: '#225da3', fontWeight: 600, fontSize: 13.5,
+        textDecoration: 'none', boxShadow: '0 1px 3px rgba(23,48,45,0.04)',
+      }}>← {lesson.eng_units.title}</Link>
       <h1>📝 {lesson.title}</h1>
       <span className={`count-note ${notEnough ? 'warn' : 'ok'}`}>
         {notEnough

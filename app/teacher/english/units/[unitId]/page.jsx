@@ -100,7 +100,11 @@ export default function UnitLessonsPage() {
         .add-btn { width: 100%; margin-top: 14px; background: #225da3; color: #fff; border: none; border-radius: 11px; padding: 12px; font-weight: 700; cursor: pointer; }
       `}</style>
 
-      <Link href={`/teacher/english/courses/${unit.eng_courses.id}`} className="back-link" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← {unit.eng_courses.title}</Link>
+      <Link href={`/teacher/english/courses/${unit.eng_courses.id}`} className="back-link" style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999,
+        border: '1.5px solid #dbe7f3', background: '#fff', color: '#225da3', fontWeight: 600, fontSize: 13.5,
+        textDecoration: 'none', boxShadow: '0 1px 3px rgba(23,48,45,0.04)',
+      }}>← {unit.eng_courses.title}</Link>
       <h1>📂 {unit.title}</h1>
 
       <h2 className="section-title">📝 Các bài học (Lesson)</h2>
