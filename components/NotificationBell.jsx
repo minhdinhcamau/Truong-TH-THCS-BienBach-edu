@@ -11,6 +11,7 @@ export default function NotificationBell({ studentId }) {
   const shownRef = useRef(new Set()); // tránh hiện popup 2 lần cho cùng 1 thông báo
   const audioCtxRef = useRef(null);
   const [debugErr, setDebugErr] = useState(null);
+  const [detail, setDetail] = useState(null); // thong bao dang xem chi tiet (bam tu danh sach)
   const queueRef = useRef([]); // thong bao dang cho, chua den luot hien
   const toastRef = useRef(null); // phan chieu dong bo cua state "toast" hien tai
 
@@ -262,14 +263,29 @@ export default function NotificationBell({ studentId }) {
           )}
           <div className="panel-list">
             {list.map((n) => (
-              <div key={n.id} className={`item ${n.is_read ? "" : "unread"}`}>
+              <div
+                key={n.id}
+                className={`item ${n.is_read ? "" : "unread"}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => setDetail(n)}
+                onKeyDown={(e) => e.key === "Enter" && setDetail(n)}
+              >
                 <div className="item-icon">{iconFor(n.xp_amount)}</div>
                 <div className="item-body">
                   <div className="item-title">{n.title}</div>
-                  {n.content && <div className="item-content">{n.content}</div>}
+                  {n.content && <div className="item-content item-content-clamp">{n.content}</div>}
                   <div className="item-time">{new Date(n.created_at).toLocaleString("vi-VN")}</div>
                 </div>
-                <button className="item-delete" onClick={() => deleteOne(n.id)} aria-label="Xoá thông báo" title="Xoá">
+                <button
+                  className="item-delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteOne(n.id);
+                  }}
+                  aria-label="Xoá thông báo"
+                  title="Xoá"
+                >
                   🗑
                 </button>
               </div>
@@ -309,6 +325,43 @@ export default function NotificationBell({ studentId }) {
               )}
             </div>
             <button className="nbpop-ack" onClick={dismissToast}>
+              <span className="nbpop-ack-check">✓</span> Đã rõ
+            </button>
+          </div>
+        </div>
+      )}
+
+      {detail && (
+        <div className="nbpop-backdrop" onClick={() => setDetail(null)}>
+          <div
+            className={`nbpop ${
+              detail.xp_amount === null || detail.xp_amount === undefined
+                ? "nbpop-info"
+                : detail.xp_amount >= 0
+                ? "nbpop-up"
+                : "nbpop-down"
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="nbpop-emoji">
+              {detail.xp_amount === null || detail.xp_amount === undefined
+                ? "📢"
+                : detail.xp_amount >= 0
+                ? "🎉"
+                : "📌"}
+            </div>
+            <div className="nbpop-body">
+              <div className="nbpop-title">{detail.title}</div>
+              {detail.content && <div className="nbpop-content">{detail.content}</div>}
+              {detail.xp_amount !== null && detail.xp_amount !== undefined && (
+                <div className={`nbpop-xp ${detail.xp_amount >= 0 ? "" : "nbpop-xp-down"}`}>
+                  {detail.xp_amount >= 0 ? "+" : ""}
+                  {detail.xp_amount} KN
+                </div>
+              )}
+              <div className="nbpop-detail-time">{new Date(detail.created_at).toLocaleString("vi-VN")}</div>
+            </div>
+            <button className="nbpop-ack" onClick={() => setDetail(null)}>
               <span className="nbpop-ack-check">✓</span> Đã rõ
             </button>
           </div>
@@ -376,10 +429,18 @@ export default function NotificationBell({ studentId }) {
         .panel-close:hover { opacity: 1; }
         .panel-list { overflow-y: auto; }
         .empty { padding: 28px 16px; text-align: center; color: var(--ink-faint, #93aac4); font-size: 14px; }
-        .item { padding: 12px 16px; border-bottom: 1px solid var(--line, #eef4fb); display: flex; gap: 10px; align-items: flex-start; }
+        .item {
+          padding: 12px 16px; border-bottom: 1px solid var(--line, #eef4fb); display: flex; gap: 10px;
+          align-items: flex-start; cursor: pointer; transition: background 0.15s ease;
+        }
+        .item:hover { background: var(--ocean-tint, #eaf4fc); }
         .item.unread { background: var(--ocean-tint, #eaf4fc); }
         .item-icon { font-size: 18px; margin-top: 1px; }
         .item-body { flex: 1; min-width: 0; }
+        .item-content-clamp {
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+          overflow: hidden; word-break: break-word;
+        }
         .item-title { font-weight: 700; font-size: 13.5px; color: var(--ink, #0f2a44); }
         .item-content { font-size: 12.5px; color: var(--ink-soft, #4e6a88); margin-top: 2px; line-height: 1.4; }
         .item-time { font-size: 11px; color: var(--ink-faint, #93aac4); margin-top: 4px; }
@@ -428,7 +489,12 @@ export default function NotificationBell({ studentId }) {
           font-weight: 800; font-size: 19px; font-family: 'Baloo 2', sans-serif;
           color: var(--ink, #0f2a44); line-height: 1.3;
         }
-        .nbpop-content { font-size: 14px; color: var(--ink-soft, #4e6a88); line-height: 1.5; }
+        .nbpop-content {
+          font-size: 14px; color: var(--ink-soft, #4e6a88); line-height: 1.5;
+          overflow-wrap: break-word; word-break: break-word;
+          max-height: 42vh; overflow-y: auto; padding: 0 2px;
+        }
+        .nbpop-detail-time { font-size: 11.5px; color: var(--ink-faint, #93aac4); margin-top: 6px; }
         .nbpop-xp {
           display: inline-block; margin-top: 4px; padding: 5px 16px; border-radius: 999px;
           font-weight: 800; font-size: 16px; color: #fff;
