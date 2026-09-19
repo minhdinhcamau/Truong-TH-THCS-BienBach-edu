@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 
-// API route: nhận đoạn văn bản từ vựng (lộn xộn), gọi lần lượt Claude -> ChatGPT -> Gemini
-// để tách thành mảng {word, meaning, example}. Cái nào lỗi/hết hạn mức thì tự chuyển
-// sang cái tiếp theo. Cần ít nhất 1 trong 3 biến môi trường sau trên Vercel:
-//   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
+// API route: nhận đoạn văn bản từ vựng (lộn xộn), gọi Gemini để tách thành
+// mảng {word, meaning, example}. Cần biến môi trường GEMINI_API_KEY trên Vercel.
 
 const SYSTEM_PROMPT = `Bạn là công cụ trích xuất từ vựng tiếng Anh cho giáo viên THCS ở Việt Nam.
 Người dùng dán một đoạn văn bản chứa danh sách từ vựng tiếng Anh, có thể lộn xộn, sai định dạng,
@@ -35,72 +33,23 @@ function cleanItems(items) {
 
 function extractJsonArray(rawText) {
   const cleaned = rawText.replace(/```json|```/g, '').trim();
-  // AI thỉnh thoảng bọc thêm chữ thừa quanh JSON -> cắt lấy đúng đoạn [ ... ]
   const start = cleaned.indexOf('[');
   const end = cleaned.lastIndexOf(']');
   const jsonSlice = start !== -1 && end !== -1 ? cleaned.slice(start, end + 1) : cleaned;
   return JSON.parse(jsonSlice);
 }
 
-// ---- Claude (Anthropic) ----
-async function callClaude(text) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('Chưa cấu hình ANTHROPIC_API_KEY');
+// ⚠️ Tên model Gemini có thể đổi theo thời gian (Google ngừng hỗ trợ bản cũ).
+// Nếu sau này lại báo lỗi 404 "model ... no longer available", đổi giá trị
+// bên dưới theo đúng tên model mới mà thông báo lỗi đó gợi ý.
+const GEMINI_MODEL = 'gemini-3.6-flash';
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 3000,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: text }],
-    }),
-  });
-  if (!res.ok) throw new Error(`Claude lỗi ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  const rawText = (data.content || []).map((b) => b.text || '').join('\n');
-  return extractJsonArray(rawText);
-}
-
-// ---- ChatGPT (OpenAI) ----
-async function callOpenAI(text) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('Chưa cấu hình OPENAI_API_KEY');
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT + '\n\nTrả lời dưới dạng JSON object có 1 khóa duy nhất "items" chứa mảng kết quả, ví dụ: {"items": [...]}.' },
-        { role: 'user', content: text },
-      ],
-    }),
-  });
-  if (!res.ok) throw new Error(`ChatGPT lỗi ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  const rawText = data.choices?.[0]?.message?.content || '';
-  const parsed = JSON.parse(rawText);
-  return parsed.items || parsed;
-}
-
-// ---- Gemini (Google) ----
 async function callGemini(text) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('Chưa cấu hình GEMINI_API_KEY');
 
   const res = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -122,28 +71,14 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Thiếu nội dung để xử lý' }, { status: 400 });
   }
 
-  const providers = [
-    { name: 'Claude', fn: callClaude },
-    { name: 'ChatGPT', fn: callOpenAI },
-    { name: 'Gemini', fn: callGemini },
-  ];
-
-  const errors = [];
-  for (const provider of providers) {
-    try {
-      const rawItems = await provider.fn(text);
-      const items = cleanItems(rawItems);
-      if (items && items.length > 0) {
-        return NextResponse.json({ items, provider: provider.name });
-      }
-      errors.push(`${provider.name}: không tách được từ nào`);
-    } catch (e) {
-      errors.push(`${provider.name}: ${e.message}`);
+  try {
+    const rawItems = await callGemini(text);
+    const items = cleanItems(rawItems);
+    if (!items || items.length === 0) {
+      return NextResponse.json({ error: 'AI không tách được từ vựng nào từ đoạn văn bản này. Thử dán lại rõ ràng hơn.' }, { status: 500 });
     }
+    return NextResponse.json({ items, provider: 'Gemini' });
+  } catch (e) {
+    return NextResponse.json({ error: e.message || 'Lỗi không xác định khi gọi Gemini' }, { status: 500 });
   }
-
-  return NextResponse.json(
-    { error: `Cả 3 AI đều không xử lý được. Chi tiết:\n${errors.join('\n')}` },
-    { status: 500 }
-  );
 }
