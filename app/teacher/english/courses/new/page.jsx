@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
@@ -7,6 +7,14 @@ import { supabase } from '@/lib/supabaseClient';
 const ALL_GRADES = [6, 7, 8, 9];
 
 export default function NewCoursePage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Đang tải...</div>}>
+      <NewCourseForm />
+    </Suspense>
+  );
+}
+
+function NewCourseForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [title, setTitle] = useState('');
