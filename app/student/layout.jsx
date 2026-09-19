@@ -48,7 +48,7 @@ export default function StudentLayout({ children }) {
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, full_name, role, student_code, photo_url, class_id, classes!profiles_class_id_fkey(name)')
+      .select('id, full_name, role, student_code, photo_url, class_id, is_saodo, classes!profiles_class_id_fkey(name)')
       .eq('id', user.id)
       .single();
 
@@ -148,6 +148,19 @@ export default function StudentLayout({ children }) {
                   }}
                 >
                   ← Quay về trang quản trị
+                </Link>
+              )}
+              {!isAdminViewing && profile.is_saodo && (
+                <Link
+                  href="/saodo"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '8px 14px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.5)',
+                    background: 'rgba(255,255,255,0.14)', color: '#fff', fontWeight: 700, fontSize: 12.5,
+                    textDecoration: 'none', whiteSpace: 'nowrap',
+                  }}
+                >
+                  ⭐ Sao đỏ
                 </Link>
               )}
               {!isAdminViewing && <NotificationBell studentId={profile.id} />}
