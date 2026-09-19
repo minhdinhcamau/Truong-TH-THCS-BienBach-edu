@@ -106,7 +106,7 @@ export default function StudentHome() {
                     <div className="sc-title">{s.name}</div>
                     <div className="sc-tasks">
                       {isEnglish
-                        ? '📘 Học theo lộ trình — bấm để vào học'
+                        ? 'Học theo lộ trình — bấm để vào học'
                         : (pendingCount > 0 ? `${pendingCount} bài tập đang chờ` : 'Không có bài tập mới')}
                     </div>
                   </div>

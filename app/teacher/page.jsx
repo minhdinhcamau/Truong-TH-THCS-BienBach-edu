@@ -335,7 +335,7 @@ export default function TeacherDashboard() {
                     }}
                   >
                     <div className="subject-name">{s.name}</div>
-                    <div className="subject-status ready">📘 Soạn lộ trình & bài học</div>
+                    <div className="subject-status ready">Soạn lộ trình & bài học</div>
                   </Link>
                 );
               }

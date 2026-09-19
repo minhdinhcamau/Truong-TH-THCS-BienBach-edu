@@ -68,7 +68,7 @@ export default function NewCoursePage() {
       <Link href="/teacher/english" className="back-link" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← Lộ trình Tiếng Anh</Link>
 
       <div className="card">
-        <h1>📘 Tạo khóa học mới</h1>
+        <h1>Tạo khóa học mới</h1>
         <p className="sub">Ví dụ: một khóa học cho mỗi khối lớp bạn phụ trách.</p>
 
         <form onSubmit={handleSubmit}>

@@ -53,7 +53,7 @@ export default function TeacherEnglishHome() {
 
       <div className="head">
         <div>
-          <h1>📘 Lộ trình Tiếng Anh</h1>
+          <h1>Lộ trình Tiếng Anh</h1>
           <p>Soạn khóa học theo cấu trúc Khóa học → Chủ đề → Bài học → Từ vựng, học sinh học theo kiểu chinh phục từng chặng.</p>
         </div>
         <Link href="/teacher/english/courses/new" className="new-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 22px', background: '#225da3', color: '#fff', border: 'none', borderRadius: 999, fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: '0 3px 0 #184270', textDecoration: 'none' }}>＋ Tạo khóa học</Link>
