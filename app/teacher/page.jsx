@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
+import { ENGLISH_SUBJECT_ID } from '../../lib/englishXp';
 
 function initialsOf(name) {
   if (!name) return '?';
@@ -14,6 +15,7 @@ export default function TeacherDashboard() {
   const router = useRouter();
   const [profile, setProfile] = useState(null);
   const [assignments, setAssignments] = useState([]);
+  const [subjects, setSubjects] = useState([]); // các môn giáo viên này đang dạy
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,10 +31,25 @@ export default function TeacherDashboard() {
         // chi danh cho giao vien.
         const { data: prof } = await supabase
           .from('profiles')
-          .select('full_name, role, is_tpt')
+          .select('full_name, role')
           .eq('id', session.user.id)
           .single();
         setProfile(prof);
+
+        // Lấy danh sách MÔN mà giáo viên này đang được phân công dạy
+        // (bảng teacher_assignments), để hiện thành các lối vào riêng
+        // — ví dụ Tiếng Anh sẽ dẫn tới khu "xây dựng bài học" kiểu Duolingo,
+        // các môn khác tạm thời dùng chung khu "Bài tập trắc nghiệm" cũ.
+        const { data: assignedSubjects } = await supabase
+          .from('teacher_assignments')
+          .select('subjects(id, name)')
+          .eq('teacher_id', session.user.id);
+
+        const uniqueMap = new Map();
+        (assignedSubjects || []).forEach((row) => {
+          if (row.subjects) uniqueMap.set(row.subjects.id, row.subjects);
+        });
+        setSubjects(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
       }
 
       const { data } = await supabase
@@ -222,6 +239,43 @@ export default function TeacherDashboard() {
           color: var(--ink-soft);
           font-size: 14px;
         }
+        .subject-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+          gap: 14px;
+          margin-bottom: 36px;
+        }
+        .subject-card {
+          display: block;
+          background: var(--card);
+          border-radius: 14px;
+          padding: 18px;
+          text-decoration: none;
+          color: inherit;
+          border: 1px solid #e2ece9;
+          transition: border-color 0.15s, transform 0.15s;
+        }
+        .subject-card.active:hover {
+          border-color: #225da3;
+          transform: translateY(-2px);
+        }
+        .subject-card.disabled {
+          opacity: 0.55;
+          cursor: default;
+        }
+        .subject-name {
+          font-weight: 700;
+          font-size: 16px;
+          margin-bottom: 6px;
+        }
+        .subject-status {
+          font-size: 12.5px;
+          color: var(--ink-soft);
+        }
+        .subject-status.ready {
+          color: #1a7f4e;
+          font-weight: 600;
+        }
       `}</style>
 
       <header className="masthead">
@@ -233,19 +287,6 @@ export default function TeacherDashboard() {
           </div>
         </div>
         <div className="profile-row">
-          {!isAdminViewing && profile?.is_tpt && (
-            <Link
-              href="/tpt"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '8px 16px', borderRadius: 999, border: '1px solid #e8af2e',
-                background: '#fff8e8', color: '#8a5b0a', fontWeight: 700, fontSize: 13,
-                textDecoration: 'none', whiteSpace: 'nowrap',
-              }}
-            >
-              🎖️ Trang Tổng phụ trách Đội
-            </Link>
-          )}
           {!isAdminViewing && (
             <div className="profile">
               <div className="avatar">{initialsOf(profile?.full_name)}</div>
@@ -256,7 +297,15 @@ export default function TeacherDashboard() {
             </div>
           )}
           {isAdminViewing && (
-            <Link href="/admin" className="admin-return-btn">
+            <Link
+              href="/admin"
+              className="admin-return-btn"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 999,
+                border: '1px solid #cfe2f7', background: '#fff', color: '#1b3a63', fontWeight: 600, fontSize: 12.5,
+                whiteSpace: 'nowrap', textDecoration: 'none',
+              }}
+            >
               ← Quay về trang quản trị
             </Link>
           )}
@@ -266,8 +315,43 @@ export default function TeacherDashboard() {
         </div>
       </header>
 
+      {!loading && subjects.length > 0 && (
+        <>
+          <div className="section-top">
+            <h2>Môn học của bạn</h2>
+          </div>
+          <div className="subject-grid">
+            {subjects.map((s) => {
+              const isEnglish = s.id === ENGLISH_SUBJECT_ID;
+              if (isEnglish) {
+                return (
+                  <Link
+                    key={s.id}
+                    href="/teacher/english"
+                    className="subject-card active"
+                    style={{
+                      display: 'block', background: '#fff', borderRadius: 14, padding: 18,
+                      textDecoration: 'none', color: 'inherit', border: '1px solid #e2ece9',
+                    }}
+                  >
+                    <div className="subject-name">{s.name}</div>
+                    <div className="subject-status ready">Soạn lộ trình & bài học</div>
+                  </Link>
+                );
+              }
+              return (
+                <div key={s.id} className="subject-card disabled">
+                  <div className="subject-name">{s.name}</div>
+                  <div className="subject-status">Chưa có công cụ soạn lộ trình riêng — dùng tạm mục bên dưới</div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
       <div className="section-top">
-        <h2>Bài tập đã giao</h2>
+        <h2>Bài tập trắc nghiệm đã giao</h2>
         <Link href="/teacher/assignments/new">
           <button className="new-btn">+ Tạo bài tập mới</button>
         </Link>
