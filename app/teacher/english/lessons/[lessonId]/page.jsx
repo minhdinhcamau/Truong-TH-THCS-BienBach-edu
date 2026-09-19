@@ -15,6 +15,14 @@ export default function LessonVocabPage() {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(emptyForm);
 
+  // --- Khu AI sắp xếp từ vựng ---
+  const [pasteText, setPasteText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [draftItems, setDraftItems] = useState([]);
+  const [aiProvider, setAiProvider] = useState('');
+  const [savingDraft, setSavingDraft] = useState(false);
+
   useEffect(() => { load(); }, [lessonId]);
 
   async function load() {
@@ -48,6 +56,63 @@ export default function LessonVocabPage() {
     load();
   }
 
+  // --- Xử lý AI ---
+  async function handleAiParse() {
+    if (!pasteText.trim()) return;
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const res = await fetch('/api/parse-vocab', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: pasteText }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAiError(data.error || 'Có lỗi xảy ra, thử lại.');
+        return;
+      }
+      if (!data.items || data.items.length === 0) {
+        setAiError('AI không tách được từ vựng nào từ đoạn văn bản này. Thử dán lại rõ ràng hơn.');
+        return;
+      }
+      setDraftItems(data.items.map((it) => ({ word: it.word, meaning: it.meaning, example: it.example || '' })));
+      setAiProvider(data.provider || '');
+    } catch (e) {
+      setAiError('Không kết nối được tới AI. Kiểm tra lại kết nối mạng.');
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  function updateDraft(idx, field, value) {
+    setDraftItems((prev) => prev.map((d, i) => (i === idx ? { ...d, [field]: value } : d)));
+  }
+  function removeDraft(idx) {
+    setDraftItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+  function addDraftRow() {
+    setDraftItems((prev) => [...prev, { word: '', meaning: '', example: '' }]);
+  }
+
+  async function saveDraftItems() {
+    const valid = draftItems.filter((d) => d.word.trim() && d.meaning.trim());
+    if (valid.length === 0) return;
+    setSavingDraft(true);
+    const rows = valid.map((d, i) => ({
+      lesson_id: lessonId,
+      word: d.word.trim(),
+      meaning: d.meaning.trim(),
+      example_sentence: d.example.trim(),
+      order_index: items.length + i,
+    }));
+    await supabase.from('eng_vocab_items').insert(rows);
+    setDraftItems([]);
+    setPasteText('');
+    setSavingDraft(false);
+    load();
+  }
+
   if (!lesson) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Đang tải...</div>;
 
   const notEnough = items.length < 3;
@@ -56,9 +121,8 @@ export default function LessonVocabPage() {
     <div className="wrap">
       <style jsx>{`
         .wrap { max-width: 820px; margin: 0 auto; padding: 28px 24px 64px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
-        .back-link { color: #225da3; font-weight: 600; font-size: 13.5px; text-decoration: none; }
         h1 { font-size: 22px; color: #17302d; margin: 14px 0 4px; }
-        .count-note { font-size: 13.5px; margin: 0 0 20px; padding: 8px 14px; border-radius: 10px; display: inline-block; }
+        .count-note { font-size: 13.5px; margin: 0 0 24px; padding: 8px 14px; border-radius: 10px; display: inline-block; }
         .count-note.ok { color: #1a7f4e; background: #EAFBEA; }
         .count-note.warn { color: #b45309; background: #FEF3E2; }
         .vocab-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 26px; }
@@ -71,24 +135,45 @@ export default function LessonVocabPage() {
         .link-btn { border: none; background: none; cursor: pointer; font-size: 12.5px; font-weight: 600; padding: 0; color: #225da3; }
         .link-btn.danger { color: #a3374a; }
         .edit-card { background: #fff; border: 2px solid #225da3; border-radius: 14px; padding: 14px; }
-        input { width: 100%; padding: 9px 11px; border-radius: 9px; border: 1.5px solid #e2e8f0; font-size: 13.5px; font-family: inherit; box-sizing: border-box; margin-bottom: 8px; }
-        input:focus { outline: none; border-color: #225da3; }
-        .add-card { background: #fff; border-radius: 16px; padding: 22px; border: 1px solid #e5eeec; }
+        input, textarea { width: 100%; padding: 9px 11px; border-radius: 9px; border: 1.5px solid #e2e8f0; font-size: 13.5px; font-family: inherit; box-sizing: border-box; margin-bottom: 8px; }
+        input:focus, textarea:focus { outline: none; border-color: #225da3; }
+        .add-card { background: #fff; border-radius: 16px; padding: 22px; border: 1px solid #e5eeec; margin-bottom: 20px; }
         .add-card h4 { margin: 0 0 16px; font-size: 15px; color: #17302d; }
         label { display: block; font-size: 12.5px; font-weight: 600; color: #374151; margin-bottom: 4px; margin-top: 12px; }
         label:first-of-type { margin-top: 0; }
         .add-input { width: 100%; padding: 11px 13px; border-radius: 11px; border: 1.5px solid #e2e8f0; font-size: 14px; font-family: inherit; box-sizing: border-box; }
         .add-input:focus { outline: none; border-color: #225da3; }
         .add-btn { width: 100%; margin-top: 18px; background: #225da3; color: #fff; border: none; border-radius: 11px; padding: 12px; font-weight: 700; cursor: pointer; }
+        .add-btn:disabled { background: #9ca3af; cursor: not-allowed; }
         .tip { margin-top: 20px; font-size: 12.5px; color: #9ca3af; text-align: center; }
+
+        .ai-card { background: linear-gradient(135deg,#F3F0FF,#EAF4FF); border: 1.5px solid #d9d1fb; border-radius: 16px; padding: 22px; margin-bottom: 20px; }
+        .ai-card h4 { margin: 0 0 4px; font-size: 15px; color: #4c2f9e; }
+        .ai-card .ai-sub { font-size: 12.5px; color: #6b7280; margin: 0 0 14px; }
+        .ai-textarea { min-height: 100px; resize: vertical; }
+        .ai-btn { background: #6d3fd6; color: #fff; border: none; border-radius: 11px; padding: 11px 20px; font-weight: 700;
+          cursor: pointer; font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; }
+        .ai-btn:disabled { background: #b7a9dd; cursor: not-allowed; }
+        .ai-error { color: #a3374a; font-size: 13px; background: #fdeef0; padding: 10px 14px; border-radius: 10px; margin-top: 12px; }
+
+        .draft-section { background: #fff; border: 2px solid #6d3fd6; border-radius: 16px; padding: 20px; margin-bottom: 26px; }
+        .draft-section h4 { margin: 0 0 4px; font-size: 15px; color: #17302d; }
+        .draft-sub { font-size: 12.5px; color: #6b7f7a; margin: 0 0 14px; }
+        .draft-row { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+        .draft-row input { margin-bottom: 0; }
+        .draft-remove { border: none; background: #fdeef0; color: #a3374a; border-radius: 8px; width: 34px; height: 34px; cursor: pointer; font-size: 14px; }
+        .draft-footer { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+        .add-row-btn { border: 1.5px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 10px 16px; font-weight: 600; cursor: pointer; color: #374151; font-size: 13px; }
+        .save-all-btn { background: #58CC02; color: #fff; border: none; border-radius: 10px; padding: 10px 20px; font-weight: 700; cursor: pointer; font-size: 13.5px; box-shadow: 0 3px 0 #48a802; }
+        .save-all-btn:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; }
       `}</style>
 
-      <Link href={`/teacher/english/units/${lesson.eng_units.id}`} className="back-link" style={{
+      <Link href={`/teacher/english/units/${lesson.eng_units.id}`} style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999,
         border: '1.5px solid #dbe7f3', background: '#fff', color: '#225da3', fontWeight: 600, fontSize: 13.5,
         textDecoration: 'none', boxShadow: '0 1px 3px rgba(23,48,45,0.04)',
       }}>← {lesson.eng_units.title}</Link>
-      <h1>📝 {lesson.title}</h1>
+      <h1>{lesson.title}</h1>
       <span className={`count-note ${notEnough ? 'warn' : 'ok'}`}>
         {notEnough
           ? `⚠️ Mới có ${items.length} từ — cần tối thiểu 3 từ để tạo trắc nghiệm có đáp án nhiễu`
@@ -121,8 +206,44 @@ export default function LessonVocabPage() {
         ))}
       </div>
 
+      <div className="ai-card">
+        <h4>✨ Dán từ vựng, để AI sắp xếp</h4>
+        <p className="ai-sub">Dán một đoạn văn bản chứa danh sách từ (không cần đúng định dạng, có thể lộn xộn) — AI sẽ tự tách thành Từ / Nghĩa / Câu ví dụ.</p>
+        <textarea
+          className="ai-textarea"
+          placeholder={`Ví dụ dán vào đây:\nmother - mẹ\nfather: bố\nsister (chị/em gái)\n...`}
+          value={pasteText}
+          onChange={(e) => setPasteText(e.target.value)}
+        />
+        <button className="ai-btn" onClick={handleAiParse} disabled={aiLoading || !pasteText.trim()}>
+          {aiLoading ? 'Đang xử lý...' : '✨ Dùng AI sắp xếp'}
+        </button>
+        {aiError && <div className="ai-error">{aiError}</div>}
+      </div>
+
+      {draftItems.length > 0 && (
+        <div className="draft-section">
+          <h4>Kết quả AI — kiểm tra và chỉnh sửa trước khi lưu {aiProvider && <span style={{ fontWeight: 500, fontSize: 12, color: '#6d3fd6' }}>(xử lý bởi {aiProvider})</span>}</h4>
+          <p className="draft-sub">Sửa lại nếu AI chưa đúng, xóa dòng thừa, rồi bấm "Lưu tất cả" để thêm vào bài học.</p>
+          {draftItems.map((d, i) => (
+            <div key={i} className="draft-row">
+              <input value={d.word} onChange={(e) => updateDraft(i, 'word', e.target.value)} placeholder="Từ" />
+              <input value={d.meaning} onChange={(e) => updateDraft(i, 'meaning', e.target.value)} placeholder="Nghĩa" />
+              <input value={d.example} onChange={(e) => updateDraft(i, 'example', e.target.value)} placeholder="Câu ví dụ" />
+              <button className="draft-remove" onClick={() => removeDraft(i)} title="Xóa dòng">🗑</button>
+            </div>
+          ))}
+          <div className="draft-footer">
+            <button className="add-row-btn" onClick={addDraftRow}>＋ Thêm dòng trống</button>
+            <button className="save-all-btn" onClick={saveDraftItems} disabled={savingDraft}>
+              {savingDraft ? 'Đang lưu...' : `💾 Lưu tất cả (${draftItems.filter((d) => d.word.trim() && d.meaning.trim()).length} từ) vào bài học`}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="add-card">
-        <h4>＋ Thêm từ vựng mới</h4>
+        <h4>＋ Thêm từng từ một cách thủ công</h4>
         <form onSubmit={addItem}>
           <label>Từ tiếng Anh</label>
           <input className="add-input" placeholder="Ví dụ: mother" value={form.word} onChange={(e) => setForm({ ...form, word: e.target.value })} />
@@ -134,7 +255,7 @@ export default function LessonVocabPage() {
         </form>
       </div>
 
-      <p className="tip">Gợi ý nâng cấp sau: thêm nút "Import từ Excel/CSV" để dán nhiều từ cùng lúc thay vì nhập tay từng dòng.</p>
+      <p className="tip">Có thể tải file Excel mẫu để nhập hàng loạt: liên hệ quản trị viên nếu cần mẫu file.</p>
     </div>
   );
 }
