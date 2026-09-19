@@ -1,33 +1,18 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
-import { ENGLISH_SUBJECT_ID } from '@/lib/englishXp';
+
+const ALL_GRADES = [6, 7, 8, 9];
 
 export default function NewCoursePage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [grade, setGrade] = useState('');
-  const [grades, setGrades] = useState([]);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-
-  useEffect(() => { loadGrades(); }, []);
-
-  async function loadGrades() {
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data } = await supabase
-      .from('teacher_assignments')
-      .select('classes(grade)')
-      .eq('teacher_id', user.id)
-      .eq('subject_id', ENGLISH_SUBJECT_ID);
-    const uniqueGrades = Array.from(
-      new Set((data || []).map((r) => r.classes?.grade).filter((g) => g != null))
-    ).sort((a, b) => a - b);
-    setGrades(uniqueGrades);
-  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -81,13 +66,10 @@ export default function NewCoursePage() {
           <label>Áp dụng cho khối</label>
           <select value={grade} onChange={(e) => setGrade(e.target.value)}>
             <option value="">-- Chưa chọn khối --</option>
-            {grades.map((g) => (
+            {ALL_GRADES.map((g) => (
               <option key={g} value={g}>Khối {g}</option>
             ))}
           </select>
-          {grades.length === 0 && (
-            <p className="hint">Bạn chưa được phân công dạy môn Tiếng Anh ở khối nào — kiểm tra mục "Phân công giảng dạy" trong trang Admin.</p>
-          )}
 
           {errorMsg && <div className="error">{errorMsg}</div>}
 

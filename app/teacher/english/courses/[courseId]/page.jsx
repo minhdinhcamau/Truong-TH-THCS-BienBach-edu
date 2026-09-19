@@ -3,16 +3,15 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { ENGLISH_SUBJECT_ID } from '@/lib/englishXp';
 
 const backLinkStyle = { color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' };
+const ALL_GRADES = [6, 7, 8, 9];
 
 export default function CourseUnitsPage() {
   const { courseId } = useParams();
   const router = useRouter();
   const [course, setCourse] = useState(null);
   const [units, setUnits] = useState([]);
-  const [grades, setGrades] = useState([]);
   const [newTitle, setNewTitle] = useState('');
 
   const [editingCourse, setEditingCourse] = useState(false);
@@ -34,13 +33,6 @@ export default function CourseUnitsPage() {
 
     const { data: u } = await supabase.from('eng_units').select('*').eq('course_id', courseId).order('order_index', { ascending: true });
     setUnits(u || []);
-
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: ta } = await supabase
-      .from('teacher_assignments').select('classes(grade)')
-      .eq('teacher_id', user.id).eq('subject_id', ENGLISH_SUBJECT_ID);
-    const uniqueGrades = Array.from(new Set((ta || []).map((r) => r.classes?.grade).filter((g) => g != null))).sort((a, b) => a - b);
-    setGrades(uniqueGrades);
   }
 
   async function saveCourseEdit(e) {
@@ -152,7 +144,7 @@ export default function CourseUnitsPage() {
           <label>Khối</label>
           <select value={editGrade} onChange={(e) => setEditGrade(e.target.value)}>
             <option value="">-- Chưa chọn khối --</option>
-            {grades.map((g) => <option key={g} value={g}>Khối {g}</option>)}
+            {ALL_GRADES.map((g) => <option key={g} value={g}>Khối {g}</option>)}
           </select>
           <div className="btn-row">
             <button type="submit" className="save-btn">Lưu thay đổi</button>
