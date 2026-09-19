@@ -297,7 +297,15 @@ export default function TeacherDashboard() {
             </div>
           )}
           {isAdminViewing && (
-            <Link href="/admin" className="admin-return-btn">
+            <Link
+              href="/admin"
+              className="admin-return-btn"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 999,
+                border: '1px solid #cfe2f7', background: '#fff', color: '#1b3a63', fontWeight: 600, fontSize: 12.5,
+                whiteSpace: 'nowrap', textDecoration: 'none',
+              }}
+            >
               ← Quay về trang quản trị
             </Link>
           )}
@@ -317,7 +325,15 @@ export default function TeacherDashboard() {
               const isEnglish = s.id === ENGLISH_SUBJECT_ID;
               if (isEnglish) {
                 return (
-                  <Link key={s.id} href="/teacher/english" className="subject-card active">
+                  <Link
+                    key={s.id}
+                    href="/teacher/english"
+                    className="subject-card active"
+                    style={{
+                      display: 'block', background: '#fff', borderRadius: 14, padding: 18,
+                      textDecoration: 'none', color: 'inherit', border: '1px solid #e2ece9',
+                    }}
+                  >
                     <div className="subject-name">{s.name}</div>
                     <div className="subject-status ready">📘 Soạn lộ trình & bài học</div>
                   </Link>

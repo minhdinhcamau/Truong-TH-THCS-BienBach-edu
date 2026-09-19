@@ -131,7 +131,7 @@ export default function CourseUnitsPage() {
         .empty-units { text-align: center; padding: 40px 20px; color: #9ca3af; background: #fff; border-radius: 14px; border: 1px dashed #cfe2f7; }
       `}</style>
 
-      <Link href="/teacher/english" className="back-link">← Lộ trình Tiếng Anh</Link>
+      <Link href="/teacher/english" className="back-link" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← Lộ trình Tiếng Anh</Link>
 
       {!editingCourse ? (
         <div className="course-head">
@@ -181,7 +181,7 @@ export default function CourseUnitsPage() {
             ) : (
               <>
                 <div className="unit-num">{idx + 1}</div>
-                <Link href={`/teacher/english/units/${u.id}`} className="unit-link">{u.title}</Link>
+                <Link href={`/teacher/english/units/${u.id}`} className="unit-link" style={{ color: '#17302d', fontWeight: 600, fontSize: 15, textDecoration: 'none', flex: 1 }}>{u.title}</Link>
                 <button className="mini-btn" onClick={() => startEditUnit(u)} title="Sửa">✎</button>
                 <button className="mini-btn" onClick={() => moveUnit(u, -1)} disabled={idx === 0} title="Lên">↑</button>
                 <button className="mini-btn" onClick={() => moveUnit(u, 1)} disabled={idx === units.length - 1} title="Xuống">↓</button>

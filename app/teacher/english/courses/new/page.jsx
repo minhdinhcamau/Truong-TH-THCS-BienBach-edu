@@ -65,7 +65,7 @@ export default function NewCoursePage() {
         .submit-btn:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; }
       `}</style>
 
-      <Link href="/teacher/english" className="back-link">← Lộ trình Tiếng Anh</Link>
+      <Link href="/teacher/english" className="back-link" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← Lộ trình Tiếng Anh</Link>
 
       <div className="card">
         <h1>📘 Tạo khóa học mới</h1>

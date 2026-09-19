@@ -83,7 +83,7 @@ export default function LessonVocabPage() {
         .tip { margin-top: 20px; font-size: 12.5px; color: #9ca3af; text-align: center; }
       `}</style>
 
-      <Link href={`/teacher/english/units/${lesson.eng_units.id}`} className="back-link">← {lesson.eng_units.title}</Link>
+      <Link href={`/teacher/english/units/${lesson.eng_units.id}`} className="back-link" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← {lesson.eng_units.title}</Link>
       <h1>📝 {lesson.title}</h1>
       <span className={`count-note ${notEnough ? 'warn' : 'ok'}`}>
         {notEnough

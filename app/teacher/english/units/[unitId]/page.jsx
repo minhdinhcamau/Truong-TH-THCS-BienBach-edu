@@ -100,7 +100,7 @@ export default function UnitLessonsPage() {
         .add-btn { width: 100%; margin-top: 14px; background: #225da3; color: #fff; border: none; border-radius: 11px; padding: 12px; font-weight: 700; cursor: pointer; }
       `}</style>
 
-      <Link href={`/teacher/english/courses/${unit.eng_courses.id}`} className="back-link">← {unit.eng_courses.title}</Link>
+      <Link href={`/teacher/english/courses/${unit.eng_courses.id}`} className="back-link" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← {unit.eng_courses.title}</Link>
       <h1>📂 {unit.title}</h1>
 
       <h2 className="section-title">📝 Các bài học (Lesson)</h2>
@@ -129,7 +129,7 @@ export default function UnitLessonsPage() {
             ) : (
               <>
                 <div className="lesson-num">{idx + 1}</div>
-                <Link href={`/teacher/english/lessons/${l.id}`} className="lesson-link">{l.title}</Link>
+                <Link href={`/teacher/english/lessons/${l.id}`} className="lesson-link" style={{ color: '#17302d', fontWeight: 600, fontSize: 15, textDecoration: 'none', flex: 1, minWidth: 140 }}>{l.title}</Link>
                 <span className="meta-pill">✅ ≥{l.pass_score}%</span>
                 <span className="meta-pill">❤️ {l.max_hearts} tim</span>
                 <button className="mini-btn" onClick={() => startEdit(l)} title="Sửa">✎</button>

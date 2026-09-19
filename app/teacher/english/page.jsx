@@ -49,14 +49,14 @@ export default function TeacherEnglishHome() {
         .skeleton { text-align: center; padding: 60px; color: #9ca3af; }
       `}</style>
 
-      <Link href="/teacher" className="back-link">← Trang giáo viên</Link>
+      <Link href="/teacher" className="back-link" style={{ color: '#225da3', fontWeight: 600, fontSize: 13.5, textDecoration: 'none' }}>← Trang giáo viên</Link>
 
       <div className="head">
         <div>
           <h1>📘 Lộ trình Tiếng Anh</h1>
           <p>Soạn khóa học theo cấu trúc Khóa học → Chủ đề → Bài học → Từ vựng, học sinh học theo kiểu chinh phục từng chặng.</p>
         </div>
-        <Link href="/teacher/english/courses/new" className="new-btn">＋ Tạo khóa học</Link>
+        <Link href="/teacher/english/courses/new" className="new-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 22px', background: '#225da3', color: '#fff', border: 'none', borderRadius: 999, fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: '0 3px 0 #184270', textDecoration: 'none' }}>＋ Tạo khóa học</Link>
       </div>
 
       {loading && <div className="skeleton">Đang tải...</div>}
@@ -66,13 +66,13 @@ export default function TeacherEnglishHome() {
           <div className="empty-emoji">📚</div>
           <h3>Chưa có khóa học nào</h3>
           <p>Tạo khóa học đầu tiên để bắt đầu soạn lộ trình cho lớp bạn dạy.</p>
-          <Link href="/teacher/english/courses/new" className="new-btn">＋ Tạo khóa học</Link>
+          <Link href="/teacher/english/courses/new" className="new-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 22px', background: '#225da3', color: '#fff', border: 'none', borderRadius: 999, fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: '0 3px 0 #184270', textDecoration: 'none' }}>＋ Tạo khóa học</Link>
         </div>
       )}
 
       <div className="grid">
         {courses.map((c) => (
-          <Link key={c.id} href={`/teacher/english/courses/${c.id}`} className="course-card">
+          <Link key={c.id} href={`/teacher/english/courses/${c.id}`} className="course-card" style={{ display: 'block', background: '#fff', borderRadius: 16, padding: 20, textDecoration: 'none', color: 'inherit', border: '1px solid #e5eeec', boxShadow: '0 2px 6px rgba(23,48,45,0.04)' }}>
             <div className="cc-icon">🇬🇧</div>
             <div className="cc-title">{c.title}</div>
             <span className="cc-class">
