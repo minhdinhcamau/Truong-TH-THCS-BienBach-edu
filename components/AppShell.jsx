@@ -30,7 +30,7 @@ export function Toast({ msg, onDone }) {
     return () => clearTimeout(t);
   }, [msg]);
   if (!msg) return null;
-  return <div className={`toast ${msg.type}`} role="status">{msg.text}</div>;
+  return <div className={`bb-toast ${msg.type}`} role="status">{msg.text}</div>;
 }
 
 // Hộp thoại giữa màn hình
@@ -44,7 +44,7 @@ export function Modal({ title, onClose, wide, children }) {
   }, []);
   return (
     <div className="backdrop" onClick={onClose}>
-      <div className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div className={`bb-modal ${wide ? 'wide' : ''}`} role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="modal-h">
           <h3>{title}</h3>
           <button className="btn btn-sm" onClick={onClose} aria-label="Đóng">✕</button>
@@ -71,10 +71,10 @@ export default function AppShell({ profile, roleLabel, nav = [], activeHref, onL
         .app button, .app input, .app select, .app textarea { font-family: inherit; }
         .app :focus-visible { outline: 3px solid #f4b73d; outline-offset: 2px; }
 
-        .app .masthead { background: var(--red); color: #fff; }
+        .app .bb-masthead { background: var(--red); color: #fff; }
         .app .mast-in { max-width: 1080px; margin: 0 auto; padding: 14px 18px; display: flex; align-items: center;
           justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-        .app .brand { display: flex; align-items: center; gap: 12px; }
+        .app .bb-brand { display: flex; align-items: center; gap: 12px; }
         .app .brand-t { font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 19px; line-height: 1.1; }
         .app .brand-s { font-size: 12px; opacity: 0.88; }
         .app .who { display: flex; align-items: center; gap: 10px; }
@@ -140,22 +140,22 @@ export default function AppShell({ profile, roleLabel, nav = [], activeHref, onL
 
         .app .backdrop { position: fixed; inset: 0; background: rgba(20,28,40,0.5); z-index: 300; display: flex;
           align-items: center; justify-content: center; padding: 16px; }
-        .app .modal { background: #fff; border-radius: 16px; padding: 20px; width: 100%; max-width: 520px; max-height: 88vh; overflow: auto; }
-        .app .modal.wide { max-width: 780px; }
+        .app .bb-modal { background: #fff; border-radius: 16px; padding: 20px; width: 100%; max-width: 520px; max-height: 88vh; overflow: auto; }
+        .app .bb-modal.wide { max-width: 780px; }
         .app .modal-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 10px; }
         .app .modal-h h3 { font-size: 17px; }
         .app .modal-f { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
 
-        .app .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 400;
+        .app .bb-toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 400;
           max-width: calc(100% - 32px); padding: 12px 20px; border-radius: 999px; text-align: center;
           font-weight: 700; font-size: 13.5px; color: #fff; box-shadow: 0 10px 26px -8px rgba(0,0,0,0.35); }
-        .app .toast.ok { background: var(--ok); }
-        .app .toast.error { background: var(--bad); }
+        .app .bb-toast.ok { background: var(--ok); }
+        .app .bb-toast.error { background: var(--bad); }
       `}</style>
 
-      <header className="masthead">
+      <header className="bb-masthead">
         <div className="mast-in">
-          <div className="brand">
+          <div className="bb-brand">
             <StarMark />
             <div>
               <div className="brand-t">Đội Thiếu niên Tiền phong</div>

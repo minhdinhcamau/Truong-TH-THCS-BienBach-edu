@@ -31,6 +31,18 @@ const TABS = [
     match: (p) => p.startsWith('/student/ask'),
     icon: <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
   },
+  {
+    href: '/student/thi-dua',
+    label: 'Thi đua lớp',
+    match: (p) => p.startsWith('/student/thi-dua'),
+    icon: <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />,
+  },
+  {
+    href: '/student/bang-tin',
+    label: 'Bảng tin',
+    match: (p) => p.startsWith('/student/bang-tin'),
+    icon: <path d="M4 5h13v14H6a2 2 0 0 1-2-2V5zM17 9h3v8a2 2 0 0 1-2 2M8 9h6M8 13h6" />,
+  },
 ];
 
 export default function StudentLayout({ children }) {
