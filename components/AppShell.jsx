@@ -85,6 +85,7 @@ export default function AppShell({ profile, roleLabel, nav = [], activeHref, onL
         .app .out-btn { border: 1px solid rgba(255,255,255,0.5); background: transparent; color: #fff; border-radius: 999px;
           padding: 7px 14px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
         .app .out-btn:hover { background: rgba(255,255,255,0.12); }
+        .app a.out-btn { text-decoration: none; display: inline-block; }
 
         .app .nav { background: #fff; border-bottom: 1px solid var(--line); }
         .app .nav-in { max-width: 1080px; margin: 0 auto; padding: 0 10px; display: flex; overflow-x: auto; }
@@ -167,6 +168,7 @@ export default function AppShell({ profile, roleLabel, nav = [], activeHref, onL
               <div className="who-n">{profile?.full_name}</div>
               <div className="who-r">{roleLabel}</div>
             </div>
+            {profile?.role === "admin" && <Link href="/admin" className="out-btn">Trang quản trị</Link>}
             <button className="out-btn" onClick={onLogout}>Đăng xuất</button>
           </div>
         </div>

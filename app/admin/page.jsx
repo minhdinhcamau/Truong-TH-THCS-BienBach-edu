@@ -779,6 +779,12 @@ export default function AdminPage() {
       <header className={styles.header}>
         <h1>Quản trị tài khoản</h1>
         <div className={styles.headerActions}>
+          <Link href="/tpt" className={styles.navBtn}>
+            Khu vực Tổng phụ trách
+          </Link>
+          <Link href="/admin/tpt" className={styles.navBtn}>
+            Cấp quyền TPT
+          </Link>
           <Link href="/teacher" className={styles.navBtn}>
             Xem trang Giáo viên
           </Link>
