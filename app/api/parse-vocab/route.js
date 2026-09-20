@@ -17,11 +17,13 @@ Nhiệm vụ:
 - Nếu văn bản có sẵn câu ví dụ đi kèm từ đó thì giữ nguyên câu ví dụ đó.
   Nếu không có, hãy tự đặt 1 câu ví dụ tiếng Anh đơn giản, ngắn gọn, phù hợp học sinh THCS,
   có dùng đúng từ đó.
+- Với câu ví dụ (dù lấy từ văn bản hay tự đặt), luôn kèm theo bản dịch tiếng Việt của
+  chính câu ví dụ đó vào trường "example_translation".
 - Bỏ qua các dòng tiêu đề, số thứ tự, hoặc nội dung không phải từ vựng.
 
 CHỈ trả lời bằng JSON thuần túy, dạng mảng, KHÔNG kèm giải thích, KHÔNG dùng markdown code fence,
 KHÔNG có chữ nào khác ngoài JSON. Định dạng bắt buộc:
-[{"word": "...", "part_of_speech": "...", "meaning": "...", "example": "..."}]`;
+[{"word": "...", "part_of_speech": "...", "meaning": "...", "example": "...", "example_translation": "..."}]`;
 
 function cleanItems(items) {
   if (!Array.isArray(items)) return null;
@@ -40,6 +42,7 @@ function cleanItems(items) {
         part_of_speech: pos,
         meaning: (it.meaning || '').toString().trim(),
         example: (it.example || '').toString().trim(),
+        example_translation: (it.example_translation || '').toString().trim(),
       };
     })
     .filter((it) => it.word && it.meaning);

@@ -35,7 +35,10 @@ export default function UnitLessonsPage() {
     load();
   }
 
-  function startEdit(l) { setEditingId(l.id); setEditForm({ title: l.title, pass_score: l.pass_score, max_hearts: l.max_hearts }); }
+  function startEdit(l) {
+    setEditingId(l.id);
+    setEditForm({ title: l.title, pass_score: l.pass_score, max_hearts: l.max_hearts });
+  }
   async function saveEdit(id) {
     if (!editForm.title.trim()) return;
     await supabase.from('eng_lessons').update({
@@ -66,8 +69,8 @@ export default function UnitLessonsPage() {
     <div className="wrap">
       <style jsx>{`
         .wrap { max-width: 760px; margin: 0 auto; padding: 28px 24px 64px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
-        .back-link { color: #225da3; font-weight: 600; font-size: 13.5px; text-decoration: none; }
-        h1 { font-size: 22px; color: #17302d; margin: 14px 0 26px; }
+        h1 { font-size: 22px; color: #17302d; margin: 14px 0 8px; }
+        .sub-note { color: #6b7f7a; font-size: 13px; margin: 0 0 26px; }
         .section-title { font-size: 18px; font-weight: 700; color: #17302d; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
         .lesson-list { display: grid; gap: 10px; }
         .lesson-row { background: #fff; border: 1px solid #e5eeec; border-radius: 14px; padding: 14px 16px;
@@ -100,14 +103,18 @@ export default function UnitLessonsPage() {
         .add-btn { width: 100%; margin-top: 14px; background: #225da3; color: #fff; border: none; border-radius: 11px; padding: 12px; font-weight: 700; cursor: pointer; }
       `}</style>
 
-      <Link href={`/teacher/english/courses/${unit.eng_courses.id}`} className="back-link" style={{
+      <Link href={`/teacher/english/courses/${unit.eng_courses.id}`} style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999,
         border: '1.5px solid #dbe7f3', background: '#fff', color: '#225da3', fontWeight: 600, fontSize: 13.5,
         textDecoration: 'none', boxShadow: '0 1px 3px rgba(23,48,45,0.04)',
       }}>← {unit.eng_courses.title}</Link>
-      <h1>📂 {unit.title}</h1>
+      <h1>{unit.title}</h1>
+      <p className="sub-note">
+        Dạng bài tập (Chọn nghĩa, Nghe-điền, Ghép cặp, Dịch câu) được hệ thống tự động chọn ngẫu nhiên
+        dựa trên dữ liệu từ vựng đã nhập — không cần cấu hình thủ công.
+      </p>
 
-      <h2 className="section-title">📝 Các bài học (Lesson)</h2>
+      <h2 className="section-title">Các bài học (Lesson)</h2>
 
       {lessons.length === 0 && <div className="empty-lessons">Chưa có bài học nào — thêm bài học đầu tiên bên dưới.</div>}
 
@@ -133,7 +140,7 @@ export default function UnitLessonsPage() {
             ) : (
               <>
                 <div className="lesson-num">{idx + 1}</div>
-                <Link href={`/teacher/english/lessons/${l.id}`} className="lesson-link" style={{ color: '#17302d', fontWeight: 600, fontSize: 15, textDecoration: 'none', flex: 1, minWidth: 140 }}>{l.title}</Link>
+                <Link href={`/teacher/english/lessons/${l.id}`} className="lesson-link">{l.title}</Link>
                 <span className="meta-pill">✅ ≥{l.pass_score}%</span>
                 <span className="meta-pill">❤️ {l.max_hearts} tim</span>
                 <button className="mini-btn" onClick={() => startEdit(l)} title="Sửa">✎</button>
