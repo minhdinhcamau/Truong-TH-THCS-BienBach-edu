@@ -13,7 +13,9 @@ Nhiệm vụ:
   đó phải để riêng vào trường "part_of_speech" (ví dụ: "n", "v", "adj", "n, v"), để trống nếu văn
   bản không ghi rõ loại từ.
 - Với mỗi từ, xác định nghĩa tiếng Việt (nếu văn bản có sẵn nghĩa thì dùng đúng nghĩa đó,
-  không tự bịa nghĩa khác).
+  không tự bịa nghĩa khác). QUAN TRỌNG: trường "meaning" CHỈ được chứa ĐÚNG MỘT nghĩa ngắn gọn
+  (ví dụ "nhớ"), TUYỆT ĐỐI KHÔNG liệt kê nhiều nghĩa đồng nghĩa cách nhau bằng dấu phẩy
+  (không viết "nhớ, ghi nhớ") — nếu từ có nhiều nghĩa, chỉ chọn nghĩa phổ biến/phù hợp nhất.
 - Nếu văn bản có sẵn câu ví dụ đi kèm từ đó thì giữ nguyên câu ví dụ đó.
   Nếu không có, hãy tự đặt 1 câu ví dụ tiếng Anh đơn giản, ngắn gọn, phù hợp học sinh THCS,
   có dùng đúng từ đó.

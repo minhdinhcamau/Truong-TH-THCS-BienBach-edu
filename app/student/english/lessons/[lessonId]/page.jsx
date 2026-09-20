@@ -18,15 +18,14 @@ function normalizeText(s) {
 
 // ---- Xây dựng hàng đợi câu hỏi: tự động trộn đủ các dạng phù hợp với dữ liệu ----
 function buildQuestionQueue(lesson, vocabItems) {
-  // Luôn dùng cả "Chọn nghĩa đúng" và "Nghe và điền từ" cho mọi từ (không cần cấu hình gì thêm).
-  const usablePerItemTypes = ['meaning_choice', 'listen_type'];
-
+  const usablePerItemTypes = ['meaning_choice', 'listen_choice'];
   const queue = [];
 
   vocabItems.forEach((item) => {
     const type = usablePerItemTypes[Math.floor(Math.random() * usablePerItemTypes.length)];
+    const otherWords = shuffle(vocabItems.filter((v) => v.id !== item.id)).slice(0, 2);
+
     if (type === 'meaning_choice') {
-      const distractors = shuffle(vocabItems.filter((v) => v.id !== item.id)).slice(0, 2).map((v) => v.meaning);
       queue.push({
         type: 'meaning_choice',
         vocabId: item.id,
@@ -34,31 +33,44 @@ function buildQuestionQueue(lesson, vocabItems) {
         partOfSpeech: item.part_of_speech,
         phonetic: item.phonetic,
         correctAnswer: item.meaning,
-        options: shuffle([item.meaning, ...distractors]),
+        options: shuffle([item.meaning, ...otherWords.map((v) => v.meaning)]),
       });
     } else {
       queue.push({
-        type: 'listen_type',
+        type: 'listen_choice',
         vocabId: item.id,
         word: item.word,
-        partOfSpeech: item.part_of_speech,
         phonetic: item.phonetic,
+        correctAnswer: item.word,
+        options: shuffle([item.word, ...otherWords.map((v) => v.word)]),
       });
     }
   });
 
-  // "Dịch câu" tự động bật cho những từ có ĐỦ cả câu ví dụ lẫn bản dịch — không cần giáo viên bật riêng.
+  // "Dịch câu" (Việt -> Anh) và "Nghe rồi ghép câu dịch" (Anh -> Việt, nghe trước)
+  // đều tự bật cho từ có đủ cả câu ví dụ lẫn bản dịch.
   vocabItems
     .filter((item) => item.example_sentence && item.example_translation)
     .forEach((item) => {
-      const tokens = item.example_sentence.trim().split(/\s+/);
+      const enTokens = item.example_sentence.trim().split(/\s+/);
       queue.push({
         type: 'translate',
         vocabId: item.id,
         prompt: item.example_translation,
         correctSentence: item.example_sentence,
-        wordBank: shuffle(tokens.map((t, i) => ({ id: `${item.id}-${i}`, text: t }))),
+        wordBank: shuffle(enTokens.map((t, i) => ({ id: `en-${item.id}-${i}`, text: t }))),
       });
+
+      const viTokens = item.example_translation.trim().split(/\s+/);
+      if (viTokens.length >= 2) {
+        queue.push({
+          type: 'listen_translate',
+          vocabId: item.id,
+          audioText: item.example_sentence,
+          correctSentence: item.example_translation,
+          wordBank: shuffle(viTokens.map((t, i) => ({ id: `vi-${item.id}-${i}`, text: t }))),
+        });
+      }
     });
 
   const shuffledQueue = shuffle(queue);
@@ -70,7 +82,6 @@ function buildQuestionQueue(lesson, vocabItems) {
       type: 'matching',
       pairs: picked.map((it) => ({ id: it.id, word: it.word, meaning: it.meaning })),
     };
-    // chèn ván ghép cặp vào giữa hàng đợi cho đỡ đơn điệu
     const mid = Math.floor(shuffledQueue.length / 2);
     shuffledQueue.splice(mid, 0, matchingQuestion);
   }
@@ -140,15 +151,12 @@ export default function LessonPlayPage() {
   const [loading, setLoading] = useState(true);
   const [heartPulse, setHeartPulse] = useState(false);
 
-  // Trạng thái theo từng dạng bài
-  const [selected, setSelected] = useState(null); // meaning_choice
-  const [typedWord, setTypedWord] = useState(''); // listen_type
-  const [translateBank, setTranslateBank] = useState([]); // translate: từ chưa dùng
-  const [translateBuilt, setTranslateBuilt] = useState([]); // translate: từ đã ghép
+  const [selected, setSelected] = useState(null); // meaning_choice, listen_choice
+  const [wordBank, setWordBank] = useState([]); // translate, listen_translate
+  const [built, setBuilt] = useState([]);
   const [checked, setChecked] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
-  // Trạng thái ghép cặp
   const [matchLeft, setMatchLeft] = useState([]);
   const [matchRight, setMatchRight] = useState([]);
   const [selLeftId, setSelLeftId] = useState(null);
@@ -190,21 +198,25 @@ export default function LessonPlayPage() {
 
   const current = questions[step];
 
-  // Thiết lập lại trạng thái mỗi khi sang câu mới + tự phát âm
   useEffect(() => {
     if (!current) return;
     setSelected(null);
-    setTypedWord('');
     setChecked(false);
     setIsCorrect(false);
 
-    if (current.type === 'meaning_choice' || current.type === 'listen_type') {
+    if (current.type === 'meaning_choice' || current.type === 'listen_choice') {
       const t = setTimeout(() => speak(current.word, 'en-US'), 350);
       return () => clearTimeout(t);
     }
     if (current.type === 'translate') {
-      setTranslateBank(current.wordBank);
-      setTranslateBuilt([]);
+      setWordBank(current.wordBank);
+      setBuilt([]);
+    }
+    if (current.type === 'listen_translate') {
+      setWordBank(current.wordBank);
+      setBuilt([]);
+      const t = setTimeout(() => speak(current.audioText, 'en-US'), 350);
+      return () => clearTimeout(t);
     }
     if (current.type === 'matching') {
       setMatchLeft(shuffle(current.pairs.map((p) => ({ id: p.id, text: p.word }))));
@@ -217,19 +229,15 @@ export default function LessonPlayPage() {
     }
   }, [step, current]);
 
-  function logAnswer(exerciseType, question, studentAnswer, correct) {
-    const log = {
+  function logAnswer(exerciseType, question, studentAnswer, correct, correctAnswerText) {
+    setAnswerLogs((prev) => [...prev, {
       exercise_type: exerciseType,
       question_content: question,
-      correct_answer:
-        current.type === 'meaning_choice' ? current.correctAnswer :
-        current.type === 'listen_type' ? current.word :
-        current.type === 'translate' ? current.correctSentence : '',
+      correct_answer: correctAnswerText,
       student_answer: studentAnswer,
       is_correct: correct,
       time_taken_seconds: Math.round((Date.now() - startTime) / 1000),
-    };
-    setAnswerLogs((prev) => [...prev, log]);
+    }]);
   }
 
   function handleCheck() {
@@ -239,16 +247,21 @@ export default function LessonPlayPage() {
     if (current.type === 'meaning_choice') {
       if (!selected) return;
       correct = selected === current.correctAnswer;
-      logAnswer('meaning_choice', current.word, selected, correct);
-    } else if (current.type === 'listen_type') {
-      if (!typedWord.trim()) return;
-      correct = normalizeText(typedWord) === normalizeText(current.word);
-      logAnswer('listen_type', current.word, typedWord, correct);
+      logAnswer('meaning_choice', current.word, selected, correct, current.correctAnswer);
+    } else if (current.type === 'listen_choice') {
+      if (!selected) return;
+      correct = selected === current.correctAnswer;
+      logAnswer('listen_choice', current.word, selected, correct, current.correctAnswer);
     } else if (current.type === 'translate') {
-      if (translateBank.length > 0) return; // phải dùng hết từ trong ngân hàng từ
-      const built = translateBuilt.map((t) => t.text).join(' ');
-      correct = normalizeText(built) === normalizeText(current.correctSentence);
-      logAnswer('translate', current.prompt, built, correct);
+      if (wordBank.length > 0) return;
+      const builtText = built.map((t) => t.text).join(' ');
+      correct = normalizeText(builtText) === normalizeText(current.correctSentence);
+      logAnswer('translate', current.prompt, builtText, correct, current.correctSentence);
+    } else if (current.type === 'listen_translate') {
+      if (wordBank.length > 0) return;
+      const builtText = built.map((t) => t.text).join(' ');
+      correct = normalizeText(builtText) === normalizeText(current.correctSentence);
+      logAnswer('listen_translate', current.audioText, builtText, correct, current.correctSentence);
     }
 
     setIsCorrect(correct);
@@ -263,23 +276,15 @@ export default function LessonPlayPage() {
     setHearts((h) => (correct ? h : h - 1));
   }
 
-  async function handleContinue(overrideHeartsLeft) {
-    const heartsLeft = overrideHeartsLeft !== undefined ? overrideHeartsLeft : hearts;
+  async function handleContinue() {
     const logs = answerLogs;
     setStartTime(Date.now());
 
-    if (heartsLeft <= 0) {
-      await submitResult(logs, heartsLeft);
-      return;
-    }
-    if (step + 1 >= questions.length) {
-      await submitResult(logs, heartsLeft);
-      return;
-    }
+    if (hearts <= 0) { await submitResult(logs, hearts); return; }
+    if (step + 1 >= questions.length) { await submitResult(logs, hearts); return; }
     setStep((s) => s + 1);
   }
 
-  // ---- Xử lý riêng cho ghép cặp (tự chấm ngay khi bấm, không mất tim) ----
   function handleMatchTap(side, id, text) {
     if (matchedIds.includes(id)) return;
     if (side === 'left') {
@@ -299,7 +304,7 @@ export default function LessonPlayPage() {
       setSelRightId(null);
       playCorrectSound();
       if (newMatched.length === matchLeft.length) {
-        logAnswer('matching', 'Ghép cặp', 'Hoàn thành', true);
+        logAnswer('matching', 'Ghép cặp', 'Hoàn thành', true, 'Hoàn thành');
         setMatchDone(true);
       }
     } else {
@@ -314,12 +319,12 @@ export default function LessonPlayPage() {
   }
 
   function tapBankWord(token) {
-    setTranslateBank((prev) => prev.filter((t) => t.id !== token.id));
-    setTranslateBuilt((prev) => [...prev, token]);
+    setWordBank((prev) => prev.filter((t) => t.id !== token.id));
+    setBuilt((prev) => [...prev, token]);
   }
   function tapBuiltWord(token) {
-    setTranslateBuilt((prev) => prev.filter((t) => t.id !== token.id));
-    setTranslateBank((prev) => [...prev, token]);
+    setBuilt((prev) => prev.filter((t) => t.id !== token.id));
+    setWordBank((prev) => [...prev, token]);
   }
 
   async function submitResult(logs, heartsLeft) {
@@ -362,6 +367,13 @@ export default function LessonPlayPage() {
   if (hearts <= 0 && !checked) return null;
   if (!current) return null;
 
+  function pickOption(opt) {
+    if (checked) return;
+    setSelected(opt);
+    if (current.type === 'meaning_choice') speak(opt, 'vi-VN');
+    else speak(opt, 'en-US');
+  }
+
   const progressPct = Math.round((step / questions.length) * 100);
 
   return (
@@ -392,7 +404,7 @@ export default function LessonPlayPage() {
         </div>
       </div>
 
-      {/* ===== DẠNG: CHỌN NGHĨA ĐÚNG ===== */}
+      {/* ===== CHỌN NGHĨA ĐÚNG ===== */}
       {current.type === 'meaning_choice' && (
         <div style={styles.card} key={step} className={checked && !isCorrect ? 'word-enter shake' : 'word-enter'}>
           <div style={styles.wordRow}>
@@ -418,13 +430,8 @@ export default function LessonPlayPage() {
               } else if (selected === opt) {
                 optStyle = { ...optStyle, ...styles.optionSelected };
               }
-              function handlePick() {
-                if (checked) return;
-                setSelected(opt);
-                speak(opt, 'vi-VN');
-              }
               return (
-                <button key={opt} className="opt-btn" onClick={handlePick} disabled={checked} style={optStyle}>
+                <button key={opt} className="opt-btn" onClick={() => pickOption(opt)} disabled={checked} style={optStyle}>
                   {opt}
                 </button>
               );
@@ -433,37 +440,39 @@ export default function LessonPlayPage() {
         </div>
       )}
 
-      {/* ===== DẠNG: NGHE VÀ ĐIỀN TỪ ===== */}
-      {current.type === 'listen_type' && (
+      {/* ===== NGHE VÀ CHỌN ĐÚNG TỪ ===== */}
+      {current.type === 'listen_choice' && (
         <div style={styles.card} key={step} className={checked && !isCorrect ? 'word-enter shake' : 'word-enter'}>
-          <p style={styles.prompt}>🎧 Nghe và gõ lại từ em nghe được</p>
-          <div style={{ textAlign: 'center', margin: '20px 0' }}>
-            <button onClick={() => speak(current.word, 'en-US')} style={{ ...styles.speakerBtn, width: 72, height: 72, margin: '0 auto' }} aria-label="Nghe phát âm">
-              <SpeakerIcon size={32} />
+          <p style={styles.prompt}>🎧 Nghe và chọn đúng từ em nghe được</p>
+          <div style={{ textAlign: 'center', margin: '16px 0 20px' }}>
+            <button onClick={() => speak(current.word, 'en-US')} style={{ ...styles.speakerBtn, width: 64, height: 64, margin: '0 auto' }} aria-label="Nghe phát âm">
+              <SpeakerIcon size={28} />
             </button>
           </div>
-          <input
-            type="text"
-            value={typedWord}
-            onChange={(e) => !checked && setTypedWord(e.target.value)}
-            disabled={checked}
-            placeholder="Gõ từ em nghe được..."
-            style={{
-              ...styles.textInput,
-              borderColor: checked ? (isCorrect ? '#58CC02' : '#FF4B4B') : '#E5E7EB',
-              background: checked ? (isCorrect ? '#D7FFB8' : '#FFDFE0') : '#fff',
-            }}
-            onKeyDown={(e) => e.key === 'Enter' && handleCheck()}
-          />
-          {checked && !isCorrect && (
-            <p style={{ textAlign: 'center', color: '#6b7280', marginTop: 10 }}>
-              Đáp án đúng: <b>{current.word}</b>{current.phonetic ? ` (${current.phonetic})` : ''}
-            </p>
+          <div style={{ display: 'grid', gap: 12 }}>
+            {current.options.map((opt) => {
+              let optStyle = { ...styles.option, textAlign: 'center' };
+              if (checked) {
+                if (opt === current.correctAnswer) optStyle = { ...optStyle, ...styles.optionCorrect };
+                else if (opt === selected) optStyle = { ...optStyle, ...styles.optionWrong };
+                else optStyle = { ...optStyle, opacity: 0.5 };
+              } else if (selected === opt) {
+                optStyle = { ...optStyle, ...styles.optionSelected };
+              }
+              return (
+                <button key={opt} className="opt-btn" onClick={() => pickOption(opt)} disabled={checked} style={optStyle}>
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+          {checked && current.phonetic && (
+            <p style={{ textAlign: 'center', color: '#9ca3af', marginTop: 12, fontSize: 13 }}>{current.phonetic}</p>
           )}
         </div>
       )}
 
-      {/* ===== DẠNG: DỊCH CÂU ===== */}
+      {/* ===== DỊCH CÂU (Việt -> Anh) ===== */}
       {current.type === 'translate' && (
         <div style={styles.card} key={step} className={checked && !isCorrect ? 'word-enter shake' : 'word-enter'}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center' }}>
@@ -475,33 +484,50 @@ export default function LessonPlayPage() {
           <div style={{ fontSize: 20, fontWeight: 700, color: '#17302D', textAlign: 'center', margin: '14px 0 20px' }}>
             {current.prompt}
           </div>
-
           <div style={styles.builtBox}>
-            {translateBuilt.length === 0 && <span style={{ color: '#9ca3af', fontSize: 14 }}>Bấm chọn từ bên dưới theo đúng thứ tự...</span>}
-            {translateBuilt.map((t) => (
-              <button key={t.id} className="bank-chip" onClick={() => !checked && tapBuiltWord(t)} style={styles.chipBuilt} disabled={checked}>
-                {t.text}
-              </button>
+            {built.length === 0 && <span style={{ color: '#9ca3af', fontSize: 14 }}>Bấm chọn từ bên dưới theo đúng thứ tự...</span>}
+            {built.map((t) => (
+              <button key={t.id} className="bank-chip" onClick={() => !checked && tapBuiltWord(t)} style={styles.chipBuilt} disabled={checked}>{t.text}</button>
             ))}
           </div>
-
           <div style={styles.bankBox}>
-            {translateBank.map((t) => (
-              <button key={t.id} className="bank-chip" onClick={() => tapBankWord(t)} style={styles.chipBank}>
-                {t.text}
-              </button>
+            {wordBank.map((t) => (
+              <button key={t.id} className="bank-chip" onClick={() => tapBankWord(t)} style={styles.chipBank}>{t.text}</button>
             ))}
           </div>
-
           {checked && !isCorrect && (
-            <p style={{ textAlign: 'center', color: '#6b7280', marginTop: 14 }}>
-              Câu đúng: <b>{current.correctSentence}</b>
-            </p>
+            <p style={{ textAlign: 'center', color: '#6b7280', marginTop: 14 }}>Câu đúng: <b>{current.correctSentence}</b></p>
           )}
         </div>
       )}
 
-      {/* ===== DẠNG: GHÉP CẶP ===== */}
+      {/* ===== NGHE RỒI GHÉP CÂU DỊCH (Anh -> Việt, nghe trước) ===== */}
+      {current.type === 'listen_translate' && (
+        <div style={styles.card} key={step} className={checked && !isCorrect ? 'word-enter shake' : 'word-enter'}>
+          <p style={styles.prompt}>🎧 Nghe câu, rồi ghép nghĩa tiếng Việt</p>
+          <div style={{ textAlign: 'center', margin: '16px 0 20px' }}>
+            <button onClick={() => speak(current.audioText, 'en-US')} style={{ ...styles.speakerBtn, width: 64, height: 64, margin: '0 auto' }} aria-label="Nghe câu">
+              <SpeakerIcon size={28} />
+            </button>
+          </div>
+          <div style={styles.builtBox}>
+            {built.length === 0 && <span style={{ color: '#9ca3af', fontSize: 14 }}>Nghe rồi bấm chọn từ bên dưới theo đúng thứ tự...</span>}
+            {built.map((t) => (
+              <button key={t.id} className="bank-chip" onClick={() => !checked && tapBuiltWord(t)} style={styles.chipBuilt} disabled={checked}>{t.text}</button>
+            ))}
+          </div>
+          <div style={styles.bankBox}>
+            {wordBank.map((t) => (
+              <button key={t.id} className="bank-chip" onClick={() => tapBankWord(t)} style={styles.chipBank}>{t.text}</button>
+            ))}
+          </div>
+          {checked && !isCorrect && (
+            <p style={{ textAlign: 'center', color: '#6b7280', marginTop: 14 }}>Câu đúng: <b>{current.correctSentence}</b></p>
+          )}
+        </div>
+      )}
+
+      {/* ===== GHÉP CẶP ===== */}
       {current.type === 'matching' && (
         <div style={styles.card} key={step} className="word-enter">
           <p style={styles.prompt}>🔗 Bấm chọn cặp từ - nghĩa tương ứng</p>
@@ -512,18 +538,8 @@ export default function LessonPlayPage() {
                 const isWrong = matchWrongFlash?.leftId === it.id;
                 const isSel = selLeftId === it.id;
                 return (
-                  <button
-                    key={it.id}
-                    className="match-btn"
-                    onClick={() => handleMatchTap('left', it.id, it.text)}
-                    disabled={isMatched}
-                    style={{
-                      ...styles.matchBtn,
-                      opacity: isMatched ? 0.35 : 1,
-                      borderColor: isWrong ? '#FF4B4B' : isSel ? '#1CB0F6' : '#E5E7EB',
-                      background: isWrong ? '#FFDFE0' : isSel ? '#DDF4FF' : isMatched ? '#EAFBEA' : '#fff',
-                    }}
-                  >
+                  <button key={it.id} className="match-btn" onClick={() => handleMatchTap('left', it.id, it.text)} disabled={isMatched}
+                    style={{ ...styles.matchBtn, opacity: isMatched ? 0.35 : 1, borderColor: isWrong ? '#FF4B4B' : isSel ? '#1CB0F6' : '#E5E7EB', background: isWrong ? '#FFDFE0' : isSel ? '#DDF4FF' : isMatched ? '#EAFBEA' : '#fff' }}>
                     {it.text}
                   </button>
                 );
@@ -535,18 +551,8 @@ export default function LessonPlayPage() {
                 const isWrong = matchWrongFlash?.rightId === it.id;
                 const isSel = selRightId === it.id;
                 return (
-                  <button
-                    key={it.id}
-                    className="match-btn"
-                    onClick={() => handleMatchTap('right', it.id, it.text)}
-                    disabled={isMatched}
-                    style={{
-                      ...styles.matchBtn,
-                      opacity: isMatched ? 0.35 : 1,
-                      borderColor: isWrong ? '#FF4B4B' : isSel ? '#1CB0F6' : '#E5E7EB',
-                      background: isWrong ? '#FFDFE0' : isSel ? '#DDF4FF' : isMatched ? '#EAFBEA' : '#fff',
-                    }}
-                  >
+                  <button key={it.id} className="match-btn" onClick={() => handleMatchTap('right', it.id, it.text)} disabled={isMatched}
+                    style={{ ...styles.matchBtn, opacity: isMatched ? 0.35 : 1, borderColor: isWrong ? '#FF4B4B' : isSel ? '#1CB0F6' : '#E5E7EB', background: isWrong ? '#FFDFE0' : isSel ? '#DDF4FF' : isMatched ? '#EAFBEA' : '#fff' }}>
                     {it.text}
                   </button>
                 );
@@ -557,20 +563,21 @@ export default function LessonPlayPage() {
         </div>
       )}
 
-      {/* ===== Thanh nút Kiểm tra / Tiếp tục ===== */}
       {current.type !== 'matching' && !checked && (
         <button
           onClick={handleCheck}
           disabled={
             (current.type === 'meaning_choice' && !selected) ||
-            (current.type === 'listen_type' && !typedWord.trim()) ||
-            (current.type === 'translate' && translateBank.length > 0)
+            (current.type === 'listen_choice' && !selected) ||
+            (current.type === 'translate' && wordBank.length > 0) ||
+            (current.type === 'listen_translate' && wordBank.length > 0)
           }
           style={{
             ...styles.checkBtn,
             ...((current.type === 'meaning_choice' && !selected) ||
-              (current.type === 'listen_type' && !typedWord.trim()) ||
-              (current.type === 'translate' && translateBank.length > 0)
+              (current.type === 'listen_choice' && !selected) ||
+              (current.type === 'translate' && wordBank.length > 0) ||
+              (current.type === 'listen_translate' && wordBank.length > 0)
               ? styles.checkBtnDisabled : {}),
           }}
         >
@@ -587,9 +594,7 @@ export default function LessonPlayPage() {
                 {isCorrect ? 'Chính xác!' : 'Chưa đúng!'}
               </div>
             </div>
-            <button onClick={() => handleContinue()} style={{ ...styles.primaryBtn, background: isCorrect ? '#58CC02' : '#EA2B2B', margin: 0 }}>
-              TIẾP TỤC
-            </button>
+            <button onClick={handleContinue} style={{ ...styles.primaryBtn, background: isCorrect ? '#58CC02' : '#EA2B2B', margin: 0 }}>TIẾP TỤC</button>
           </div>
         </div>
       )}
@@ -601,9 +606,7 @@ export default function LessonPlayPage() {
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, color: '#58A700', fontSize: 17 }}>Ghép cặp hoàn thành!</div>
             </div>
-            <button onClick={() => handleContinue()} style={{ ...styles.primaryBtn, background: '#58CC02', margin: 0 }}>
-              TIẾP TỤC
-            </button>
+            <button onClick={handleContinue} style={{ ...styles.primaryBtn, background: '#58CC02', margin: 0 }}>TIẾP TỤC</button>
           </div>
         </div>
       )}
@@ -613,70 +616,32 @@ export default function LessonPlayPage() {
 
 const styles = {
   page: {
-    minHeight: '70vh',
-    background: 'linear-gradient(180deg,#F0F9FF 0%,#EFF5F3 100%)',
-    padding: '24px 16px 100px',
-    maxWidth: 640,
-    margin: '0 auto',
-    position: 'relative',
+    minHeight: '70vh', background: 'linear-gradient(180deg,#F0F9FF 0%,#EFF5F3 100%)',
+    padding: '24px 16px 100px', maxWidth: 640, margin: '0 auto', position: 'relative',
     fontFamily: "'Be Vietnam Pro', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
   },
   center: { padding: 40, textAlign: 'center', color: '#6b7280' },
   topBar: { display: 'flex', alignItems: 'center', marginBottom: 28 },
   progressTrack: { flex: 1, height: 14, background: '#E5E7EB', borderRadius: 999, overflow: 'hidden' },
   progressFill: { height: '100%', background: '#58CC02', borderRadius: 999, transition: 'width 0.4s ease' },
-  card: {
-    background: '#fff',
-    borderRadius: 20,
-    padding: '32px 24px',
-    boxShadow: '0 4px 16px rgba(23,48,45,0.06)',
-  },
+  card: { background: '#fff', borderRadius: 20, padding: '32px 24px', boxShadow: '0 4px 16px rgba(23,48,45,0.06)' },
   wordRow: { display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center' },
-  speakerBtn: {
-    width: 48, height: 48, borderRadius: '50%', border: 'none', background: '#E0F2FE',
-    color: '#0EA5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
-  },
+  speakerBtn: { width: 48, height: 48, borderRadius: '50%', border: 'none', background: '#E0F2FE', color: '#0EA5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },
   word: { fontSize: 34, fontWeight: 700, color: '#17302D', textAlign: 'center' },
   posBadge: { fontSize: 13, fontWeight: 700, color: '#6d3fd6', background: '#F3F0FF', borderRadius: 8, padding: '2px 10px', marginLeft: 10, verticalAlign: 'middle' },
   phonetic: { fontSize: 15, color: '#9CA3AF', textAlign: 'center', marginTop: 2 },
   prompt: { textAlign: 'center', color: '#6b7280', marginTop: 12, fontSize: 15 },
-  option: {
-    padding: '16px 20px', borderRadius: 14, border: '2px solid #E5E7EB', background: '#fff',
-    fontSize: 17, fontWeight: 600, cursor: 'pointer', textAlign: 'left', color: '#17302D',
-  },
+  option: { padding: '16px 20px', borderRadius: 14, border: '2px solid #E5E7EB', background: '#fff', fontSize: 17, fontWeight: 600, cursor: 'pointer', textAlign: 'left', color: '#17302D' },
   optionSelected: { border: '2px solid #1CB0F6', background: '#DDF4FF', color: '#1CB0F6' },
   optionCorrect: { border: '2px solid #58CC02', background: '#D7FFB8', color: '#58A700' },
   optionWrong: { border: '2px solid #FF4B4B', background: '#FFDFE0', color: '#EA2B2B' },
-  textInput: {
-    width: '100%', padding: '16px 18px', borderRadius: 14, border: '2px solid #E5E7EB', fontSize: 18,
-    textAlign: 'center', fontWeight: 600, color: '#17302D', boxSizing: 'border-box', outline: 'none',
-  },
-  builtBox: {
-    minHeight: 56, border: '2px dashed #E5E7EB', borderRadius: 14, padding: 12, display: 'flex',
-    flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 16,
-  },
+  builtBox: { minHeight: 56, border: '2px dashed #E5E7EB', borderRadius: 14, padding: 12, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 16 },
   bankBox: { display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  chipBuilt: {
-    padding: '8px 14px', borderRadius: 10, border: '2px solid #1CB0F6', background: '#DDF4FF',
-    color: '#1CB0F6', fontWeight: 700, fontSize: 15, cursor: 'pointer',
-  },
-  chipBank: {
-    padding: '8px 14px', borderRadius: 10, border: '2px solid #E5E7EB', background: '#fff',
-    color: '#17302D', fontWeight: 700, fontSize: 15, cursor: 'pointer',
-  },
-  matchBtn: {
-    padding: '12px 10px', borderRadius: 12, border: '2px solid #E5E7EB', background: '#fff',
-    fontWeight: 600, fontSize: 14, cursor: 'pointer', color: '#17302D', textAlign: 'center',
-  },
-  checkBtn: {
-    position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 48px)', maxWidth: 592,
-    background: '#58CC02', color: '#fff', border: 'none', borderRadius: 16, padding: '16px', fontSize: 17, fontWeight: 700,
-    cursor: 'pointer', boxShadow: '0 4px 0 #58A700',
-  },
+  chipBuilt: { padding: '8px 14px', borderRadius: 10, border: '2px solid #1CB0F6', background: '#DDF4FF', color: '#1CB0F6', fontWeight: 700, fontSize: 15, cursor: 'pointer' },
+  chipBank: { padding: '8px 14px', borderRadius: 10, border: '2px solid #E5E7EB', background: '#fff', color: '#17302D', fontWeight: 700, fontSize: 15, cursor: 'pointer' },
+  matchBtn: { padding: '12px 10px', borderRadius: 12, border: '2px solid #E5E7EB', background: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', color: '#17302D', textAlign: 'center' },
+  checkBtn: { position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 48px)', maxWidth: 592, background: '#58CC02', color: '#fff', border: 'none', borderRadius: 16, padding: '16px', fontSize: 17, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 0 #58A700' },
   checkBtnDisabled: { background: '#E5E7EB', color: '#9CA3AF', boxShadow: '0 4px 0 #D1D5DB', cursor: 'not-allowed' },
   feedbackBar: { position: 'fixed', left: 0, right: 0, bottom: 0 },
-  primaryBtn: {
-    background: '#58CC02', color: '#fff', border: 'none', borderRadius: 14, padding: '14px 24px', fontSize: 16,
-    fontWeight: 700, cursor: 'pointer', marginTop: 16, boxShadow: '0 4px 0 #58A700',
-  },
+  primaryBtn: { background: '#58CC02', color: '#fff', border: 'none', borderRadius: 14, padding: '14px 24px', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginTop: 16, boxShadow: '0 4px 0 #58A700' },
 };

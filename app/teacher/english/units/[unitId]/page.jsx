@@ -73,18 +73,22 @@ export default function UnitLessonsPage() {
         .sub-note { color: #6b7f7a; font-size: 13px; margin: 0 0 26px; }
         .section-title { font-size: 18px; font-weight: 700; color: #17302d; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
         .lesson-list { display: grid; gap: 10px; }
-        .lesson-row { background: #fff; border: 1px solid #e5eeec; border-radius: 14px; padding: 14px 16px;
-          box-shadow: 0 1px 4px rgba(23,48,45,0.03); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .lesson-row { background: #fff; border: 1px solid #e5eeec; border-radius: 14px; padding: 16px 18px;
+          box-shadow: 0 1px 4px rgba(23,48,45,0.03); display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
         .lesson-row:hover { box-shadow: 0 4px 12px rgba(23,48,45,0.07); }
-        .lesson-num { width: 30px; height: 30px; border-radius: 50%; background: #EAFBEA; color: #1a7f4e; font-weight: 700;
-          font-size: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .lesson-link { flex: 1; color: #17302d; font-weight: 600; text-decoration: none; font-size: 15px; min-width: 140px; }
+        .lesson-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 200px; }
+        .lesson-num { width: 32px; height: 32px; border-radius: 10px; background: #EAFBEA; color: #1a7f4e; font-weight: 700;
+          font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .lesson-info { display: flex; flex-direction: column; gap: 5px; }
+        .lesson-link { color: #17302d; font-weight: 700; text-decoration: none; font-size: 15px; }
         .lesson-link:hover { color: #225da3; }
-        .meta-pill { font-size: 11.5px; color: #6b7f7a; background: #f3f6f5; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
-        .mini-btn { border: none; background: #f3f4f6; border-radius: 8px; width: 30px; height: 30px; cursor: pointer;
+        .lesson-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+        .meta-pill { font-size: 11px; font-weight: 600; color: #6b7f7a; background: #f3f6f5; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+        .lesson-actions { display: flex; align-items: center; gap: 4px; background: #f8fafb; border: 1px solid #eef1f0; border-radius: 12px; padding: 5px; flex-shrink: 0; }
+        .mini-btn { border: none; background: transparent; border-radius: 8px; width: 30px; height: 30px; cursor: pointer;
           font-size: 14px; color: #4b5563; display: flex; align-items: center; justify-content: center; }
         .mini-btn:hover { background: #e5e7eb; }
-        .mini-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+        .mini-btn:disabled { opacity: 0.3; cursor: not-allowed; }
         .mini-btn.danger { color: #a3374a; }
         .mini-btn.danger:hover { background: #fdeef0; }
         .empty-lessons { text-align: center; padding: 40px 20px; color: #9ca3af; background: #fff; border-radius: 14px; border: 1px dashed #cfe2f7; }
@@ -139,14 +143,22 @@ export default function UnitLessonsPage() {
               </div>
             ) : (
               <>
-                <div className="lesson-num">{idx + 1}</div>
-                <Link href={`/teacher/english/lessons/${l.id}`} className="lesson-link">{l.title}</Link>
-                <span className="meta-pill">✅ ≥{l.pass_score}%</span>
-                <span className="meta-pill">❤️ {l.max_hearts} tim</span>
-                <button className="mini-btn" onClick={() => startEdit(l)} title="Sửa">✎</button>
-                <button className="mini-btn" onClick={() => moveLesson(l, -1)} disabled={idx === 0} title="Lên">↑</button>
-                <button className="mini-btn" onClick={() => moveLesson(l, 1)} disabled={idx === lessons.length - 1} title="Xuống">↓</button>
-                <button className="mini-btn danger" onClick={() => deleteLesson(l.id)} title="Xóa">🗑</button>
+                <div className="lesson-left">
+                  <div className="lesson-num">{idx + 1}</div>
+                  <div className="lesson-info">
+                    <Link href={`/teacher/english/lessons/${l.id}`} className="lesson-link">{l.title}</Link>
+                    <div className="lesson-meta">
+                      <span className="meta-pill">✅ ≥{l.pass_score}%</span>
+                      <span className="meta-pill">❤️ {l.max_hearts} tim</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="lesson-actions">
+                  <button className="mini-btn" onClick={() => startEdit(l)} title="Sửa">✎</button>
+                  <button className="mini-btn" onClick={() => moveLesson(l, -1)} disabled={idx === 0} title="Lên">↑</button>
+                  <button className="mini-btn" onClick={() => moveLesson(l, 1)} disabled={idx === lessons.length - 1} title="Xuống">↓</button>
+                  <button className="mini-btn danger" onClick={() => deleteLesson(l.id)} title="Xóa">🗑</button>
+                </div>
               </>
             )}
           </div>

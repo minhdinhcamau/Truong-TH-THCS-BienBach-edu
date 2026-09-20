@@ -104,15 +104,17 @@ export default function CourseUnitsPage() {
         .save-btn { background: #225da3; color: #fff; border: none; border-radius: 10px; padding: 10px 20px; font-weight: 700; cursor: pointer; }
         .section-title { font-size: 18px; font-weight: 700; color: #17302d; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; }
         .unit-list { display: grid; gap: 10px; }
-        .unit-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #e5eeec; border-radius: 14px;
-          padding: 12px 16px; box-shadow: 0 1px 4px rgba(23,48,45,0.03); transition: box-shadow 0.15s; }
+        .unit-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #fff; border: 1px solid #e5eeec; border-radius: 14px;
+          padding: 12px 16px; box-shadow: 0 1px 4px rgba(23,48,45,0.03); transition: box-shadow 0.15s; flex-wrap: wrap; }
         .unit-row:hover { box-shadow: 0 4px 12px rgba(23,48,45,0.07); }
-        .unit-num { width: 30px; height: 30px; border-radius: 50%; background: #E9F2FC; color: #225da3; font-weight: 700;
-          font-size: 13px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .mini-btn { border: none; background: #f3f4f6; border-radius: 8px; width: 30px; height: 30px; cursor: pointer;
+        .unit-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 160px; }
+        .unit-num { width: 32px; height: 32px; border-radius: 10px; background: #E9F2FC; color: #225da3; font-weight: 700;
+          font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .unit-actions { display: flex; align-items: center; gap: 4px; background: #f8fafb; border: 1px solid #eef1f0; border-radius: 12px; padding: 5px; flex-shrink: 0; }
+        .mini-btn { border: none; background: transparent; border-radius: 8px; width: 30px; height: 30px; cursor: pointer;
           font-size: 14px; color: #4b5563; display: flex; align-items: center; justify-content: center; }
         .mini-btn:hover { background: #e5e7eb; }
-        .mini-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+        .mini-btn:disabled { opacity: 0.3; cursor: not-allowed; }
         .mini-btn.danger { color: #a3374a; }
         .mini-btn.danger:hover { background: #fdeef0; }
         .add-form { display: flex; gap: 8px; margin-top: 16px; }
@@ -168,12 +170,16 @@ export default function CourseUnitsPage() {
               </>
             ) : (
               <>
-                <div className="unit-num">{idx + 1}</div>
-                <Link href={`/teacher/english/units/${u.id}`} style={{ color: '#17302d', fontWeight: 600, fontSize: 15, textDecoration: 'none', flex: 1 }}>{u.title}</Link>
-                <button className="mini-btn" onClick={() => startEditUnit(u)} title="Sửa">✎</button>
-                <button className="mini-btn" onClick={() => moveUnit(u, -1)} disabled={idx === 0} title="Lên">↑</button>
-                <button className="mini-btn" onClick={() => moveUnit(u, 1)} disabled={idx === units.length - 1} title="Xuống">↓</button>
-                <button className="mini-btn danger" onClick={() => deleteUnit(u.id)} title="Xóa">🗑</button>
+                <div className="unit-left">
+                  <div className="unit-num">{idx + 1}</div>
+                  <Link href={`/teacher/english/units/${u.id}`} style={{ color: '#17302d', fontWeight: 700, fontSize: 15, textDecoration: 'none' }}>{u.title}</Link>
+                </div>
+                <div className="unit-actions">
+                  <button className="mini-btn" onClick={() => startEditUnit(u)} title="Sửa">✎</button>
+                  <button className="mini-btn" onClick={() => moveUnit(u, -1)} disabled={idx === 0} title="Lên">↑</button>
+                  <button className="mini-btn" onClick={() => moveUnit(u, 1)} disabled={idx === units.length - 1} title="Xuống">↓</button>
+                  <button className="mini-btn danger" onClick={() => deleteUnit(u.id)} title="Xóa">🗑</button>
+                </div>
               </>
             )}
           </div>
