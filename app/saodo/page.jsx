@@ -35,6 +35,12 @@ function getWeekdays() {
   return days;
 }
 
+function weekdaysDefaultFilter() {
+  const days = getWeekdays();
+  const today = days.find((d) => d.isToday);
+  return today ? today.iso : days[0].iso;
+}
+
 export default function SaoDoPage() {
   const router = useRouter();
   const [profile, setProfile] = useState(null);
@@ -45,12 +51,13 @@ export default function SaoDoPage() {
   const [note, setNote] = useState('');
   const [studentName, setStudentName] = useState('');
   const weekdays = useMemo(() => getWeekdays(), []);
-  const [selectedDay, setSelectedDay] = useState(() => getWeekdays().find((d) => d.isToday)?.iso || getWeekdays()[0].iso);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState(null);
   const [weekRows, setWeekRows] = useState([]);
-  const [weekDayFilter, setWeekDayFilter] = useState('all'); // 'all' hoac 1 ngay iso
+  const [weekDayFilter, setWeekDayFilter] = useState(weekdaysDefaultFilter);
   const [confirmReason, setConfirmReason] = useState(null); // { code, label, points, category }
+  const [editingRow, setEditingRow] = useState(null); // dong dang sua
+  const [classScore, setClassScore] = useState(null); // { ne_nep_score, hoc_tap_score, total_score, rank }
 
   async function loadAll() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -97,13 +104,27 @@ export default function SaoDoPage() {
     setWeekRows(data || []);
   }
 
+  async function loadClassScore(classId) {
+    if (!classId) {
+      setClassScore(null);
+      return;
+    }
+    const { data } = await supabase.rpc('get_class_ranking');
+    const row = (data || []).find((r) => r.class_id === classId);
+    setClassScore(row || null);
+  }
+
   useEffect(() => {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (selectedClass) loadWeek(selectedClass);
+    if (selectedClass) {
+      loadWeek(selectedClass);
+      loadClassScore(selectedClass);
+      setWeekDayFilter(weekdaysDefaultFilter());
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClass]);
 
@@ -115,9 +136,13 @@ export default function SaoDoPage() {
   const neNepReasons = useMemo(() => reasons.filter((r) => r.category === 'ne_nep'), [reasons]);
   const hocTapReasons = useMemo(() => reasons.filter((r) => r.category === 'hoc_tap'), [reasons]);
   const filteredWeekRows = useMemo(
-    () => (weekDayFilter === 'all' ? weekRows : weekRows.filter((r) => r.occurred_date === weekDayFilter)),
+    () => weekRows.filter((r) => r.occurred_date === weekDayFilter),
     [weekRows, weekDayFilter]
   );
+
+  async function refreshAfterChange() {
+    await Promise.all([loadWeek(selectedClass), loadClassScore(selectedClass)]);
+  }
 
   async function submitDeduction(reason) {
     if (!selectedClass) {
@@ -130,7 +155,6 @@ export default function SaoDoPage() {
       p_class_id: selectedClass,
       p_reason_code: reason.code,
       p_note: note.trim() || null,
-      p_occurred_date: selectedDay,
       p_student_name: studentName.trim() || null,
     });
     setSubmitting(false);
@@ -141,7 +165,58 @@ export default function SaoDoPage() {
       setMsg({ type: 'ok', text: `Đã ghi nhận: ${reason.label} (${reason.points} điểm).` });
       setNote('');
       setStudentName('');
-      loadWeek(selectedClass);
+      setWeekDayFilter(weekdaysDefaultFilter());
+      refreshAfterChange();
+    }
+  }
+
+  async function submitCheckin() {
+    if (!selectedClass) {
+      setMsg({ type: 'error', text: 'Vui lòng chọn lớp trước.' });
+      return;
+    }
+    setSubmitting(true);
+    setMsg(null);
+    const { error } = await supabase.rpc('saodo_checkin', {
+      p_class_id: selectedClass,
+      p_note: note.trim() || null,
+    });
+    setSubmitting(false);
+    if (error) {
+      setMsg({ type: 'error', text: error.message });
+    } else {
+      setMsg({ type: 'ok', text: 'Đã xác nhận: kiểm tra hôm nay, không có vi phạm.' });
+      setNote('');
+      setWeekDayFilter(weekdaysDefaultFilter());
+      refreshAfterChange();
+    }
+  }
+
+  async function deleteRow(row) {
+    if (!window.confirm(`Xoá báo cáo "${row.reason_label}" (${row.points} điểm)?`)) return;
+    const { error } = await supabase.rpc('saodo_delete_deduction', { p_id: row.id });
+    if (error) {
+      setMsg({ type: 'error', text: error.message });
+    } else {
+      refreshAfterChange();
+    }
+  }
+
+  async function saveEdit() {
+    if (!editingRow) return;
+    setSubmitting(true);
+    const { error } = await supabase.rpc('saodo_edit_deduction', {
+      p_id: editingRow.id,
+      p_reason_code: editingRow.reason_code,
+      p_note: editingRow.note || null,
+      p_student_name: editingRow.student_name || null,
+    });
+    setSubmitting(false);
+    if (error) {
+      setMsg({ type: 'error', text: error.message });
+    } else {
+      setEditingRow(null);
+      refreshAfterChange();
     }
   }
 
@@ -225,6 +300,33 @@ export default function SaoDoPage() {
         .msg.ok { color: #219a69; }
         .msg.error { color: #c0392b; }
 
+        .score-card { background: linear-gradient(135deg,#0f4c82,#1b6fb8); color: #fff; }
+        .score-card h3 { color: #fff; }
+        .score-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+        .score-box { background: rgba(255,255,255,0.14); border-radius: 12px; padding: 12px; text-align: center; }
+        .score-box-total { background: rgba(255,255,255,0.24); }
+        .score-box-rank { background: linear-gradient(135deg,#e8af2e,#b9820e); }
+        .score-label { font-size: 11.5px; opacity: 0.85; }
+        .score-num { font-size: 22px; font-weight: 800; font-family: 'Baloo 2', sans-serif; }
+
+        .checkin-btn {
+          width: 100%; padding: 14px; border-radius: 14px; border: 2px solid #219a69; background: #eafff5;
+          color: #14754f; font-weight: 800; font-size: 15px; cursor: pointer;
+        }
+        .checkin-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .checkin-btn:hover:not(:disabled) { background: #d8ffef; }
+
+        .stat-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+        .stat-chip { background: #f0f6f4; border-radius: 10px; padding: 8px 14px; font-size: 12.5px; color: var(--ink-soft); }
+        .stat-chip strong { color: var(--ink); font-size: 14px; }
+
+        .row-actions { display: flex; gap: 4px; white-space: nowrap; }
+        .row-action-btn {
+          border: none; background: #f1f1f1; border-radius: 6px; padding: 4px 7px; cursor: pointer; font-size: 12px;
+        }
+        .row-action-del:hover { background: #ffe0da; }
+        .row-action-btn:hover { background: #e2e8f0; }
+
         .today-dot {
           display: inline-block; width: 6px; height: 6px; border-radius: 50%;
           background: #e63946; margin-left: 5px; vertical-align: middle;
@@ -300,20 +402,38 @@ export default function SaoDoPage() {
         )}
       </div>
 
-      <div className="card">
-        <h3>2. Chọn ngày vi phạm</h3>
-        <div className="class-chips">
-          {weekdays.map((d) => (
-            <button
-              key={d.iso}
-              className={`class-chip ${selectedDay === d.iso ? 'active' : ''}`}
-              onClick={() => setSelectedDay(d.iso)}
-            >
-              {d.label} <span style={{ fontWeight: 400, opacity: 0.7 }}>({d.shortLabel})</span>
-              {d.isToday && <span className="today-dot" title="Hôm nay" />}
-            </button>
-          ))}
+      {selectedClass && classScore && (
+        <div className="card score-card">
+          <h3>Điểm hiện tại — {classes.find((c) => c.id === selectedClass)?.name}</h3>
+          <div className="score-grid">
+            <div className="score-box">
+              <div className="score-label">Nề nếp</div>
+              <div className="score-num">{classScore.ne_nep_score}</div>
+            </div>
+            <div className="score-box">
+              <div className="score-label">Học tập</div>
+              <div className="score-num">{classScore.hoc_tap_score}</div>
+            </div>
+            <div className="score-box score-box-total">
+              <div className="score-label">Tổng điểm</div>
+              <div className="score-num">{classScore.total_score}</div>
+            </div>
+            <div className="score-box score-box-rank">
+              <div className="score-label">Đang xếp hạng</div>
+              <div className="score-num">#{classScore.rank}</div>
+            </div>
+          </div>
         </div>
+      )}
+
+      <div className="card">
+        <h3>2. Hôm nay {weekdays.find((d) => d.isToday)?.label || ''} ({weekdays.find((d) => d.isToday)?.shortLabel || new Date().toLocaleDateString('vi-VN')}) — không có vi phạm?</h3>
+        <p style={{ fontSize: 13, color: '#527169', margin: '0 0 10px' }}>
+          Nếu đã kiểm tra sổ đầu bài và nề nếp lớp mà không có lỗi nào, bấm xác nhận để hệ thống ghi nhận là bạn ĐÃ kiểm tra hôm nay (tránh bị nhắc nhở bỏ sót).
+        </p>
+        <button className="checkin-btn" disabled={!selectedClass || submitting} onClick={submitCheckin}>
+          ✅ Đã kiểm tra - Không có vi phạm
+        </button>
       </div>
 
       <div className="card">
@@ -373,63 +493,116 @@ export default function SaoDoPage() {
 
       {selectedClass && (
         <div className="card">
-          <h3>Bảng trừ điểm tuần này — {classes.find((c) => c.id === selectedClass)?.name}</h3>
+          <h3>Bảng thống kê tuần này — {classes.find((c) => c.id === selectedClass)?.name}</h3>
+
+          <div className="stat-row">
+            <div className="stat-chip">
+              Tổng lượt vi phạm Nề nếp: <strong>{weekRows.filter((r) => r.category === 'ne_nep').length}</strong>
+            </div>
+            <div className="stat-chip">
+              Tổng lượt Giờ B/C: <strong>{weekRows.filter((r) => r.category === 'hoc_tap' && r.points < 0).length}</strong>
+            </div>
+            <div className="stat-chip">
+              Ngày đã kiểm tra: <strong>{new Set(weekRows.map((r) => r.occurred_date)).size}</strong>/5
+            </div>
+          </div>
+
           <div className="day-tabs">
-            <button
-              className={`day-tab ${weekDayFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setWeekDayFilter('all')}
-            >
-              Cả tuần
-            </button>
             {weekdays.map((d) => (
               <button
                 key={d.iso}
                 className={`day-tab ${weekDayFilter === d.iso ? 'active' : ''}`}
                 onClick={() => setWeekDayFilter(d.iso)}
               >
-                {d.label}
+                {d.label} {d.isToday && <span className="today-dot" />}
               </button>
             ))}
           </div>
 
           {filteredWeekRows.length === 0 ? (
             <div className="no-class" style={{ color: '#8aa39c', marginTop: 10 }}>
-              Chưa có dữ liệu trừ điểm nào {weekDayFilter === 'all' ? 'trong tuần này' : ''}.
+              Chưa có dữ liệu ngày này — bấm mục 2 để xác nhận đã kiểm tra, hoặc chọn lỗi bên dưới nếu có vi phạm.
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
             <table className="week-table">
               <thead>
                 <tr>
-                  <th>Ngày</th>
                   <th>Loại</th>
                   <th>Nội dung</th>
                   <th>Học sinh</th>
                   <th>Điểm</th>
                   <th>Người báo cáo</th>
+                  <th>Giờ báo cáo</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
-                {filteredWeekRows.map((r) => {
-                  const d = weekdays.find((w) => w.iso === r.occurred_date);
-                  return (
-                    <tr key={r.id}>
-                      <td>{d ? `${d.label} (${d.shortLabel})` : r.occurred_date}</td>
-                      <td>{r.category === 'ne_nep' ? 'Nề nếp' : 'Học tập'}</td>
-                      <td>
-                        {r.reason_label}
-                        {r.note && <div className="week-note">{r.note}</div>}
-                      </td>
-                      <td>{r.student_name || '—'}</td>
-                      <td className={r.points < 0 ? 'week-pts-neg' : 'week-pts-zero'}>{r.points}</td>
-                      <td>{r.reported_by_name || '—'}</td>
-                    </tr>
-                  );
-                })}
+                {filteredWeekRows.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.category === 'ne_nep' ? 'Nề nếp' : r.category === 'hoc_tap' ? 'Học tập' : 'Kiểm tra'}</td>
+                    <td>
+                      {r.reason_label}
+                      {r.note && <div className="week-note">{r.note}</div>}
+                    </td>
+                    <td>{r.student_name || '—'}</td>
+                    <td className={r.points < 0 ? 'week-pts-neg' : 'week-pts-zero'}>{r.points}</td>
+                    <td>{r.reported_by_name || '—'}</td>
+                    <td>{new Date(r.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</td>
+                    <td className="row-actions">
+                      <button
+                        className="row-action-btn"
+                        title="Sửa"
+                        onClick={() => setEditingRow({ id: r.id, reason_code: r.reason_code, note: r.note || '', student_name: r.student_name || '' })}
+                      >
+                        ✎
+                      </button>
+                      <button className="row-action-btn row-action-del" title="Xoá" onClick={() => deleteRow(r)}>
+                        🗑
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
             </div>
           )}
+        </div>
+      )}
+
+      {editingRow && (
+        <div className="confirm-backdrop" onClick={() => setEditingRow(null)}>
+          <div className="confirm-card" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'left' }}>
+            <div className="confirm-title" style={{ textAlign: 'center' }}>Sửa báo cáo</div>
+            <label style={{ fontSize: 12.5, fontWeight: 600 }}>Loại lỗi</label>
+            <select
+              className="note-input"
+              value={editingRow.reason_code}
+              onChange={(e) => setEditingRow({ ...editingRow, reason_code: e.target.value })}
+            >
+              {reasons.map((r) => (
+                <option key={r.code} value={r.code}>{r.label} ({r.points} đ)</option>
+              ))}
+            </select>
+            <label style={{ fontSize: 12.5, fontWeight: 600 }}>Tên học sinh</label>
+            <input
+              className="note-input"
+              value={editingRow.student_name}
+              onChange={(e) => setEditingRow({ ...editingRow, student_name: e.target.value })}
+            />
+            <label style={{ fontSize: 12.5, fontWeight: 600 }}>Ghi chú</label>
+            <input
+              className="note-input"
+              value={editingRow.note}
+              onChange={(e) => setEditingRow({ ...editingRow, note: e.target.value })}
+            />
+            <div className="confirm-actions">
+              <button className="confirm-no" onClick={() => setEditingRow(null)}>Huỷ</button>
+              <button className="confirm-yes" style={{ background: '#1b6fb8' }} disabled={submitting} onClick={saveEdit}>
+                {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
