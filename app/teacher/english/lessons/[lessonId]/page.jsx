@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 
-const emptyForm = { word: '', meaning: '', example_sentence: '' };
+const emptyForm = { word: '', part_of_speech: '', meaning: '', example_sentence: '' };
 
 export default function LessonVocabPage() {
   const { lessonId } = useParams();
@@ -41,7 +41,7 @@ export default function LessonVocabPage() {
 
   function startEdit(it) {
     setEditingId(it.id);
-    setEditForm({ word: it.word || '', meaning: it.meaning || '', example_sentence: it.example_sentence || '' });
+    setEditForm({ word: it.word || '', part_of_speech: it.part_of_speech || '', meaning: it.meaning || '', example_sentence: it.example_sentence || '' });
   }
   async function saveEdit(id) {
     if (!editForm.word.trim() || !editForm.meaning.trim()) return;
@@ -75,7 +75,7 @@ export default function LessonVocabPage() {
         setAiError('AI không tách được từ vựng nào từ đoạn văn bản này. Thử dán lại rõ ràng hơn.');
         return;
       }
-      setDraftItems(data.items.map((it) => ({ word: it.word, meaning: it.meaning, example: it.example || '' })));
+      setDraftItems(data.items.map((it) => ({ word: it.word, part_of_speech: it.part_of_speech || '', meaning: it.meaning, example: it.example || '' })));
     } catch (e) {
       setAiError('Không kết nối được tới AI. Kiểm tra lại kết nối mạng.');
     } finally {
@@ -90,7 +90,7 @@ export default function LessonVocabPage() {
     setDraftItems((prev) => prev.filter((_, i) => i !== idx));
   }
   function addDraftRow() {
-    setDraftItems((prev) => [...prev, { word: '', meaning: '', example: '' }]);
+    setDraftItems((prev) => [...prev, { word: '', part_of_speech: '', meaning: '', example: '' }]);
   }
 
   async function saveDraftItems() {
@@ -100,6 +100,7 @@ export default function LessonVocabPage() {
     const rows = valid.map((d, i) => ({
       lesson_id: lessonId,
       word: d.word.trim(),
+      part_of_speech: d.part_of_speech.trim(),
       meaning: d.meaning.trim(),
       example_sentence: d.example.trim(),
       order_index: items.length + i,
@@ -127,6 +128,8 @@ export default function LessonVocabPage() {
         .vocab-card { background: #fff; border: 1px solid #e5eeec; border-radius: 14px; padding: 16px; box-shadow: 0 1px 4px rgba(23,48,45,0.03); }
         .vocab-card:hover { box-shadow: 0 4px 12px rgba(23,48,45,0.07); }
         .vc-word { font-weight: 700; font-size: 17px; color: #17302d; }
+        .pos-badge { display: inline-block; font-size: 11px; font-weight: 700; color: #6d3fd6; background: #F3F0FF;
+          border-radius: 6px; padding: 2px 7px; margin-left: 7px; vertical-align: middle; text-transform: lowercase; }
         .vc-meaning { color: #225da3; font-weight: 600; font-size: 14px; margin-top: 2px; }
         .vc-example { color: #6b7f7a; font-size: 12.5px; margin-top: 8px; font-style: italic; line-height: 1.4; }
         .vc-actions { display: flex; gap: 8px; margin-top: 12px; }
@@ -157,7 +160,7 @@ export default function LessonVocabPage() {
         .draft-section { background: #fff; border: 2px solid #6d3fd6; border-radius: 16px; padding: 20px; margin-bottom: 26px; }
         .draft-section h4 { margin: 0 0 4px; font-size: 15px; color: #17302d; }
         .draft-sub { font-size: 12.5px; color: #6b7f7a; margin: 0 0 14px; }
-        .draft-row { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+        .draft-row { display: grid; grid-template-columns: 1.3fr 0.8fr 1fr 2fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
         .draft-row input { margin-bottom: 0; }
         .draft-remove { border: none; background: #fdeef0; color: #a3374a; border-radius: 8px; width: 34px; height: 34px; cursor: pointer; font-size: 14px; }
         .draft-footer { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
@@ -182,7 +185,8 @@ export default function LessonVocabPage() {
         {items.map((it) => (
           editingId === it.id ? (
             <div key={it.id} className="edit-card">
-              <input value={editForm.word} onChange={(e) => setEditForm({ ...editForm, word: e.target.value })} placeholder="Từ tiếng Anh" autoFocus />
+              <input value={editForm.word} onChange={(e) => setEditForm({ ...editForm, word: e.target.value })} placeholder="Từ tiếng Anh (không kèm loại từ)" autoFocus />
+              <input value={editForm.part_of_speech} onChange={(e) => setEditForm({ ...editForm, part_of_speech: e.target.value })} placeholder="Loại từ (n / v / adj...) — tùy chọn" />
               <input value={editForm.meaning} onChange={(e) => setEditForm({ ...editForm, meaning: e.target.value })} placeholder="Nghĩa" />
               <input value={editForm.example_sentence} onChange={(e) => setEditForm({ ...editForm, example_sentence: e.target.value })} placeholder="Câu ví dụ" />
               <div className="vc-actions">
@@ -192,7 +196,10 @@ export default function LessonVocabPage() {
             </div>
           ) : (
             <div key={it.id} className="vocab-card">
-              <div className="vc-word">{it.word}</div>
+              <div className="vc-word">
+                {it.word}
+                {it.part_of_speech && <span className="pos-badge">{it.part_of_speech}</span>}
+              </div>
               <div className="vc-meaning">{it.meaning}</div>
               {it.example_sentence && <div className="vc-example">"{it.example_sentence}"</div>}
               <div className="vc-actions">
@@ -226,6 +233,7 @@ export default function LessonVocabPage() {
           {draftItems.map((d, i) => (
             <div key={i} className="draft-row">
               <input value={d.word} onChange={(e) => updateDraft(i, 'word', e.target.value)} placeholder="Từ" />
+              <input value={d.part_of_speech} onChange={(e) => updateDraft(i, 'part_of_speech', e.target.value)} placeholder="Loại từ" />
               <input value={d.meaning} onChange={(e) => updateDraft(i, 'meaning', e.target.value)} placeholder="Nghĩa" />
               <input value={d.example} onChange={(e) => updateDraft(i, 'example', e.target.value)} placeholder="Câu ví dụ" />
               <button className="draft-remove" onClick={() => removeDraft(i)} title="Xóa dòng">🗑</button>
@@ -245,6 +253,8 @@ export default function LessonVocabPage() {
         <form onSubmit={addItem}>
           <label>Từ tiếng Anh</label>
           <input className="add-input" placeholder="Ví dụ: mother" value={form.word} onChange={(e) => setForm({ ...form, word: e.target.value })} />
+          <label>Loại từ (tùy chọn)</label>
+          <input className="add-input" placeholder="Ví dụ: n / v / adj" value={form.part_of_speech} onChange={(e) => setForm({ ...form, part_of_speech: e.target.value })} />
           <label>Nghĩa tiếng Việt</label>
           <input className="add-input" placeholder="Ví dụ: mẹ" value={form.meaning} onChange={(e) => setForm({ ...form, meaning: e.target.value })} />
           <label>Câu ví dụ (tùy chọn)</label>

@@ -15,6 +15,7 @@ function buildQuestions(vocabItems) {
     return {
       vocabId: item.id,
       word: item.word,
+      partOfSpeech: item.part_of_speech,
       phonetic: item.phonetic,
       correctAnswer: item.meaning,
       options,
@@ -253,7 +254,10 @@ export default function LessonPlayPage() {
             <SpeakerIcon />
           </button>
           <div>
-            <div style={styles.word}>{current.word}</div>
+            <div style={styles.word}>
+              {current.word}
+              {current.partOfSpeech && <span style={styles.posBadge}>{current.partOfSpeech}</span>}
+            </div>
             {current.phonetic && <div style={styles.phonetic}>{current.phonetic}</div>}
           </div>
         </div>
@@ -337,6 +341,7 @@ const styles = {
     color: '#0EA5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0,
   },
   word: { fontSize: 34, fontWeight: 700, color: '#17302D', textAlign: 'center' },
+  posBadge: { fontSize: 13, fontWeight: 700, color: '#6d3fd6', background: '#F3F0FF', borderRadius: 8, padding: '2px 10px', marginLeft: 10, verticalAlign: 'middle' },
   phonetic: { fontSize: 15, color: '#9CA3AF', textAlign: 'center', marginTop: 2 },
   prompt: { textAlign: 'center', color: '#6b7280', marginTop: 12, fontSize: 15 },
   option: {

@@ -8,7 +8,10 @@ Người dùng dán một đoạn văn bản chứa danh sách từ vựng tiế
 thiếu dấu phân cách rõ ràng, hoặc chép từ nhiều nguồn khác nhau (sách giáo khoa, ghi chú...).
 
 Nhiệm vụ:
-- Tách ra từng từ/cụm từ tiếng Anh riêng biệt.
+- Tách ra từng từ/cụm từ tiếng Anh riêng biệt. QUAN TRỌNG: trường "word" CHỈ chứa đúng từ/cụm từ
+  tiếng Anh, KHÔNG được kèm loại từ trong ngoặc như "(n)", "(v)", "(adj)" — những ký hiệu loại từ
+  đó phải để riêng vào trường "part_of_speech" (ví dụ: "n", "v", "adj", "n, v"), để trống nếu văn
+  bản không ghi rõ loại từ.
 - Với mỗi từ, xác định nghĩa tiếng Việt (nếu văn bản có sẵn nghĩa thì dùng đúng nghĩa đó,
   không tự bịa nghĩa khác).
 - Nếu văn bản có sẵn câu ví dụ đi kèm từ đó thì giữ nguyên câu ví dụ đó.
@@ -18,16 +21,27 @@ Nhiệm vụ:
 
 CHỈ trả lời bằng JSON thuần túy, dạng mảng, KHÔNG kèm giải thích, KHÔNG dùng markdown code fence,
 KHÔNG có chữ nào khác ngoài JSON. Định dạng bắt buộc:
-[{"word": "...", "meaning": "...", "example": "..."}]`;
+[{"word": "...", "part_of_speech": "...", "meaning": "...", "example": "..."}]`;
 
 function cleanItems(items) {
   if (!Array.isArray(items)) return null;
   return items
-    .map((it) => ({
-      word: (it.word || '').toString().trim(),
-      meaning: (it.meaning || '').toString().trim(),
-      example: (it.example || '').toString().trim(),
-    }))
+    .map((it) => {
+      let word = (it.word || '').toString().trim();
+      let pos = (it.part_of_speech || '').toString().trim();
+      // Phòng trường hợp AI vẫn lỡ nhét "(n)" vào cuối word -> tự tách ra
+      const match = word.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+      if (match) {
+        word = match[1].trim();
+        if (!pos) pos = match[2].trim();
+      }
+      return {
+        word,
+        part_of_speech: pos,
+        meaning: (it.meaning || '').toString().trim(),
+        example: (it.example || '').toString().trim(),
+      };
+    })
     .filter((it) => it.word && it.meaning);
 }
 
