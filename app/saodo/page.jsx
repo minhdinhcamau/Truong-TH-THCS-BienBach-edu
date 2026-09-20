@@ -9,6 +9,32 @@ function initialsOf(name) {
   return parts.slice(-2).map((w) => w[0]).join('').toUpperCase();
 }
 
+const DAY_LABELS = ['CN', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+
+function toISODate(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+// Tra ve mang { iso, label, isToday } cho Thu 2 -> Thu 6 cua tuan hien tai
+function getWeekdays() {
+  const now = new Date();
+  const day = now.getDay(); // 0 = CN
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(now.getDate() + diffToMonday);
+
+  const todayIso = toISODate(now);
+  const days = [];
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const iso = toISODate(d);
+    days.push({ iso, label: DAY_LABELS[d.getDay()], shortLabel: `${d.getDate()}/${d.getMonth() + 1}`, isToday: iso === todayIso });
+  }
+  return days;
+}
+
 export default function SaoDoPage() {
   const router = useRouter();
   const [profile, setProfile] = useState(null);
@@ -17,9 +43,13 @@ export default function SaoDoPage() {
   const [reasons, setReasons] = useState([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [note, setNote] = useState('');
+  const [studentName, setStudentName] = useState('');
+  const weekdays = useMemo(() => getWeekdays(), []);
+  const [selectedDay, setSelectedDay] = useState(() => getWeekdays().find((d) => d.isToday)?.iso || getWeekdays()[0].iso);
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState(null);
-  const [recent, setRecent] = useState([]);
+  const [weekRows, setWeekRows] = useState([]);
+  const [weekDayFilter, setWeekDayFilter] = useState('all'); // 'all' hoac 1 ngay iso
   const [confirmReason, setConfirmReason] = useState(null); // { code, label, points, category }
 
   async function loadAll() {
@@ -55,24 +85,27 @@ export default function SaoDoPage() {
     if (myClasses.length === 1) setSelectedClass(myClasses[0].id);
     setReasons(reasonTypes || []);
 
-    await loadRecent(prof.id);
     setLoading(false);
   }
 
-  async function loadRecent(saodoId) {
-    const { data } = await supabase
-      .from('discipline_deductions')
-      .select('id, class_id, category, reason_code, points, note, created_at, classes(name)')
-      .eq('reported_by', saodoId)
-      .order('created_at', { ascending: false })
-      .limit(15);
-    setRecent(data || []);
+  async function loadWeek(classId) {
+    if (!classId) {
+      setWeekRows([]);
+      return;
+    }
+    const { data } = await supabase.rpc('get_class_deductions', { p_class_id: classId });
+    setWeekRows(data || []);
   }
 
   useEffect(() => {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (selectedClass) loadWeek(selectedClass);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClass]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -81,6 +114,10 @@ export default function SaoDoPage() {
 
   const neNepReasons = useMemo(() => reasons.filter((r) => r.category === 'ne_nep'), [reasons]);
   const hocTapReasons = useMemo(() => reasons.filter((r) => r.category === 'hoc_tap'), [reasons]);
+  const filteredWeekRows = useMemo(
+    () => (weekDayFilter === 'all' ? weekRows : weekRows.filter((r) => r.occurred_date === weekDayFilter)),
+    [weekRows, weekDayFilter]
+  );
 
   async function submitDeduction(reason) {
     if (!selectedClass) {
@@ -93,6 +130,8 @@ export default function SaoDoPage() {
       p_class_id: selectedClass,
       p_reason_code: reason.code,
       p_note: note.trim() || null,
+      p_occurred_date: selectedDay,
+      p_student_name: studentName.trim() || null,
     });
     setSubmitting(false);
     setConfirmReason(null);
@@ -101,7 +140,8 @@ export default function SaoDoPage() {
     } else {
       setMsg({ type: 'ok', text: `Đã ghi nhận: ${reason.label} (${reason.points} điểm).` });
       setNote('');
-      loadRecent(profile.id);
+      setStudentName('');
+      loadWeek(selectedClass);
     }
   }
 
@@ -185,12 +225,27 @@ export default function SaoDoPage() {
         .msg.ok { color: #219a69; }
         .msg.error { color: #c0392b; }
 
-        .recent-item { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0;
-          border-bottom: 1px solid #eef2f0; font-size: 13px; }
-        .recent-item:last-child { border-bottom: none; }
-        .recent-main { font-weight: 600; }
-        .recent-sub { color: var(--ink-soft); font-size: 11.5px; }
-        .recent-pts { font-weight: 800; color: #c0392b; white-space: nowrap; }
+        .today-dot {
+          display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+          background: #e63946; margin-left: 5px; vertical-align: middle;
+        }
+
+        .day-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+        .day-tab {
+          padding: 6px 14px; border-radius: 999px; border: 1px solid #dce3e0; background: #fff;
+          font-weight: 600; font-size: 12.5px; cursor: pointer;
+        }
+        .day-tab.active { background: #1b6fb8; border-color: #1b6fb8; color: #fff; }
+
+        .week-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+        .week-table th {
+          text-align: left; padding: 7px 8px; border-bottom: 2px solid #e4e9e7; color: var(--ink-soft);
+          font-weight: 700; white-space: nowrap;
+        }
+        .week-table td { padding: 8px; border-bottom: 1px solid #eef2f0; vertical-align: top; }
+        .week-note { color: var(--ink-soft); font-size: 11px; margin-top: 2px; }
+        .week-pts-neg { font-weight: 800; color: #c0392b; white-space: nowrap; }
+        .week-pts-zero { font-weight: 800; color: #219a69; white-space: nowrap; }
 
         .confirm-backdrop { position: fixed; inset: 0; background: rgba(11,32,52,0.5); z-index: 300;
           display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
@@ -246,7 +301,33 @@ export default function SaoDoPage() {
       </div>
 
       <div className="card">
-        <h3>2. Nề nếp — chọn lỗi vi phạm</h3>
+        <h3>2. Chọn ngày vi phạm</h3>
+        <div className="class-chips">
+          {weekdays.map((d) => (
+            <button
+              key={d.iso}
+              className={`class-chip ${selectedDay === d.iso ? 'active' : ''}`}
+              onClick={() => setSelectedDay(d.iso)}
+            >
+              {d.label} <span style={{ fontWeight: 400, opacity: 0.7 }}>({d.shortLabel})</span>
+              {d.isToday && <span className="today-dot" title="Hôm nay" />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>3. Tên học sinh vi phạm (nếu là lỗi cá nhân)</h3>
+        <input
+          className="note-input"
+          value={studentName}
+          onChange={(e) => setStudentName(e.target.value)}
+          placeholder="VD: Nguyễn Văn A — để trống nếu lỗi áp dụng cho cả lớp"
+        />
+      </div>
+
+      <div className="card">
+        <h3>4. Nề nếp — chọn lỗi vi phạm</h3>
         <div className="reason-grid">
           {neNepReasons.map((r) => (
             <button
@@ -263,7 +344,7 @@ export default function SaoDoPage() {
       </div>
 
       <div className="card">
-        <h3>3. Học tập — xếp loại giờ học (theo sổ đầu bài)</h3>
+        <h3>5. Học tập — xếp loại giờ học (theo sổ đầu bài)</h3>
         <div className="hoc-tap-grid">
           {hocTapReasons.map((r) => (
             <button
@@ -280,30 +361,75 @@ export default function SaoDoPage() {
       </div>
 
       <div className="card">
-        <h3>Ghi chú (không bắt buộc, áp dụng cho lần báo cáo tiếp theo)</h3>
+        <h3>Ghi chú thêm (không bắt buộc)</h3>
         <input
           className="note-input"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="VD: tên học sinh vi phạm, tiết mấy..."
+          placeholder="VD: tiết mấy, hoàn cảnh cụ thể..."
         />
         {msg && <div className={`msg ${msg.type}`}>{msg.text}</div>}
       </div>
 
-      {recent.length > 0 && (
+      {selectedClass && (
         <div className="card">
-          <h3>Lịch sử báo cáo của bạn (gần đây)</h3>
-          {recent.map((r) => (
-            <div key={r.id} className="recent-item">
-              <div>
-                <div className="recent-main">
-                  {r.classes?.name} — {reasons.find((x) => x.code === r.reason_code)?.label || r.reason_code}
-                </div>
-                <div className="recent-sub">{new Date(r.created_at).toLocaleString('vi-VN')}</div>
-              </div>
-              <div className="recent-pts">{r.points} đ</div>
+          <h3>Bảng trừ điểm tuần này — {classes.find((c) => c.id === selectedClass)?.name}</h3>
+          <div className="day-tabs">
+            <button
+              className={`day-tab ${weekDayFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setWeekDayFilter('all')}
+            >
+              Cả tuần
+            </button>
+            {weekdays.map((d) => (
+              <button
+                key={d.iso}
+                className={`day-tab ${weekDayFilter === d.iso ? 'active' : ''}`}
+                onClick={() => setWeekDayFilter(d.iso)}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+
+          {filteredWeekRows.length === 0 ? (
+            <div className="no-class" style={{ color: '#8aa39c', marginTop: 10 }}>
+              Chưa có dữ liệu trừ điểm nào {weekDayFilter === 'all' ? 'trong tuần này' : ''}.
             </div>
-          ))}
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+            <table className="week-table">
+              <thead>
+                <tr>
+                  <th>Ngày</th>
+                  <th>Loại</th>
+                  <th>Nội dung</th>
+                  <th>Học sinh</th>
+                  <th>Điểm</th>
+                  <th>Người báo cáo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredWeekRows.map((r) => {
+                  const d = weekdays.find((w) => w.iso === r.occurred_date);
+                  return (
+                    <tr key={r.id}>
+                      <td>{d ? `${d.label} (${d.shortLabel})` : r.occurred_date}</td>
+                      <td>{r.category === 'ne_nep' ? 'Nề nếp' : 'Học tập'}</td>
+                      <td>
+                        {r.reason_label}
+                        {r.note && <div className="week-note">{r.note}</div>}
+                      </td>
+                      <td>{r.student_name || '—'}</td>
+                      <td className={r.points < 0 ? 'week-pts-neg' : 'week-pts-zero'}>{r.points}</td>
+                      <td>{r.reported_by_name || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            </div>
+          )}
         </div>
       )}
 
