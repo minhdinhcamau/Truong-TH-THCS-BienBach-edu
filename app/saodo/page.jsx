@@ -1,201 +1,127 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { useGuard } from '@/lib/useGuard';
+import { useRankingPing } from '@/lib/useRankingPing';
+import { SAODO_NAV } from '@/lib/nav';
+import { defaultDateIso, fmtIso, getWeekdays, timeVN } from '@/lib/dates';
+import AppShell, { Modal, Toast } from '@/components/AppShell';
 
-function initialsOf(name) {
-  if (!name) return '?';
-  const parts = name.trim().split(/\s+/);
-  return parts.slice(-2).map((w) => w[0]).join('').toUpperCase();
-}
-
-const DAY_LABELS = ['CN', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
-const TZ = 'Asia/Ho_Chi_Minh';
-const DAY_MS = 86400000;
-
-// Ngày hôm nay theo giờ Việt Nam, dạng YYYY-MM-DD (không phụ thuộc múi giờ của máy)
-function vnTodayIso() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date());
-}
-
-function isoToUTC(iso) {
-  const [y, m, d] = iso.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
-}
-
-// "Thứ 3 15/9" từ chuỗi YYYY-MM-DD
-function fmtIso(iso) {
-  const dt = isoToUTC(iso);
-  return `${DAY_LABELS[dt.getUTCDay()]} ${dt.getUTCDate()}/${dt.getUTCMonth() + 1}`;
-}
-
-// Thứ 2 -> Thứ 6 của tuần hiện tại (CN thì lấy tuần vừa rồi, khớp với server)
-function getWeekdays() {
-  const todayIso = vnTodayIso();
-  const t = isoToUTC(todayIso);
-  const dow = t.getUTCDay(); // 0 = CN
-  const diffToMonday = dow === 0 ? -6 : 1 - dow;
-  const days = [];
-  for (let i = 0; i < 5; i++) {
-    const d = new Date(t.getTime() + (diffToMonday + i) * DAY_MS);
-    const iso = d.toISOString().slice(0, 10);
-    days.push({
-      iso,
-      label: DAY_LABELS[d.getUTCDay()],
-      shortLabel: `${d.getUTCDate()}/${d.getUTCMonth() + 1}`,
-      isToday: iso === todayIso,
-      isFuture: iso > todayIso,
-    });
-  }
-  return days;
-}
-
-// Mặc định = hôm nay; cuối tuần thì lấy ngày học gần nhất (Thứ 6)
-function defaultDateIso() {
-  const days = getWeekdays();
-  const today = days.find((d) => d.isToday);
-  if (today) return today.iso;
-  const past = days.filter((d) => !d.isFuture);
-  return (past.length ? past[past.length - 1] : days[0]).iso;
-}
+const SESSION_LABEL = { sang: 'Buổi sáng', chieu: 'Buổi chiều' };
 
 export default function SaoDoPage() {
-  const router = useRouter();
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [classes, setClasses] = useState([]); // lop duoc phan cong
-  const [reasons, setReasons] = useState([]);
-  const [selectedClass, setSelectedClass] = useState('');
-  const [note, setNote] = useState('');
-  const [studentName, setStudentName] = useState('');
+  const { profile, ready, logout } = useGuard('saodo');
   const weekdays = useMemo(() => getWeekdays(), []);
-  const [selectedDate, setSelectedDate] = useState(defaultDateIso); // ngay dang bao cao / dang xem
-  const [submitting, setSubmitting] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(defaultDateIso);
+  const [reasons, setReasons] = useState([]);
+  const [dashboard, setDashboard] = useState([]); // các lớp được TPT phân công
+  const [alerts, setAlerts] = useState([]);
+  const [openId, setOpenId] = useState('');
+  const [tab, setTab] = useState('tiet'); // tiet | nenep | nhatky
+  const [periods, setPeriods] = useState([]);
+  const [dayRows, setDayRows] = useState([]);
+  const [loadingBoard, setLoadingBoard] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  const [weekRows, setWeekRows] = useState([]);
-  const [confirmReason, setConfirmReason] = useState(null); // { code, label, points, category }
-  const [editingRow, setEditingRow] = useState(null); // dong dang sua
-  const [classScore, setClassScore] = useState(null); // { ne_nep_score, hoc_tap_score, total_score, rank }
-  const [alerts, setAlerts] = useState([]); // lop bo sot kiem tra
 
-  async function loadAll() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      router.replace('/login');
+  const [reporting, setReporting] = useState(null); // lỗi nề nếp đang xác nhận
+  const [rStudent, setRStudent] = useState('');
+  const [rNote, setRNote] = useState('');
+  const [editing, setEditing] = useState(null);
+
+  const selectedDay = weekdays.find((d) => d.iso === selectedDate) || weekdays[0];
+  const dayText = `${selectedDay.label} (${selectedDay.shortLabel})`;
+  const isBackfill = !selectedDay.isToday;
+  const openClass = dashboard.find((c) => c.class_id === openId);
+
+  const loadDashboard = useCallback(async (date) => {
+    const { data, error } = await supabase.rpc('saodo_my_dashboard', { p_date: date });
+    if (error) {
+      setMsg({ type: 'error', text: error.message });
       return;
     }
+    setDashboard(data || []);
+    setOpenId((cur) => (cur && (data || []).some((c) => c.class_id === cur) ? cur : data?.[0]?.class_id || ''));
+  }, []);
 
-    const { data: prof } = await supabase
-      .from('profiles')
-      .select('id, full_name, role, is_saodo')
-      .eq('id', session.user.id)
-      .single();
-
-    if (!prof || (!prof.is_saodo && prof.role !== 'admin')) {
-      alert('Tài khoản của bạn chưa được cấp quyền Sao đỏ.');
-      router.replace('/student');
+  const loadClassData = useCallback(async (classId, date) => {
+    if (!classId) {
+      setPeriods([]);
+      setDayRows([]);
       return;
     }
-    setProfile(prof);
-
-    const [{ data: asg }, { data: reasonTypes }] = await Promise.all([
-      supabase
-        .from('saodo_assignments')
-        .select('class_id, classes(id, name, grade)')
-        .eq('saodo_student_id', prof.id),
-      supabase.from('discipline_reason_types').select('*').order('category').order('sort_order'),
+    const [p, d] = await Promise.all([
+      supabase.rpc('saodo_class_periods', { p_class_id: classId, p_date: date }),
+      supabase.rpc('get_class_day', { p_class_id: classId, p_date: date }),
     ]);
+    if (p.error) setMsg({ type: 'error', text: p.error.message });
+    else setPeriods(p.data || []);
+    if (d.error) setMsg({ type: 'error', text: d.error.message });
+    else setDayRows(d.data || []);
+  }, []);
 
-    const myClasses = (asg || []).map((a) => a.classes).filter(Boolean);
-    setClasses(myClasses);
-    if (myClasses.length === 1) setSelectedClass(myClasses[0].id);
-    setReasons(reasonTypes || []);
-
-    await loadAlerts();
-    setLoading(false);
-  }
-
-  async function loadWeek(classId) {
-    if (!classId) {
-      setWeekRows([]);
-      return;
-    }
-    const { data } = await supabase.rpc('get_class_deductions', { p_class_id: classId });
-    setWeekRows(data || []);
-  }
-
-  async function loadClassScore(classId) {
-    if (!classId) {
-      setClassScore(null);
-      return;
-    }
-    const { data } = await supabase.rpc('get_class_ranking');
-    const row = (data || []).find((r) => r.class_id === classId);
-    setClassScore(row || null);
-  }
-
-  async function loadAlerts() {
+  const loadAlerts = useCallback(async () => {
     const { data, error } = await supabase.rpc('get_missing_checkins', { p_days_back: 10 });
     if (!error) setAlerts(data || []);
-  }
-
-  useEffect(() => {
-    loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (selectedClass) {
-      loadWeek(selectedClass);
-      loadClassScore(selectedClass);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClass]);
+    if (!ready) return;
+    (async () => {
+      const { data } = await supabase.from('discipline_reason_types').select('*').order('category').order('sort_order');
+      setReasons(data || []);
+      loadAlerts();
+    })();
+  }, [ready, loadAlerts]);
 
-  // Thong bao tu an sau vai giay
   useEffect(() => {
-    if (!msg) return undefined;
-    const t = setTimeout(() => setMsg(null), 5000);
-    return () => clearTimeout(t);
-  }, [msg]);
+    if (!ready) return;
+    (async () => {
+      await loadDashboard(selectedDate);
+      setLoadingBoard(false);
+    })();
+  }, [ready, selectedDate, loadDashboard]);
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.replace('/login');
-  }
+  useEffect(() => {
+    if (ready) loadClassData(openId, selectedDate);
+  }, [ready, openId, selectedDate, loadClassData]);
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadDashboard(selectedDate), loadClassData(openId, selectedDate), loadAlerts()]);
+  }, [loadDashboard, loadClassData, loadAlerts, selectedDate, openId]);
+
+  useRankingPing(() => { if (ready) refreshAll(); });
 
   const neNepReasons = useMemo(() => reasons.filter((r) => r.category === 'ne_nep'), [reasons]);
-  const hocTapReasons = useMemo(() => reasons.filter((r) => r.category === 'hoc_tap'), [reasons]);
-  const filteredWeekRows = useMemo(
-    () => weekRows.filter((r) => r.occurred_date === selectedDate),
-    [weekRows, selectedDate]
-  );
+  const editableReasons = useMemo(() => reasons.filter((r) => r.category !== 'hoc_tap'), [reasons]);
+  const ptsOf = (letter) =>
+    reasons.find((r) => r.category === 'hoc_tap' && String(r.label).toLowerCase().startsWith(`giờ ${letter.toLowerCase()}`))?.points;
 
-  const selectedDay = weekdays.find((d) => d.iso === selectedDate) || weekdays[0];
-  const selectedDayText = `${selectedDay.label} (${selectedDay.shortLabel})`;
-  const isBackfill = !selectedDay.isToday;
-  const checkedInSelected = filteredWeekRows.some((r) => r.reason_code === 'da_kiem_tra');
-  const selectedClassName = classes.find((c) => c.id === selectedClass)?.name;
-
-  // Ngay nao trong tuan da co bao cao (de danh dau tren tab)
-  const datesWithRows = useMemo(() => new Set(weekRows.map((r) => r.occurred_date)), [weekRows]);
-  const checkedDaysCount = weekdays.filter((d) => datesWithRows.has(d.iso)).length;
-
-  // Canh bao bo sot: chi hien cac lop minh phu trach, gom theo lop
-  const alertGroups = useMemo(() => {
+  const myAlertGroups = useMemo(() => {
     const map = new Map();
     alerts.forEach((a) => {
-      if (!classes.some((c) => c.id === a.class_id)) return;
+      if (!dashboard.some((c) => c.class_id === a.class_id)) return;
       if (!map.has(a.class_id)) map.set(a.class_id, { class_id: a.class_id, class_name: a.class_name, dates: [] });
       map.get(a.class_id).dates.push(a.alert_date);
     });
     return Array.from(map.values());
-  }, [alerts, classes]);
+  }, [alerts, dashboard]);
+
+  const missingDates = useMemo(() => {
+    const s = new Set();
+    alerts.forEach((a) => { if (dashboard.some((c) => c.class_id === a.class_id)) s.add(a.alert_date); });
+    return s;
+  }, [alerts, dashboard]);
+
+  const completedRow = dayRows.find((r) => r.reason_code === 'da_kiem_tra');
+  const groupedPeriods = useMemo(() => {
+    const g = { sang: [], chieu: [] };
+    periods.forEach((p) => g[p.session]?.push(p));
+    return g;
+  }, [periods]);
 
   function jumpToAlert(classId, dateIso) {
-    setSelectedClass(classId);
+    setOpenId(classId);
     if (weekdays.some((d) => d.iso === dateIso)) {
       setSelectedDate(dateIso);
     } else {
@@ -203,305 +129,171 @@ export default function SaoDoPage() {
     }
   }
 
-  function canEditRow(r) {
-    if (profile?.role === 'admin') return true;
-    // Neu he thong khong tra ve nguoi bao cao thi de server quyet dinh
-    if (r.reported_by === undefined || r.reported_by === null) return true;
-    return r.reported_by === profile?.id;
-  }
-
-  async function refreshAfterChange() {
-    await Promise.all([loadWeek(selectedClass), loadClassScore(selectedClass), loadAlerts()]);
-  }
-
-  async function submitDeduction(reason) {
-    if (!selectedClass) {
-      setMsg({ type: 'error', text: 'Vui lòng chọn lớp trước.' });
-      return;
+  async function ratePeriod(p, letter) {
+    if (p.rating === letter || !openId) return;
+    const before = periods;
+    setPeriods((cur) => cur.map((x) => (x.session === p.session && x.period === p.period ? { ...x, rating: letter } : x)));
+    const { error } = await supabase.rpc('saodo_rate_period', {
+      p_class_id: openId, p_date: selectedDate, p_session: p.session, p_period: p.period, p_rating: letter,
+    });
+    if (error) {
+      setPeriods(before);
+      setMsg({ type: 'error', text: error.message });
+    } else {
+      refreshAll();
     }
-    setSubmitting(true);
-    setMsg(null);
+  }
+
+  async function submitReport() {
+    if (!reporting || !openId) return;
+    setBusy(true);
     const { error } = await supabase.rpc('saodo_report_deduction', {
-      p_class_id: selectedClass,
-      p_reason_code: reason.code,
-      p_note: note.trim() || null,
-      p_student_name: studentName.trim() || null,
+      p_class_id: openId,
+      p_reason_code: reporting.code,
+      p_note: rNote.trim() || null,
+      p_student_name: rStudent.trim() || null,
       p_occurred_date: selectedDate,
     });
-    setSubmitting(false);
-    setConfirmReason(null);
+    setBusy(false);
     if (error) {
       setMsg({ type: 'error', text: error.message });
-    } else {
-      setMsg({ type: 'ok', text: `Đã ghi nhận ${selectedDayText}: ${reason.label} (${reason.points} điểm).` });
-      setNote('');
-      setStudentName('');
-      refreshAfterChange();
-    }
-  }
-
-  async function submitCheckin() {
-    if (!selectedClass) {
-      setMsg({ type: 'error', text: 'Vui lòng chọn lớp trước.' });
       return;
     }
-    setSubmitting(true);
-    setMsg(null);
-    const { error } = await supabase.rpc('saodo_checkin', {
-      p_class_id: selectedClass,
-      p_note: note.trim() || null,
-      p_occurred_date: selectedDate,
-    });
-    setSubmitting(false);
-    if (error) {
-      setMsg({ type: 'error', text: error.message });
-    } else {
-      setMsg({ type: 'ok', text: `Đã xác nhận ${selectedDayText}: kiểm tra xong, không có vi phạm.` });
-      setNote('');
-      refreshAfterChange();
+    setMsg({ type: 'ok', text: `Đã ghi nhận lớp ${openClass?.class_name}: ${reporting.label} (${reporting.points} điểm).` });
+    setReporting(null);
+    refreshAll();
+  }
+
+  async function complete() {
+    if (!openId) return;
+    setBusy(true);
+    const { error } = await supabase.rpc('saodo_checkin', { p_class_id: openId, p_note: null, p_occurred_date: selectedDate });
+    setBusy(false);
+    if (error) setMsg({ type: 'error', text: error.message });
+    else {
+      setMsg({ type: 'ok', text: `Đã hoàn tất kiểm tra lớp ${openClass?.class_name} — ${dayText}.` });
+      refreshAll();
     }
   }
 
-  async function deleteRow(row) {
-    if (!window.confirm(`Xoá báo cáo "${row.reason_label}" (${row.points} điểm)?`)) return;
-    const { error } = await supabase.rpc('saodo_delete_deduction', { p_id: row.id });
-    if (error) {
-      setMsg({ type: 'error', text: error.message });
-    } else {
+  async function deleteRow(r) {
+    if (!window.confirm(`Xoá báo cáo "${r.reason_label}" (${r.points} điểm)?`)) return;
+    const { error } = await supabase.rpc('saodo_delete_deduction', { p_id: r.id });
+    if (error) setMsg({ type: 'error', text: error.message });
+    else {
       setMsg({ type: 'ok', text: 'Đã xoá báo cáo.' });
-      refreshAfterChange();
+      refreshAll();
     }
   }
 
   async function saveEdit() {
-    if (!editingRow) return;
-    setSubmitting(true);
+    if (!editing) return;
+    setBusy(true);
     const { error } = await supabase.rpc('saodo_edit_deduction', {
-      p_id: editingRow.id,
-      p_reason_code: editingRow.reason_code,
-      p_note: editingRow.note || null,
-      p_student_name: editingRow.student_name || null,
+      p_id: editing.id,
+      p_reason_code: editing.reason_code,
+      p_note: editing.note || null,
+      p_student_name: editing.student_name || null,
     });
-    setSubmitting(false);
-    if (error) {
-      setMsg({ type: 'error', text: error.message });
-    } else {
-      setEditingRow(null);
+    setBusy(false);
+    if (error) setMsg({ type: 'error', text: error.message });
+    else {
+      setEditing(null);
       setMsg({ type: 'ok', text: 'Đã lưu thay đổi.' });
-      refreshAfterChange();
+      refreshAll();
     }
   }
 
-  if (loading) {
-    return <div className="wrap"><div className="center-loading">Đang tải…</div></div>;
+  function canEditRow(r) {
+    if (r.period_rating_id) return false; // đổi ở bảng tiết học
+    return profile?.role === 'admin' || r.reported_by === profile?.id;
   }
 
+  function statusOf(c) {
+    if (c.day_completed) return <span className="pill ok">Đã hoàn tất</span>;
+    if (c.day_reports > 0) return <span className="pill warn">Đang kiểm tra · {c.day_reports} mục</span>;
+    if (selectedDay.isToday) return <span className="pill mute">Chưa kiểm tra</span>;
+    return <span className="pill bad">Chưa báo cáo</span>;
+  }
+
+  if (!ready) return <div className="app"><div className="center-loading">Đang tải…</div></div>;
+
   return (
-    <div className="wrap">
+    <AppShell profile={profile} roleLabel="Đội Sao đỏ" nav={SAODO_NAV} activeHref="/saodo" onLogout={logout}>
       <style jsx>{`
-        .wrap {
-          --bg: #eff5f3; --card: #ffffff; --ink: #17302d; --ink-soft: #527169;
-          --masthead-bg: #e9f2fc; --masthead-border: #cfe2f7; --masthead-ink: #1b3a63; --masthead-soft: #5c7a9c;
-          max-width: 900px; margin: 0 auto; padding: 24px 18px 64px;
-          background: var(--bg); color: var(--ink); font-family: 'Be Vietnam Pro', sans-serif; line-height: 1.5;
-          min-height: 100vh; box-sizing: border-box;
-        }
-        .center-loading { text-align: center; padding: 80px 0; color: var(--ink-soft); }
-        header.masthead {
-          background: var(--masthead-bg); border: 1px solid var(--masthead-border); border-radius: 20px;
-          padding: 18px 24px; margin-bottom: 20px; display: flex; justify-content: space-between;
-          align-items: center; gap: 16px; flex-wrap: wrap;
-        }
-        .brand { display: flex; align-items: center; gap: 12px; }
-        .emblem {
-          width: 44px; height: 44px; border-radius: 12px; background: #fff; border: 1.5px solid #d8930f;
-          color: #8a5b0a; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px;
-        }
-        .brand-name { font-weight: 700; font-size: 16px; color: var(--masthead-ink); font-family: 'Baloo 2', sans-serif; }
-        .brand-sub { font-size: 12px; color: var(--masthead-soft); }
-        .profile-row { display: flex; align-items: center; gap: 10px; }
-        .profile { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--masthead-border);
-          border-radius: 999px; padding: 5px 14px 5px 5px; }
-        .avatar { width: 32px; height: 32px; border-radius: 50%; background: #d8930f; color: #fff; display: flex;
-          align-items: center; justify-content: center; font-weight: 700; font-size: 12.5px; }
-        .profile-name { font-weight: 600; font-size: 13px; }
-        .profile-role { font-size: 11px; color: var(--masthead-soft); }
-        .logout-btn { border: 1px solid var(--masthead-border); background: #fff; color: var(--masthead-ink);
-          padding: 8px 16px; border-radius: 999px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
+        .alert-box { background: #fdeceb; border: 2px solid var(--red); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; }
+        .alert-title { font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 16px; color: var(--red-d); }
+        .alert-cls { margin-top: 8px; font-weight: 700; font-size: 13.5px; }
+        .alert-chip { border: 1.5px solid var(--red); background: #fff; color: var(--red-d); border-radius: 999px; padding: 4px 12px;
+          font-weight: 700; font-size: 12.5px; cursor: pointer; }
+        .alert-chip:hover { background: #ffe3e0; }
 
-        .card { background: var(--card); border-radius: 18px; padding: 20px; margin-bottom: 18px;
-          box-shadow: 0 8px 24px -12px rgba(0,0,0,0.12); }
-        .card h3 { margin: 0 0 12px; font-family: 'Baloo 2', sans-serif; font-size: 16px; }
+        .days { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+        .day { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 8px 4px; cursor: pointer; text-align: center; line-height: 1.25; }
+        .day b { display: block; font-size: 13px; }
+        .day small { font-size: 11.5px; color: var(--muted); }
+        .day.on { background: var(--red); border-color: var(--red); color: #fff; }
+        .day.on small { color: #ffe1e2; }
+        .day.miss:not(.on) { border-color: var(--red); background: #fff5f4; }
+        .day:disabled { opacity: 0.4; cursor: not-allowed; }
+        .day-note { margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
+        .day-note.back { color: var(--warn); background: var(--warn-bg); border-radius: 10px; padding: 8px 12px; }
 
-        .alert-banner {
-          background: #fff1f0; border: 2px solid #e63946; border-radius: 18px; padding: 16px 18px; margin-bottom: 18px;
-          animation: alertPulse 2.4s ease-in-out infinite;
-        }
-        @keyframes alertPulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(230,57,70,0.35); }
-          50% { box-shadow: 0 0 0 8px rgba(230,57,70,0); }
-        }
-        .alert-title { font-weight: 800; font-size: 15px; color: #a02a1f; font-family: 'Baloo 2', sans-serif; }
-        .alert-sub { font-size: 12.5px; color: #7a3a33; margin: 2px 0 10px; }
-        .alert-class { margin-top: 8px; font-size: 13.5px; font-weight: 700; color: #7a1f16; }
-        .alert-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .alert-chip {
-          border: 1.5px solid #e63946; background: #fff; color: #a02a1f; border-radius: 999px;
-          padding: 5px 12px; font-weight: 700; font-size: 12.5px; cursor: pointer;
-        }
-        .alert-chip:hover { background: #ffe0da; }
+        .cls-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+        .cls { text-align: left; border: 1.5px solid var(--line); background: #fff; border-radius: 14px; padding: 12px 14px; cursor: pointer; }
+        .cls.on { border-color: var(--red); box-shadow: inset 0 0 0 1px var(--red); }
+        .cls-name { font-family: 'Baloo 2', sans-serif; font-size: 22px; font-weight: 700; line-height: 1.1; }
+        .cls-meta { font-size: 12.5px; color: var(--muted); margin: 2px 0 8px; }
 
-        .date-note { margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--ink-soft); }
-        .date-note.backfill {
-          color: #8a5b0a; background: #fff6e0; border: 1px solid #f0d28a; border-radius: 10px; padding: 8px 12px;
-        }
+        .panel-h { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .panel-h h2 { font-size: 20px; }
+        .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0; }
+        .tab { border: none; background: none; padding: 9px 14px; font-weight: 700; font-size: 13.5px; color: var(--muted);
+          cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+        .tab.on { color: var(--red); border-bottom-color: var(--red); }
 
-        .class-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-        .class-chip {
-          padding: 10px 20px; border-radius: 12px; border: 2px solid #dce8e4; background: #fff;
-          font-weight: 700; font-size: 14.5px; cursor: pointer; transition: all 0.15s ease;
-        }
-        .class-chip.active { border-color: #1b6fb8; background: #eaf4fc; color: #0f4c82; }
-        .no-class { color: #c0392b; font-size: 13.5px; }
+        .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+        .sess { font-weight: 700; font-size: 13px; margin: 14px 0 6px; }
+        .per { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid #eef1f5; }
+        .per-l { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .per-n { flex: none; width: 46px; text-align: center; background: #eceff4; border-radius: 8px; padding: 3px 0; font-size: 12px; font-weight: 700; color: var(--muted); }
+        .per-s { font-weight: 600; font-size: 14px; }
+        .per-t { font-size: 12px; color: var(--muted); }
+        .seg { display: flex; flex: none; border: 1.5px solid #d5dbe4; border-radius: 10px; overflow: hidden; }
+        .seg button { border: none; background: #fff; width: 42px; height: 38px; font-weight: 800; font-size: 14px; cursor: pointer; color: var(--muted); }
+        .seg button + button { border-left: 1px solid #d5dbe4; }
+        .seg button.a { background: var(--ok); color: #fff; }
+        .seg button.b { background: #e0a020; color: #fff; }
+        .seg button.c { background: var(--red); color: #fff; }
 
-        .reason-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-        .reason-btn {
-          text-align: left; padding: 12px 14px; border-radius: 12px; border: 1.5px solid #eee0d4;
-          background: #fffaf4; cursor: pointer; transition: transform 0.1s ease, box-shadow 0.1s ease;
-          display: flex; justify-content: space-between; align-items: center; gap: 8px;
-        }
-        .reason-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px -6px rgba(0,0,0,0.18); }
-        .reason-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
-        .reason-label { font-weight: 600; font-size: 13.5px; }
-        .reason-points { font-weight: 800; font-size: 13px; color: #c0392b; white-space: nowrap; }
-        .reason-points.zero { color: #219a69; }
+        .rg { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+        .rb { display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; padding: 12px 14px;
+          border: 1.5px solid var(--line); background: #fff; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 13.5px; }
+        .rb:hover { border-color: var(--red); background: #fff7f6; }
+        .rb-p { color: var(--red); font-weight: 800; white-space: nowrap; }
 
-        .hoc-tap-grid { display: flex; gap: 10px; flex-wrap: wrap; }
-        .hoc-tap-btn {
-          flex: 1; min-width: 140px; padding: 18px 14px; border-radius: 14px; border: 2px solid #dce3f0;
-          background: #f5f8ff; cursor: pointer; text-align: center; font-weight: 800; font-size: 17px;
-          transition: transform 0.1s ease;
-        }
-        .hoc-tap-btn:hover { transform: translateY(-1px); }
-        .hoc-tap-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .hoc-tap-sub { display: block; font-size: 12px; font-weight: 600; margin-top: 4px; color: #6b7a99; }
-
-        .note-input {
-          width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #ddd; margin-top: 10px;
-          font-size: 13.5px; box-sizing: border-box; font-family: inherit;
-        }
-
-        .toast {
-          position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 400;
-          max-width: calc(100% - 32px); padding: 12px 20px; border-radius: 999px; text-align: center;
-          font-weight: 700; font-size: 13.5px; color: #fff; box-shadow: 0 12px 28px -8px rgba(0,0,0,0.35);
-        }
-        .toast.ok { background: #219a69; }
-        .toast.error { background: #c0392b; }
-
-        .score-card { background: linear-gradient(135deg,#0f4c82,#1b6fb8); color: #fff; }
-        .score-card h3 { color: #fff; }
-        .score-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
-        .score-box { background: rgba(255,255,255,0.14); border-radius: 12px; padding: 12px; text-align: center; }
-        .score-box-total { background: rgba(255,255,255,0.24); }
-        .score-box-rank { background: linear-gradient(135deg,#e8af2e,#b9820e); }
-        .score-label { font-size: 11.5px; opacity: 0.85; }
-        .score-num { font-size: 22px; font-weight: 800; font-family: 'Baloo 2', sans-serif; }
-
-        .checkin-btn {
-          width: 100%; padding: 14px; border-radius: 14px; border: 2px solid #219a69; background: #eafff5;
-          color: #14754f; font-weight: 800; font-size: 15px; cursor: pointer;
-        }
-        .checkin-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-        .checkin-btn:hover:not(:disabled) { background: #d8ffef; }
-
-        .stat-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
-        .stat-chip { background: #f0f6f4; border-radius: 10px; padding: 8px 14px; font-size: 12.5px; color: var(--ink-soft); }
-        .stat-chip strong { color: var(--ink); font-size: 14px; }
-
-        .row-actions { display: flex; gap: 4px; white-space: nowrap; }
-        .row-action-btn {
-          border: none; background: #f1f1f1; border-radius: 6px; padding: 4px 7px; cursor: pointer; font-size: 12px;
-        }
-        .row-action-del:hover { background: #ffe0da; }
-        .row-action-btn:hover { background: #e2e8f0; }
-
-        .today-dot {
-          display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-          background: #e63946; margin-left: 5px; vertical-align: middle;
-        }
-
-        .day-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-        .day-tab {
-          padding: 8px 14px; border-radius: 12px; border: 1.5px solid #dce3e0; background: #fff;
-          font-weight: 700; font-size: 12.5px; cursor: pointer; text-align: center; line-height: 1.3;
-        }
-        .day-tab small { display: block; font-weight: 600; font-size: 11px; opacity: 0.8; }
-        .day-tab.active { background: #1b6fb8; border-color: #1b6fb8; color: #fff; }
-        .day-tab.missing:not(.active) { border-color: #e63946; color: #a02a1f; background: #fff5f4; }
-        .day-tab.done:not(.active) { border-color: #219a69; color: #14754f; }
-        .day-tab:disabled { opacity: 0.4; cursor: not-allowed; }
-
-        .week-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-        .week-table th {
-          text-align: left; padding: 7px 8px; border-bottom: 2px solid #e4e9e7; color: var(--ink-soft);
-          font-weight: 700; white-space: nowrap;
-        }
-        .week-table td { padding: 8px; border-bottom: 1px solid #eef2f0; vertical-align: top; }
-        .week-note { color: var(--ink-soft); font-size: 11px; margin-top: 2px; }
-        .week-pts-neg { font-weight: 800; color: #c0392b; white-space: nowrap; }
-        .week-pts-zero { font-weight: 800; color: #219a69; white-space: nowrap; }
-
-        .confirm-backdrop { position: fixed; inset: 0; background: rgba(11,32,52,0.5); z-index: 300;
-          display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
-        .confirm-card { background: #fff; border-radius: 20px; padding: 26px 24px; max-width: 380px; width: 100%;
-          text-align: center; box-shadow: 0 30px 60px -14px rgba(0,0,0,0.45); }
-        .confirm-title { font-weight: 800; font-size: 17px; font-family: 'Baloo 2', sans-serif; margin-bottom: 6px; }
-        .confirm-pts { font-size: 26px; font-weight: 800; color: #c0392b; margin: 10px 0; }
-        .confirm-date { font-size: 13px; font-weight: 700; color: #527169; margin-top: 2px; }
-        .confirm-date.backfill { color: #8a5b0a; }
-        .confirm-actions { display: flex; gap: 10px; margin-top: 16px; }
-        .confirm-actions button {
-          flex: 1; padding: 11px; border-radius: 999px; border: none; font-weight: 700; font-size: 14px; cursor: pointer;
-        }
-        .confirm-yes { background: linear-gradient(135deg,#a02a1f,#c0392b); color: #fff; }
-        .confirm-no { background: #f1f1f1; color: #444; }
+        .log { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eef1f5; }
+        .log-t { font-weight: 700; font-size: 13.5px; }
+        .log-m { font-size: 12px; color: var(--muted); }
+        .log-p { font-weight: 800; }
+        .log-p.neg { color: var(--red); }
+        .log-p.zero { color: var(--ok); }
+        .pts-big { font-family: 'Baloo 2', sans-serif; font-size: 30px; font-weight: 700; color: var(--red); text-align: center; margin: 4px 0 10px; }
       `}</style>
 
-      <header className="masthead">
-        <div className="brand">
-          <div className="emblem">⭐</div>
-          <div>
-            <div className="brand-name">Sao đỏ</div>
-            <div className="brand-sub">Trường TH - THCS Biển Bạch</div>
-          </div>
-        </div>
-        <div className="profile-row">
-          <div className="profile">
-            <div className="avatar">{initialsOf(profile?.full_name)}</div>
-            <div>
-              <div className="profile-name">{profile?.full_name}</div>
-              <div className="profile-role">Đội Sao đỏ</div>
-            </div>
-          </div>
-          <button className="logout-btn" onClick={handleLogout}>Đăng xuất</button>
-        </div>
-      </header>
+      <h1 className="pg-title">Kiểm tra lớp</h1>
+      <p className="pg-sub">Các lớp bên dưới do cô Tổng phụ trách phân công cho bạn. Chọn ngày, chọn lớp rồi ghi nhận.</p>
 
-      {alertGroups.length > 0 && (
-        <div className="alert-banner" role="alert">
-          <div className="alert-title">⚠️ Có ngày chưa báo cáo kiểm tra</div>
-          <div className="alert-sub">
-            Bấm vào ngày để mở đúng lớp và ngày đó, rồi báo cáo hoặc bấm “Đã kiểm tra”. Cô Tổng phụ trách cũng nhận được cảnh báo này.
-          </div>
-          {alertGroups.map((g) => (
+      {myAlertGroups.length > 0 && (
+        <div className="alert-box" role="alert">
+          <div className="alert-title">⚠ Có ngày bạn chưa hoàn tất kiểm tra</div>
+          <div className="hint" style={{ margin: '2px 0 0' }}>Bấm vào ngày để mở đúng lớp và ngày đó, ghi nhận rồi bấm “Hoàn tất kiểm tra”.</div>
+          {myAlertGroups.map((g) => (
             <div key={g.class_id}>
-              <div className="alert-class">Lớp {g.class_name}</div>
-              <div className="alert-chips">
+              <div className="alert-cls">Lớp {g.class_name}</div>
+              <div className="chips" style={{ marginTop: 6 }}>
                 {g.dates.map((dt) => (
-                  <button key={dt} className="alert-chip" onClick={() => jumpToAlert(g.class_id, dt)}>
-                    {fmtIso(dt)}
-                  </button>
+                  <button key={dt} className="alert-chip" onClick={() => jumpToAlert(g.class_id, dt)}>{fmtIso(dt)}</button>
                 ))}
               </div>
             </div>
@@ -510,280 +302,205 @@ export default function SaoDoPage() {
       )}
 
       <div className="card">
-        <h3>1. Chọn ngày báo cáo</h3>
-        <div className="day-tabs">
-          {weekdays.map((d) => {
-            const hasRows = datesWithRows.has(d.iso);
-            const missing = !!selectedClass && !hasRows && !d.isFuture && !d.isToday;
-            const done = !!selectedClass && hasRows;
-            return (
-              <button
-                key={d.iso}
-                disabled={d.isFuture}
-                className={`day-tab ${selectedDate === d.iso ? 'active' : ''} ${missing ? 'missing' : ''} ${done ? 'done' : ''}`}
-                onClick={() => setSelectedDate(d.iso)}
-              >
-                {d.label}
-                {d.isToday && <span className="today-dot" />}
-                <small>{d.shortLabel}{done ? ' ✓' : ''}{missing ? ' ⚠' : ''}</small>
-              </button>
-            );
-          })}
+        <div className="card-h"><h3>Ngày kiểm tra</h3></div>
+        <div className="days">
+          {weekdays.map((d) => (
+            <button
+              key={d.iso}
+              disabled={d.isFuture}
+              className={`day ${selectedDate === d.iso ? 'on' : ''} ${missingDates.has(d.iso) ? 'miss' : ''}`}
+              onClick={() => setSelectedDate(d.iso)}
+            >
+              <b>{d.label}{d.isToday ? ' •' : ''}</b>
+              <small>{d.shortLabel}{missingDates.has(d.iso) ? ' ⚠' : ''}</small>
+            </button>
+          ))}
         </div>
-        {isBackfill ? (
-          <div className="date-note backfill">
-            Đang báo cáo BỔ SUNG cho {selectedDayText} — không phải hôm nay.
-          </div>
-        ) : (
-          <div className="date-note">Hôm nay: {selectedDayText}. Mọi báo cáo sẽ ghi vào ngày này.</div>
-        )}
+        {isBackfill
+          ? <div className="day-note back">Đang ghi nhận BỔ SUNG cho {dayText} — không phải hôm nay.</div>
+          : <div className="day-note">Hôm nay: {dayText}. Mọi ghi nhận được lưu vào ngày này.</div>}
       </div>
 
       <div className="card">
-        <h3>2. Chọn lớp</h3>
-        {classes.length === 0 ? (
-          <div className="no-class">Bạn chưa được phân công phụ trách lớp nào. Liên hệ cô Tổng phụ trách Đội.</div>
+        <div className="card-h"><h3>Lớp cần kiểm tra</h3></div>
+        {loadingBoard ? (
+          <div className="empty">Đang tải…</div>
+        ) : dashboard.length === 0 ? (
+          <div className="empty">Bạn chưa được phân công lớp nào. Hãy báo cô Tổng phụ trách để được phân công.</div>
         ) : (
-          <div className="class-chips">
-            {classes.map((c) => (
-              <button
-                key={c.id}
-                className={`class-chip ${selectedClass === c.id ? 'active' : ''}`}
-                onClick={() => setSelectedClass(c.id)}
-              >
-                {c.name}
+          <div className="cls-grid">
+            {dashboard.map((c) => (
+              <button key={c.class_id} className={`cls ${openId === c.class_id ? 'on' : ''}`} onClick={() => setOpenId(c.class_id)}>
+                <div className="cls-name">{c.class_name}</div>
+                <div className="cls-meta num">
+                  {c.rank != null ? `Hạng ${c.rank}` : 'Chưa xếp hạng'}{c.total_score != null ? ` · ${c.total_score} điểm` : ''}
+                </div>
+                {statusOf(c)}
               </button>
             ))}
           </div>
         )}
       </div>
 
-      {selectedClass && classScore && (
-        <div className="card score-card">
-          <h3>Điểm hiện tại — {selectedClassName}</h3>
-          <div className="score-grid">
-            <div className="score-box">
-              <div className="score-label">Nề nếp</div>
-              <div className="score-num">{classScore.ne_nep_score}</div>
-            </div>
-            <div className="score-box">
-              <div className="score-label">Học tập</div>
-              <div className="score-num">{classScore.hoc_tap_score}</div>
-            </div>
-            <div className="score-box score-box-total">
-              <div className="score-label">Tổng điểm</div>
-              <div className="score-num">{classScore.total_score}</div>
-            </div>
-            <div className="score-box score-box-rank">
-              <div className="score-label">Đang xếp hạng</div>
-              <div className="score-num">#{classScore.rank}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="card">
-        <h3>3. {selectedDayText} — không có vi phạm?</h3>
-        <p style={{ fontSize: 13, color: '#527169', margin: '0 0 10px' }}>
-          Nếu đã kiểm tra sổ đầu bài và nề nếp lớp mà không có lỗi nào, bấm xác nhận để hệ thống ghi nhận là bạn ĐÃ kiểm tra ngày này (tránh bị nhắc nhở bỏ sót).
-        </p>
-        <button
-          className="checkin-btn"
-          disabled={!selectedClass || submitting || checkedInSelected}
-          onClick={submitCheckin}
-        >
-          {checkedInSelected ? '✅ Ngày này đã xác nhận kiểm tra' : '✅ Đã kiểm tra - Không có vi phạm'}
-        </button>
-      </div>
-
-      <div className="card">
-        <h3>4. Tên học sinh vi phạm (nếu là lỗi cá nhân)</h3>
-        <input
-          className="note-input"
-          value={studentName}
-          onChange={(e) => setStudentName(e.target.value)}
-          placeholder="VD: Nguyễn Văn A — để trống nếu lỗi áp dụng cho cả lớp"
-        />
-      </div>
-
-      <div className="card">
-        <h3>5. Nề nếp — chọn lỗi vi phạm</h3>
-        <div className="reason-grid">
-          {neNepReasons.map((r) => (
-            <button
-              key={r.code}
-              className="reason-btn"
-              disabled={!selectedClass || submitting}
-              onClick={() => setConfirmReason(r)}
-            >
-              <span className="reason-label">{r.label}</span>
-              <span className="reason-points">{r.points} đ</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
-        <h3>6. Học tập — xếp loại giờ học (theo sổ đầu bài)</h3>
-        <div className="hoc-tap-grid">
-          {hocTapReasons.map((r) => (
-            <button
-              key={r.code}
-              className="hoc-tap-btn"
-              disabled={!selectedClass || submitting}
-              onClick={() => setConfirmReason(r)}
-            >
-              {r.label.replace('Giờ ', '').replace(' (tốt)', '')}
-              <span className="hoc-tap-sub">{r.points === 0 ? 'Không trừ' : `${r.points} điểm`}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
-        <h3>Ghi chú thêm (không bắt buộc)</h3>
-        <input
-          className="note-input"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="VD: tiết mấy, hoàn cảnh cụ thể..."
-        />
-      </div>
-
-      {selectedClass && (
+      {openClass && (
         <div className="card">
-          <h3>Bảng thống kê tuần này — {selectedClassName}</h3>
+          <div className="panel-h">
+            <div>
+              <h2>Lớp {openClass.class_name}</h2>
+              <div className="hint" style={{ margin: 0 }}>{dayText}</div>
+            </div>
+            {completedRow ? (
+              <span className="pill ok">✓ Đã hoàn tất lúc {timeVN(completedRow.created_at)}</span>
+            ) : (
+              <button className="btn btn-ok" disabled={busy} onClick={complete}>✓ Hoàn tất kiểm tra</button>
+            )}
+          </div>
+          {!completedRow && (
+            <div className="hint" style={{ margin: '8px 0 0' }}>
+              Ghi nhận xong (kể cả khi lớp không có vi phạm nào), hãy bấm “Hoàn tất kiểm tra” để không bị nhắc bỏ sót.
+            </div>
+          )}
 
-          <div className="stat-row">
-            <div className="stat-chip">
-              Tổng lượt vi phạm Nề nếp: <strong>{weekRows.filter((r) => r.category === 'ne_nep').length}</strong>
-            </div>
-            <div className="stat-chip">
-              Tổng lượt Giờ B/C: <strong>{weekRows.filter((r) => r.category === 'hoc_tap' && r.points < 0).length}</strong>
-            </div>
-            <div className="stat-chip">
-              Ngày đã kiểm tra: <strong>{checkedDaysCount}</strong>/5
-            </div>
+          <div className="tabs" role="tablist">
+            <button role="tab" className={`tab ${tab === 'tiet' ? 'on' : ''}`} onClick={() => setTab('tiet')}>Tiết học</button>
+            <button role="tab" className={`tab ${tab === 'nenep' ? 'on' : ''}`} onClick={() => setTab('nenep')}>Nề nếp</button>
+            <button role="tab" className={`tab ${tab === 'nhatky' ? 'on' : ''}`} onClick={() => setTab('nhatky')}>Nhật ký ({dayRows.filter((r) => r.category !== 'checkin').length})</button>
           </div>
 
-          <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>
-            Báo cáo {selectedDayText}
-          </div>
+          {tab === 'tiet' && (
+            <div>
+              <div className="legend">
+                <span><b style={{ color: 'var(--ok)' }}>A</b> tốt · không trừ (mặc định)</span>
+                <span><b style={{ color: '#c58410' }}>B</b> · {ptsOf('B') ?? '?'} điểm</span>
+                <span><b style={{ color: 'var(--red)' }}>C</b> · {ptsOf('C') ?? '?'} điểm</span>
+              </div>
+              {periods.length === 0 ? (
+                <div className="empty">
+                  Chưa có thời khóa biểu cho ngày này. Hãy nhờ cô Tổng phụ trách nhập thời khóa biểu (mục “Thời khóa biểu”).
+                </div>
+              ) : (
+                ['sang', 'chieu'].map((s) =>
+                  groupedPeriods[s].length === 0 ? null : (
+                    <div key={s}>
+                      <div className="sess">{SESSION_LABEL[s]}</div>
+                      {groupedPeriods[s].map((p) => (
+                        <div className="per" key={`${p.session}-${p.period}`}>
+                          <div className="per-l">
+                            <span className="per-n">Tiết {p.period}</span>
+                            <div>
+                              <div className="per-s">{p.subject}</div>
+                              {p.teacher ? <div className="per-t">{p.teacher}</div> : null}
+                            </div>
+                          </div>
+                          {p.ratable ? (
+                            <div className="seg" role="group" aria-label={`Xếp loại tiết ${p.period} ${p.subject}`}>
+                              {['A', 'B', 'C'].map((l) => (
+                                <button
+                                  key={l}
+                                  className={p.rating === l ? l.toLowerCase() : ''}
+                                  aria-pressed={p.rating === l}
+                                  onClick={() => ratePeriod(p, l)}
+                                >
+                                  {l}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="pill mute">Không xếp loại</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )
+              )}
+            </div>
+          )}
 
-          {filteredWeekRows.length === 0 ? (
-            <div className="no-class" style={{ color: '#8aa39c', marginTop: 10 }}>
-              Chưa có dữ liệu ngày này — bấm mục 3 để xác nhận đã kiểm tra, hoặc chọn lỗi bên trên nếu có vi phạm.
+          {tab === 'nenep' && (
+            <div className="rg">
+              {neNepReasons.map((r) => (
+                <button
+                  key={r.code}
+                  className="rb"
+                  disabled={busy}
+                  onClick={() => { setReporting(r); setRStudent(''); setRNote(''); }}
+                >
+                  <span>{r.label}</span>
+                  <span className="rb-p">{r.points} đ</span>
+                </button>
+              ))}
             </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="week-table">
-                <thead>
-                  <tr>
-                    <th>Loại</th>
-                    <th>Nội dung</th>
-                    <th>Học sinh</th>
-                    <th>Điểm</th>
-                    <th>Người báo cáo</th>
-                    <th>Giờ báo cáo</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredWeekRows.map((r) => (
-                    <tr key={r.id}>
-                      <td>{r.category === 'ne_nep' ? 'Nề nếp' : r.category === 'hoc_tap' ? 'Học tập' : 'Kiểm tra'}</td>
-                      <td>
-                        {r.reason_label}
-                        {r.note && <div className="week-note">{r.note}</div>}
-                      </td>
-                      <td>{r.student_name || '—'}</td>
-                      <td className={r.points < 0 ? 'week-pts-neg' : 'week-pts-zero'}>{r.points}</td>
-                      <td>{r.reported_by_name || '—'}</td>
-                      <td>{new Date(r.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: TZ })}</td>
-                      <td className="row-actions">
-                        {canEditRow(r) && (
-                          <>
-                            <button
-                              className="row-action-btn"
-                              title="Sửa"
-                              onClick={() => setEditingRow({ id: r.id, reason_code: r.reason_code, note: r.note || '', student_name: r.student_name || '' })}
-                            >
-                              ✎
-                            </button>
-                            <button className="row-action-btn row-action-del" title="Xoá" onClick={() => deleteRow(r)}>
-                              🗑
-                            </button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          )}
+
+          {tab === 'nhatky' && (
+            dayRows.length === 0 ? (
+              <div className="empty">Chưa có ghi nhận nào trong ngày này.</div>
+            ) : (
+              <div>
+                {dayRows.map((r) => (
+                  <div className="log" key={r.id}>
+                    <div>
+                      <div className="log-t">{r.reason_label}</div>
+                      <div className="log-m">
+                        {timeVN(r.created_at)} · {r.reported_by_name || '—'}
+                        {r.student_name ? ` · HS: ${r.student_name}` : ''}
+                      </div>
+                      {r.note ? <div className="log-m">{r.note}</div> : null}
+                    </div>
+                    <div style={{ textAlign: 'right', flex: 'none' }}>
+                      <div className={`log-p num ${r.points < 0 ? 'neg' : 'zero'}`}>{r.points}</div>
+                      {canEditRow(r) ? (
+                        <div style={{ marginTop: 4 }}>
+                          <button className="btn btn-sm" title="Sửa" onClick={() => setEditing({ id: r.id, reason_code: r.reason_code, note: r.note || '', student_name: r.student_name || '' })}>✎</button>{' '}
+                          <button className="btn btn-sm btn-danger" title="Xoá" onClick={() => deleteRow(r)}>🗑</button>
+                        </div>
+                      ) : r.period_rating_id ? (
+                        <div className="log-m">Đổi ở tab Tiết học</div>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </div>
       )}
 
-      {editingRow && (
-        <div className="confirm-backdrop" onClick={() => setEditingRow(null)}>
-          <div className="confirm-card" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'left' }}>
-            <div className="confirm-title" style={{ textAlign: 'center' }}>Sửa báo cáo</div>
-            <label style={{ fontSize: 12.5, fontWeight: 600 }}>Loại lỗi</label>
-            <select
-              className="note-input"
-              value={editingRow.reason_code}
-              onChange={(e) => setEditingRow({ ...editingRow, reason_code: e.target.value })}
-            >
-              {reasons.map((r) => (
-                <option key={r.code} value={r.code}>{r.label} ({r.points} đ)</option>
-              ))}
-            </select>
-            <label style={{ fontSize: 12.5, fontWeight: 600 }}>Tên học sinh</label>
-            <input
-              className="note-input"
-              value={editingRow.student_name}
-              onChange={(e) => setEditingRow({ ...editingRow, student_name: e.target.value })}
-            />
-            <label style={{ fontSize: 12.5, fontWeight: 600 }}>Ghi chú</label>
-            <input
-              className="note-input"
-              value={editingRow.note}
-              onChange={(e) => setEditingRow({ ...editingRow, note: e.target.value })}
-            />
-            <div className="confirm-actions">
-              <button className="confirm-no" onClick={() => setEditingRow(null)}>Huỷ</button>
-              <button className="confirm-yes" style={{ background: '#1b6fb8' }} disabled={submitting} onClick={saveEdit}>
-                {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
-              </button>
-            </div>
+      {reporting && (
+        <Modal title="Xác nhận ghi nhận" onClose={() => setReporting(null)}>
+          <div className="hint" style={{ margin: 0 }}>Lớp {openClass?.class_name} · {isBackfill ? `bổ sung cho ${dayText}` : `hôm nay ${dayText}`}</div>
+          <div style={{ fontWeight: 700, marginTop: 8 }}>{reporting.label}</div>
+          <div className="pts-big">{reporting.points} điểm</div>
+          <label className="lbl" htmlFor="r-stu">Tên học sinh vi phạm (nếu là lỗi cá nhân)</label>
+          <input id="r-stu" className="input" value={rStudent} onChange={(e) => setRStudent(e.target.value)} placeholder="Để trống nếu lỗi của cả lớp" />
+          <label className="lbl" htmlFor="r-note">Ghi chú (không bắt buộc)</label>
+          <input id="r-note" className="input" value={rNote} onChange={(e) => setRNote(e.target.value)} placeholder="VD: tiết mấy, hoàn cảnh cụ thể…" />
+          <div className="modal-f">
+            <button className="btn" onClick={() => setReporting(null)}>Huỷ</button>
+            <button className="btn btn-red" disabled={busy} onClick={submitReport}>{busy ? 'Đang gửi…' : 'Ghi nhận'}</button>
           </div>
-        </div>
+        </Modal>
       )}
 
-      {confirmReason && (
-        <div className="confirm-backdrop" onClick={() => setConfirmReason(null)}>
-          <div className="confirm-card" onClick={(e) => e.stopPropagation()}>
-            <div className="confirm-title">Xác nhận báo cáo</div>
-            <div>
-              Lớp <strong>{selectedClassName}</strong>
-            </div>
-            <div className={`confirm-date ${isBackfill ? 'backfill' : ''}`}>
-              {isBackfill ? `Bổ sung cho ${selectedDayText}` : `Hôm nay — ${selectedDayText}`}
-            </div>
-            <div style={{ marginTop: 8 }}>{confirmReason.label}</div>
-            <div className="confirm-pts">{confirmReason.points} điểm</div>
-            <div className="confirm-actions">
-              <button className="confirm-no" onClick={() => setConfirmReason(null)}>Huỷ</button>
-              <button className="confirm-yes" disabled={submitting} onClick={() => submitDeduction(confirmReason)}>
-                {submitting ? 'Đang gửi...' : 'Xác nhận'}
-              </button>
-            </div>
+      {editing && (
+        <Modal title="Sửa ghi nhận" onClose={() => setEditing(null)}>
+          <label className="lbl" htmlFor="e-r">Loại lỗi</label>
+          <select id="e-r" className="input" value={editing.reason_code} onChange={(e) => setEditing({ ...editing, reason_code: e.target.value })}>
+            {editableReasons.map((r) => <option key={r.code} value={r.code}>{r.label} ({r.points} đ)</option>)}
+          </select>
+          <label className="lbl" htmlFor="e-s">Tên học sinh</label>
+          <input id="e-s" className="input" value={editing.student_name} onChange={(e) => setEditing({ ...editing, student_name: e.target.value })} />
+          <label className="lbl" htmlFor="e-n">Ghi chú</label>
+          <input id="e-n" className="input" value={editing.note} onChange={(e) => setEditing({ ...editing, note: e.target.value })} />
+          <div className="modal-f">
+            <button className="btn" onClick={() => setEditing(null)}>Huỷ</button>
+            <button className="btn btn-red" disabled={busy} onClick={saveEdit}>{busy ? 'Đang lưu…' : 'Lưu thay đổi'}</button>
           </div>
-        </div>
+        </Modal>
       )}
 
-      {msg && <div className={`toast ${msg.type}`} role="status">{msg.text}</div>}
-    </div>
+      <Toast msg={msg} onDone={() => setMsg(null)} />
+    </AppShell>
   );
 }
