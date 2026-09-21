@@ -146,7 +146,7 @@ export default function UnitLessonsPage() {
                 <div className="lesson-left">
                   <div className="lesson-num">{idx + 1}</div>
                   <div className="lesson-info">
-                    <Link href={`/teacher/english/lessons/${l.id}`} className="lesson-link">{l.title}</Link>
+                    <Link href={`/teacher/english/lessons/${l.id}`} className="lesson-link" style={{ color: '#17302d', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>{l.title}</Link>
                     <div className="lesson-meta">
                       <span className="meta-pill">✅ ≥{l.pass_score}%</span>
                       <span className="meta-pill">❤️ {l.max_hearts} tim</span>

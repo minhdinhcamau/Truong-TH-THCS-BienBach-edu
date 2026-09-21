@@ -16,9 +16,10 @@ Nhiệm vụ:
   không tự bịa nghĩa khác). QUAN TRỌNG: trường "meaning" CHỈ được chứa ĐÚNG MỘT nghĩa ngắn gọn
   (ví dụ "nhớ"), TUYỆT ĐỐI KHÔNG liệt kê nhiều nghĩa đồng nghĩa cách nhau bằng dấu phẩy
   (không viết "nhớ, ghi nhớ") — nếu từ có nhiều nghĩa, chỉ chọn nghĩa phổ biến/phù hợp nhất.
-- Nếu văn bản có sẵn câu ví dụ đi kèm từ đó thì giữ nguyên câu ví dụ đó.
-  Nếu không có, hãy tự đặt 1 câu ví dụ tiếng Anh đơn giản, ngắn gọn, phù hợp học sinh THCS,
-  có dùng đúng từ đó.
+- Nếu văn bản có sẵn câu ví dụ đi kèm từ đó thì giữ nguyên câu ví dụ đó (miễn là không quá dài).
+  Nếu không có, hãy tự đặt 1 câu ví dụ tiếng Anh THẬT NGẮN GỌN (tối đa 6 từ), cấu trúc đơn giản,
+  dùng từ vựng cơ bản mà học sinh THCS mới học đã biết, có dùng đúng từ đang xét — vì câu này
+  sẽ được dùng để học sinh ghép từng từ thành câu, càng ngắn càng dễ ghép đúng.
 - Với câu ví dụ (dù lấy từ văn bản hay tự đặt), luôn kèm theo bản dịch tiếng Việt của
   chính câu ví dụ đó vào trường "example_translation".
 - Bỏ qua các dòng tiêu đề, số thứ tự, hoặc nội dung không phải từ vựng.

@@ -16,17 +16,17 @@ function normalizeText(s) {
     .replace(/\s+/g, ' ');
 }
 
-// ---- Xây dựng hàng đợi câu hỏi: tự động trộn đủ các dạng phù hợp với dữ liệu ----
+// ---- Xây dựng hàng đợi câu hỏi: học từ vựng trước, rồi mới ghép câu (câu ngắn, dễ) ----
 function buildQuestionQueue(lesson, vocabItems) {
   const usablePerItemTypes = ['meaning_choice', 'listen_choice'];
-  const queue = [];
+  const wordQuestions = [];
 
   vocabItems.forEach((item) => {
     const type = usablePerItemTypes[Math.floor(Math.random() * usablePerItemTypes.length)];
     const otherWords = shuffle(vocabItems.filter((v) => v.id !== item.id)).slice(0, 2);
 
     if (type === 'meaning_choice') {
-      queue.push({
+      wordQuestions.push({
         type: 'meaning_choice',
         vocabId: item.id,
         word: item.word,
@@ -36,7 +36,7 @@ function buildQuestionQueue(lesson, vocabItems) {
         options: shuffle([item.meaning, ...otherWords.map((v) => v.meaning)]),
       });
     } else {
-      queue.push({
+      wordQuestions.push({
         type: 'listen_choice',
         vocabId: item.id,
         word: item.word,
@@ -47,13 +47,17 @@ function buildQuestionQueue(lesson, vocabItems) {
     }
   });
 
-  // "Dịch câu" (Việt -> Anh) và "Nghe rồi ghép câu dịch" (Anh -> Việt, nghe trước)
-  // đều tự bật cho từ có đủ cả câu ví dụ lẫn bản dịch.
+  // Câu ghép (Dịch câu / Nghe rồi ghép) — CHỈ lấy câu NGẮN (≤6 từ), tránh đưa từ lạ
+  // chưa học vào bài ghép, giữ độ khó vừa sức kiểu Duolingo.
+  const MAX_SENTENCE_WORDS = 6;
+  const sentenceQuestions = [];
   vocabItems
     .filter((item) => item.example_sentence && item.example_translation)
     .forEach((item) => {
       const enTokens = item.example_sentence.trim().split(/\s+/);
-      queue.push({
+      if (enTokens.length > MAX_SENTENCE_WORDS) return;
+
+      sentenceQuestions.push({
         type: 'translate',
         vocabId: item.id,
         prompt: item.example_translation,
@@ -62,8 +66,8 @@ function buildQuestionQueue(lesson, vocabItems) {
       });
 
       const viTokens = item.example_translation.trim().split(/\s+/);
-      if (viTokens.length >= 2) {
-        queue.push({
+      if (viTokens.length >= 2 && viTokens.length <= MAX_SENTENCE_WORDS) {
+        sentenceQuestions.push({
           type: 'listen_translate',
           vocabId: item.id,
           audioText: item.example_sentence,
@@ -73,20 +77,21 @@ function buildQuestionQueue(lesson, vocabItems) {
       }
     });
 
-  const shuffledQueue = shuffle(queue);
+  const queue = [...shuffle(wordQuestions)];
 
-  // "Ghép cặp" tự động bật khi bài có từ 3 từ trở lên.
+  // "Ghép cặp" chèn SAU khi đã học hết từ, làm cầu nối trước khi vào phần ghép câu.
   if (vocabItems.length >= 3) {
     const picked = shuffle(vocabItems).slice(0, Math.min(6, vocabItems.length));
-    const matchingQuestion = {
+    queue.push({
       type: 'matching',
       pairs: picked.map((it) => ({ id: it.id, word: it.word, meaning: it.meaning })),
-    };
-    const mid = Math.floor(shuffledQueue.length / 2);
-    shuffledQueue.splice(mid, 0, matchingQuestion);
+    });
   }
 
-  return shuffledQueue;
+  // Câu ghép luôn ở CUỐI CÙNG — học sinh đã học hết từ vựng liên quan trước đó.
+  queue.push(...shuffle(sentenceQuestions));
+
+  return queue;
 }
 
 function speak(text, lang) {
@@ -164,6 +169,8 @@ export default function LessonPlayPage() {
   const [matchedIds, setMatchedIds] = useState([]);
   const [matchWrongFlash, setMatchWrongFlash] = useState(null);
   const [matchDone, setMatchDone] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false);
+  const [wrongQuestions, setWrongQuestions] = useState([]);
 
   useEffect(() => { load(); }, [lessonId]);
 
@@ -192,6 +199,8 @@ export default function LessonPlayPage() {
       .order('order_index', { ascending: true });
 
     setQuestions(buildQuestionQueue(l, vocab || []));
+    setReviewMode(false);
+    setWrongQuestions([]);
     setStartTime(Date.now());
     setLoading(false);
   }
@@ -272,6 +281,7 @@ export default function LessonPlayPage() {
       playWrongSound();
       setHeartPulse(true);
       setTimeout(() => setHeartPulse(false), 500);
+      if (!reviewMode) setWrongQuestions((prev) => [...prev, current]);
     }
     setHearts((h) => (correct ? h : h - 1));
   }
@@ -281,7 +291,19 @@ export default function LessonPlayPage() {
     setStartTime(Date.now());
 
     if (hearts <= 0) { await submitResult(logs, hearts); return; }
-    if (step + 1 >= questions.length) { await submitResult(logs, hearts); return; }
+
+    if (step + 1 >= questions.length) {
+      if (!reviewMode && wrongQuestions.length > 0) {
+        // Cho ôn lại đúng những câu đã sai, đúng 1 lần, trước khi kết thúc bài.
+        setQuestions(shuffle(wrongQuestions));
+        setWrongQuestions([]);
+        setReviewMode(true);
+        setStep(0);
+        return;
+      }
+      await submitResult(logs, hearts);
+      return;
+    }
     setStep((s) => s + 1);
   }
 
@@ -328,8 +350,13 @@ export default function LessonPlayPage() {
   }
 
   async function submitResult(logs, heartsLeft) {
-    const correctCount = logs.filter((a) => a.is_correct).length;
-    const score = Math.round((correctCount / questions.length) * 100);
+    // Nếu 1 câu xuất hiện lại ở vòng ôn (đã sửa đúng/sai), chỉ tính lần trả lời CUỐI CÙNG.
+    const lastByKey = new Map();
+    logs.forEach((l) => lastByKey.set(`${l.exercise_type}|${l.question_content}`, l));
+    const finalLogs = Array.from(lastByKey.values());
+
+    const correctCount = finalLogs.filter((a) => a.is_correct).length;
+    const score = finalLogs.length > 0 ? Math.round((correctCount / finalLogs.length) * 100) : 0;
 
     const { data: { user } } = await supabase.auth.getUser();
     const { xpEarned, completed } = await finishLessonAttempt({
@@ -338,7 +365,7 @@ export default function LessonPlayPage() {
       nextLessonId,
       score,
       heartsLeft,
-      answerLogs: logs,
+      answerLogs: logs, // lưu đầy đủ mọi lượt trả lời (kể cả vòng ôn) để giáo viên xem chi tiết
     });
 
     setResult({ score, xpEarned, completed });
@@ -403,6 +430,10 @@ export default function LessonPlayPage() {
           ))}
         </div>
       </div>
+
+      {reviewMode && (
+        <div style={styles.reviewBanner}>🔁 Ôn lại những câu đã sai — làm đúng để hoàn thành bài học</div>
+      )}
 
       {/* ===== CHỌN NGHĨA ĐÚNG ===== */}
       {current.type === 'meaning_choice' && (
@@ -587,14 +618,21 @@ export default function LessonPlayPage() {
 
       {current.type !== 'matching' && checked && (
         <div style={{ ...styles.feedbackBar, background: isCorrect ? '#D7FFB8' : '#FFDFE0', animation: 'slideUp 0.3s ease' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, maxWidth: 640, margin: '0 auto', padding: '14px 20px' }}>
-            <span style={{ fontSize: 28 }}>{isCorrect ? '✅' : '❌'}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, color: isCorrect ? '#58A700' : '#EA2B2B', fontSize: 17 }}>
-                {isCorrect ? 'Chính xác!' : 'Chưa đúng!'}
+          <div style={{ maxWidth: 640, margin: '0 auto', padding: '14px 20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 28 }}>{isCorrect ? '✅' : '❌'}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: isCorrect ? '#58A700' : '#EA2B2B', fontSize: 17 }}>
+                  {isCorrect ? 'Chính xác!' : 'Chưa đúng!'}
+                </div>
+                {!isCorrect && (current.type === 'meaning_choice' || current.type === 'listen_choice') && (
+                  <div style={{ fontSize: 13.5, color: '#6b7280', marginTop: 2 }}>
+                    Đáp án đúng: <b>{current.correctAnswer}</b>
+                  </div>
+                )}
               </div>
+              <button onClick={handleContinue} style={{ ...styles.primaryBtn, background: isCorrect ? '#58CC02' : '#EA2B2B', margin: 0 }}>TIẾP TỤC</button>
             </div>
-            <button onClick={handleContinue} style={{ ...styles.primaryBtn, background: isCorrect ? '#58CC02' : '#EA2B2B', margin: 0 }}>TIẾP TỤC</button>
           </div>
         </div>
       )}
@@ -624,6 +662,7 @@ const styles = {
   topBar: { display: 'flex', alignItems: 'center', marginBottom: 28 },
   progressTrack: { flex: 1, height: 14, background: '#E5E7EB', borderRadius: 999, overflow: 'hidden' },
   progressFill: { height: '100%', background: '#58CC02', borderRadius: 999, transition: 'width 0.4s ease' },
+  reviewBanner: { background: '#FEF3E2', color: '#b45309', fontWeight: 600, fontSize: 13.5, textAlign: 'center', padding: '10px 16px', borderRadius: 12, marginBottom: 16 },
   card: { background: '#fff', borderRadius: 20, padding: '32px 24px', boxShadow: '0 4px 16px rgba(23,48,45,0.06)' },
   wordRow: { display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center' },
   speakerBtn: { width: 48, height: 48, borderRadius: '50%', border: 'none', background: '#E0F2FE', color: '#0EA5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 },

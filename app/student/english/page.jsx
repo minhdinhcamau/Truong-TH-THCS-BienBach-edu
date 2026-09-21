@@ -35,11 +35,17 @@ export default function StudentEnglishHome() {
     setProfile({ ...p, xp: totalXp, streak_days: stats?.current_streak || 0 });
     setRank(await getRankForXp(totalXp));
 
-    // Lấy khóa học đầu tiên gán cho lớp của học sinh (tuỳ chỉnh nếu 1 lớp có nhiều khóa)
+    // Lấy khối (grade) của lớp học sinh, rồi tìm khóa học Tiếng Anh gán cho khối đó
+    let studentGrade = null;
+    if (p?.class_id) {
+      const { data: cls } = await supabase.from('classes').select('grade').eq('id', p.class_id).single();
+      studentGrade = cls?.grade ?? null;
+    }
+
     const { data: courses } = await supabase
       .from('eng_courses')
       .select('id, title, description')
-      .eq('class_id', p.class_id)
+      .eq('grade', studentGrade)
       .order('created_at', { ascending: false })
       .limit(1);
     const c = courses?.[0] || null;
@@ -129,7 +135,7 @@ function LessonNode({ lesson }) {
   return (
     <div style={{ textAlign: 'center', width: 72 }}>
       {lesson.unlocked ? (
-        <Link href={`/student/english/lessons/${lesson.id}`}>{content}</Link>
+        <Link href={`/student/english/lessons/${lesson.id}`} style={{ textDecoration: 'none', display: 'block' }}>{content}</Link>
       ) : (
         content
       )}
