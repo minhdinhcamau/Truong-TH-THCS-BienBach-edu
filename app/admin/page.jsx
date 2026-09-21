@@ -785,6 +785,9 @@ export default function AdminPage() {
           <Link href="/admin/tpt" className={styles.navBtn}>
             Cấp quyền TPT
           </Link>
+          <Link href="/admin/gvcn" className={styles.navBtn}>
+            Phân công chủ nhiệm
+          </Link>
           <Link href="/teacher" className={styles.navBtn}>
             Xem trang Giáo viên
           </Link>

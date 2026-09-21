@@ -7,11 +7,12 @@ import { fmtDate, mondayOf, vnTodayIso, addDays } from '@/lib/dates';
 import AppShell, { Modal, Toast } from '@/components/AppShell';
 
 const KIND_LABEL = { week_plan: 'Kế hoạch tuần', notice: 'Thông báo' };
+const AUDIENCE_LABEL = { all: 'Học sinh', saodo: 'Chỉ Sao đỏ', gvcn: 'Chỉ giáo viên chủ nhiệm' };
 
 function emptyForm() {
   return {
     id: null, kind: 'week_plan', title: '', body: '', week_start: mondayOf(vnTodayIso()),
-    class_id: '', pinned: false, notify: true,
+    class_id: '', pinned: false, notify: true, audience: 'all',
   };
 }
 
@@ -27,7 +28,7 @@ export default function TptAnnouncementsPage() {
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('announcements')
-      .select('id, kind, title, body, week_start, class_id, pinned, created_at, classes(name)')
+      .select('id, kind, title, body, week_start, class_id, pinned, created_at, audience, classes(name)')
       .order('pinned', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(100);
@@ -53,7 +54,7 @@ export default function TptAnnouncementsPage() {
     setForm({
       id: a.id, kind: a.kind, title: a.title, body: a.body || '',
       week_start: a.week_start || mondayOf(vnTodayIso()), class_id: a.class_id || '',
-      pinned: a.pinned, notify: false,
+      pinned: a.pinned, notify: false, audience: a.audience || 'all',
     });
   }
 
@@ -72,6 +73,7 @@ export default function TptAnnouncementsPage() {
       p_class_id: form.class_id || null,
       p_pinned: form.pinned,
       p_notify: !form.id && form.notify,
+      p_audience: form.audience,
     });
     setSaving(false);
     if (error) {
@@ -96,7 +98,7 @@ export default function TptAnnouncementsPage() {
   async function togglePin(a) {
     const { error } = await supabase.rpc('tpt_save_announcement', {
       p_id: a.id, p_kind: a.kind, p_title: a.title, p_body: a.body || '',
-      p_week_start: a.week_start, p_class_id: a.class_id, p_pinned: !a.pinned, p_notify: false,
+      p_week_start: a.week_start, p_class_id: a.class_id, p_pinned: !a.pinned, p_notify: false, p_audience: a.audience || 'all',
     });
     if (error) setMsg({ type: 'error', text: error.message });
     else load();
@@ -110,7 +112,7 @@ export default function TptAnnouncementsPage() {
         <div>
           <h1 className="pg-title">Thông báo & kế hoạch</h1>
           <p className="pg-sub" style={{ marginBottom: 0 }}>
-            Mọi học sinh xem được trong mục “Bảng tin” của trang học sinh. Có thể gửi riêng cho một lớp.
+            Học sinh xem trong mục “Bảng tin”. Có thể gửi riêng cho một lớp, chỉ cho Sao đỏ (hiện ở trang Sao đỏ), hoặc chỉ cho giáo viên chủ nhiệm.
           </p>
         </div>
         <div className="row">
@@ -131,7 +133,8 @@ export default function TptAnnouncementsPage() {
                 <div className="row" style={{ gap: 8 }}>
                   <span className={`pill ${a.kind === 'week_plan' ? 'warn' : 'mute'}`}>{KIND_LABEL[a.kind]}</span>
                   {a.pinned && <span className="pill bad">Ghim</span>}
-                  <span className="chip">{a.classes?.name ? `Lớp ${a.classes.name}` : 'Toàn trường'}</span>
+                  <span className="chip">{AUDIENCE_LABEL[a.audience || 'all']}</span>
+                  {a.audience !== 'saodo' && <span className="chip">{a.classes?.name ? `Lớp ${a.classes.name}` : 'Toàn trường'}</span>}
                   {a.kind === 'week_plan' && a.week_start && (
                     <span className="chip">Tuần {fmtDate(a.week_start)} – {fmtDate(addDays(a.week_start, 6))}</span>
                   )}
@@ -167,12 +170,22 @@ export default function TptAnnouncementsPage() {
               </div>
             )}
             <div>
-              <label className="lbl" htmlFor="a-cls" style={{ marginTop: 0 }}>Gửi cho</label>
-              <select id="a-cls" className="input" value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })}>
-                <option value="">Toàn trường</option>
-                {classes.map((c) => <option key={c.id} value={c.id}>Lớp {c.name}</option>)}
+              <label className="lbl" htmlFor="a-aud" style={{ marginTop: 0 }}>Người nhận</label>
+              <select id="a-aud" className="input" value={form.audience} onChange={(e) => setForm({ ...form, audience: e.target.value })}>
+                <option value="all">Học sinh</option>
+                <option value="saodo">Chỉ Sao đỏ</option>
+                <option value="gvcn">Chỉ giáo viên chủ nhiệm</option>
               </select>
             </div>
+            {form.audience !== 'saodo' && (
+              <div>
+                <label className="lbl" htmlFor="a-cls" style={{ marginTop: 0 }}>Phạm vi</label>
+                <select id="a-cls" className="input" value={form.class_id} onChange={(e) => setForm({ ...form, class_id: e.target.value })}>
+                  <option value="">{form.audience === 'gvcn' ? 'Mọi giáo viên chủ nhiệm' : 'Toàn trường'}</option>
+                  {classes.map((c) => <option key={c.id} value={c.id}>Lớp {c.name}</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
           <label className="lbl" htmlFor="a-title">Tiêu đề</label>
@@ -190,7 +203,7 @@ export default function TptAnnouncementsPage() {
               <input type="checkbox" checked={form.pinned} onChange={(e) => setForm({ ...form, pinned: e.target.checked })} />
               Ghim lên đầu
             </label>
-            {!form.id && (
+            {!form.id && form.audience !== 'gvcn' && (
               <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5 }}>
                 <input type="checkbox" checked={form.notify} onChange={(e) => setForm({ ...form, notify: e.target.checked })} />
                 Báo cho học sinh ở chuông thông báo

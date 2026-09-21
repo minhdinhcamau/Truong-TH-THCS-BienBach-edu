@@ -18,7 +18,7 @@ export default function BangTinPage() {
     const [a, d] = await Promise.all([
       supabase
         .from('announcements')
-        .select('id, kind, title, body, week_start, class_id, pinned, created_at, classes(name)')
+        .select('id, kind, title, body, week_start, class_id, pinned, created_at, audience, classes(name)')
         .order('pinned', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(40),
@@ -125,6 +125,7 @@ export default function BangTinPage() {
           <div>
             <span className={`tag ${a.kind === 'week_plan' ? 'red' : ''}`}>{KIND_LABEL[a.kind]}</span>
             {a.pinned && <span className="tag pin">Ghim</span>}
+            {a.audience === 'saodo' && <span className="tag red">Dành cho Sao đỏ</span>}
             {a.classes?.name && <span className="tag">Riêng lớp {a.classes.name}</span>}
           </div>
           <div className="ttl">{a.title}</div>

@@ -45,10 +45,17 @@ const TABS = [
   },
 ];
 
+const BCS_TAB = {
+  href: '/student/ban-can-su',
+  label: 'Ban cán sự',
+  match: (p) => p.startsWith('/student/ban-can-su'),
+  icon: <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4" />,
+};
+
 export default function StudentLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [state, setState] = useState({ loading: true, profile: null, stats: null });
+  const [state, setState] = useState({ loading: true, profile: null, stats: null, classRole: null });
 
   async function loadAll() {
     const { data: userRes } = await supabase.auth.getUser();
@@ -66,7 +73,7 @@ export default function StudentLayout({ children }) {
 
     if (profileError || !profile) {
       alert('Không tải được hồ sơ học sinh.');
-      setState({ loading: false, profile: null, stats: null });
+      setState({ loading: false, profile: null, stats: null, classRole: null });
       return;
     }
 
@@ -76,8 +83,12 @@ export default function StudentLayout({ children }) {
       .eq('student_id', user.id)
       .maybeSingle();
 
+    // Chức vụ ban cán sự (nếu có) -> hiện thêm tab "Ban cán sự"
+    const { data: roleRows } = await supabase.rpc('my_class_role');
+
     setState({
       loading: false,
+      classRole: roleRows && roleRows[0] ? roleRows[0] : null,
       profile,
       stats: stats || { total_xp: 0, current_streak: 0, longest_streak: 0 },
     });
@@ -100,7 +111,8 @@ export default function StudentLayout({ children }) {
     return null;
   }
 
-  const { profile, stats } = state;
+  const { profile, stats, classRole } = state;
+  const tabs = classRole && profile.role !== 'admin' ? [...TABS, BCS_TAB] : TABS;
   // Tai khoan dang xem trang nay la QUAN TRI VIEN (admin bam nut "Xem trang
   // Hoc sinh" tu trang admin, khong phai hoc sinh that) -> hien nut quay ve
   // thay vi bat cac tinh nang chi danh cho hoc sinh.
@@ -109,7 +121,7 @@ export default function StudentLayout({ children }) {
   const initials = getInitials(profile.full_name);
 
   return (
-    <StudentContext.Provider value={{ profile, stats, refresh: loadAll }}>
+    <StudentContext.Provider value={{ profile, stats, classRole, refresh: loadAll }}>
       <div className="student-shell">
         <div className="hero">
           <div className="masthead">
@@ -183,7 +195,7 @@ export default function StudentLayout({ children }) {
 
         <div className="student-wrap">
           <div className="tabbar">
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <Link key={t.href} href={t.href} className={`tab-btn ${t.match(pathname) ? 'active' : ''}`}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {t.icon}

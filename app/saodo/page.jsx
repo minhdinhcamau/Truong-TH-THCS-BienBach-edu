@@ -16,6 +16,7 @@ export default function SaoDoPage() {
   const [reasons, setReasons] = useState([]);
   const [dashboard, setDashboard] = useState([]); // các lớp được TPT phân công
   const [alerts, setAlerts] = useState([]);
+  const [notices, setNotices] = useState([]); // thông báo riêng của TPT cho Sao đỏ
   const [openId, setOpenId] = useState('');
   const [tab, setTab] = useState('tiet'); // tiet | nenep | nhatky
   const [periods, setPeriods] = useState([]);
@@ -73,6 +74,13 @@ export default function SaoDoPage() {
       loadAlerts();
     })();
   }, [ready, loadAlerts]);
+
+  useEffect(() => {
+    if (!ready) return;
+    supabase.from('announcements').select('id, title, body, created_at, pinned').eq('audience', 'saodo')
+      .order('pinned', { ascending: false }).order('created_at', { ascending: false }).limit(3)
+      .then(({ data }) => setNotices(data || []));
+  }, [ready]);
 
   useEffect(() => {
     if (!ready) return;
@@ -283,6 +291,19 @@ export default function SaoDoPage() {
 
       <h1 className="pg-title">Kiểm tra lớp</h1>
       <p className="pg-sub">Các lớp bên dưới do cô Tổng phụ trách phân công cho bạn. Chọn ngày, chọn lớp rồi ghi nhận.</p>
+
+      {notices.length > 0 && (
+        <div className="card" style={{ borderColor: '#f0d28a', background: '#fffaf0' }}>
+          <div className="card-h"><h3>📢 Thông báo dành cho Sao đỏ</h3></div>
+          {notices.map((n) => (
+            <div key={n.id} style={{ marginBottom: 12 }}>
+              <strong>{n.title}</strong>{n.pinned ? ' 📌' : ''}
+              <p style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0', fontSize: 13.5 }}>{n.body}</p>
+              <div className="hint" style={{ margin: 0 }}>{new Date(n.created_at).toLocaleDateString('vi-VN')}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {myAlertGroups.length > 0 && (
         <div className="alert-box" role="alert">
