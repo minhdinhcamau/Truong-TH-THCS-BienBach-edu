@@ -18,7 +18,10 @@ function normalizeText(s) {
 
 // ---- Xây dựng hàng đợi câu hỏi: học từ vựng trước, rồi mới ghép câu (câu ngắn, dễ) ----
 function buildQuestionQueue(lesson, vocabItems) {
-  const usablePerItemTypes = ['meaning_choice', 'listen_choice'];
+  const speechSupported = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const usablePerItemTypes = speechSupported
+    ? ['meaning_choice', 'listen_choice', 'speak']
+    : ['meaning_choice', 'listen_choice'];
   const wordQuestions = [];
 
   vocabItems.forEach((item) => {
@@ -35,7 +38,7 @@ function buildQuestionQueue(lesson, vocabItems) {
         correctAnswer: item.meaning,
         options: shuffle([item.meaning, ...otherWords.map((v) => v.meaning)]),
       });
-    } else {
+    } else if (type === 'listen_choice') {
       wordQuestions.push({
         type: 'listen_choice',
         vocabId: item.id,
@@ -43,6 +46,13 @@ function buildQuestionQueue(lesson, vocabItems) {
         phonetic: item.phonetic,
         correctAnswer: item.word,
         options: shuffle([item.word, ...otherWords.map((v) => v.word)]),
+      });
+    } else {
+      wordQuestions.push({
+        type: 'speak',
+        vocabId: item.id,
+        word: item.word,
+        phonetic: item.phonetic,
       });
     }
   });
@@ -171,6 +181,8 @@ export default function LessonPlayPage() {
   const [matchDone, setMatchDone] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
   const [wrongQuestions, setWrongQuestions] = useState([]);
+  const [micState, setMicState] = useState('idle'); // idle | listening | no-support
+  const [heardText, setHeardText] = useState('');
 
   useEffect(() => { load(); }, [lessonId]);
 
@@ -212,6 +224,8 @@ export default function LessonPlayPage() {
     setSelected(null);
     setChecked(false);
     setIsCorrect(false);
+    setMicState('idle');
+    setHeardText('');
 
     if (current.type === 'meaning_choice' || current.type === 'listen_choice') {
       const t = setTimeout(() => speak(current.word, 'en-US'), 350);
@@ -275,6 +289,43 @@ export default function LessonPlayPage() {
 
     setIsCorrect(correct);
     setChecked(true);
+    if (correct) {
+      playCorrectSound();
+    } else {
+      playWrongSound();
+      setHeartPulse(true);
+      setTimeout(() => setHeartPulse(false), 500);
+      if (!reviewMode) setWrongQuestions((prev) => [...prev, current]);
+    }
+    setHearts((h) => (correct ? h : h - 1));
+  }
+
+  function startRecognition() {
+    const SpeechRecognitionCtor = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+    if (!SpeechRecognitionCtor) { setMicState('no-support'); return; }
+    setMicState('listening');
+    setHeardText('');
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (e) => {
+      const transcript = e.results[0][0].transcript;
+      setMicState('idle');
+      handleSpeakResult(transcript);
+    };
+    recognition.onerror = () => setMicState('idle');
+    recognition.onend = () => setMicState((s) => (s === 'listening' ? 'idle' : s));
+    recognition.start();
+  }
+
+  function handleSpeakResult(transcript) {
+    if (checked) return;
+    const correct = normalizeText(transcript).split(' ').includes(normalizeText(current.word));
+    setHeardText(transcript);
+    setIsCorrect(correct);
+    setChecked(true);
+    logAnswer('speak', current.word, transcript, correct, current.word);
     if (correct) {
       playCorrectSound();
     } else {
@@ -594,7 +645,47 @@ export default function LessonPlayPage() {
         </div>
       )}
 
-      {current.type !== 'matching' && !checked && (
+      {/* ===== LUYỆN NÓI ===== */}
+      {current.type === 'speak' && (
+        <div style={styles.card} key={step} className={checked && !isCorrect ? 'word-enter shake' : 'word-enter'}>
+          <p style={styles.prompt}>🎤 Bấm mic và đọc to từ này</p>
+          <div style={styles.wordRow}>
+            <button onClick={() => speak(current.word, 'en-US')} style={styles.speakerBtn} aria-label="Nghe mẫu">
+              <SpeakerIcon />
+            </button>
+            <div>
+              <div style={styles.word}>{current.word}</div>
+              {current.phonetic && <div style={styles.phonetic}>{current.phonetic}</div>}
+            </div>
+          </div>
+          <div style={{ textAlign: 'center', margin: '26px 0 10px' }}>
+            <button
+              onClick={startRecognition}
+              disabled={checked || micState === 'listening'}
+              style={{ ...styles.micBtn, ...(micState === 'listening' ? styles.micBtnActive : {}) }}
+              aria-label="Bấm để nói"
+            >
+              🎤
+            </button>
+          </div>
+          <p style={{ textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
+            {micState === 'listening'
+              ? 'Đang nghe, em nói đi...'
+              : micState === 'no-support'
+              ? 'Trình duyệt này chưa hỗ trợ nhận diện giọng nói — hãy dùng Chrome'
+              : checked
+              ? ''
+              : 'Bấm mic để bắt đầu nói'}
+          </p>
+          {heardText && (
+            <p style={{ textAlign: 'center', color: '#6b7280', fontSize: 14, marginTop: 6 }}>
+              Hệ thống nghe được: "<i>{heardText}</i>"
+            </p>
+          )}
+        </div>
+      )}
+
+      {current.type !== 'matching' && !checked && current.type !== 'speak' && (
         <button
           onClick={handleCheck}
           disabled={
@@ -628,6 +719,11 @@ export default function LessonPlayPage() {
                 {!isCorrect && (current.type === 'meaning_choice' || current.type === 'listen_choice') && (
                   <div style={{ fontSize: 13.5, color: '#6b7280', marginTop: 2 }}>
                     Đáp án đúng: <b>{current.correctAnswer}</b>
+                  </div>
+                )}
+                {!isCorrect && current.type === 'speak' && (
+                  <div style={{ fontSize: 13.5, color: '#6b7280', marginTop: 2 }}>
+                    Từ cần đọc: <b>{current.word}</b>{current.phonetic ? ` (${current.phonetic})` : ''}
                   </div>
                 )}
               </div>
@@ -679,6 +775,8 @@ const styles = {
   chipBuilt: { padding: '8px 14px', borderRadius: 10, border: '2px solid #1CB0F6', background: '#DDF4FF', color: '#1CB0F6', fontWeight: 700, fontSize: 15, cursor: 'pointer' },
   chipBank: { padding: '8px 14px', borderRadius: 10, border: '2px solid #E5E7EB', background: '#fff', color: '#17302D', fontWeight: 700, fontSize: 15, cursor: 'pointer' },
   matchBtn: { padding: '12px 10px', borderRadius: 12, border: '2px solid #E5E7EB', background: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', color: '#17302D', textAlign: 'center' },
+  micBtn: { width: 84, height: 84, borderRadius: '50%', border: 'none', background: '#1CB0F6', color: '#fff', fontSize: 34, cursor: 'pointer', boxShadow: '0 4px 0 #1899D6', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
+  micBtnActive: { background: '#FF4B4B', boxShadow: '0 4px 0 #EA2B2B' },
   checkBtn: { position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 48px)', maxWidth: 592, background: '#58CC02', color: '#fff', border: 'none', borderRadius: 16, padding: '16px', fontSize: 17, fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 0 #58A700' },
   checkBtnDisabled: { background: '#E5E7EB', color: '#9CA3AF', boxShadow: '0 4px 0 #D1D5DB', cursor: 'not-allowed' },
   feedbackBar: { position: 'fixed', left: 0, right: 0, bottom: 0 },
