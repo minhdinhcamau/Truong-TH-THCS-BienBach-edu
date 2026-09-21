@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
+import { generateText } from '@/lib/aiProviders';
 
-// API route: nhận đoạn văn bản từ vựng (lộn xộn), gọi Gemini để tách thành
-// mảng {word, meaning, example}. Cần biến môi trường GEMINI_API_KEY trên Vercel.
+// API route: nhận đoạn văn bản từ vựng (lộn xộn), nhờ AI tách thành mảng {word, meaning, example}.
+// Dùng chung bộ gọi AI ở lib/aiProviders.js: thử mô hình THÔNG MINH NHẤT trước (gemini-3.8-flash); khi mô hình đó hết hạn mức /
+// quá tải / lỗi thì TỰ CHUYỂN sang mô hình yếu hơn kế tiếp (Gemini 3.7 → 3.6 → DeepSeek → …).
+// Cần ít nhất một trong các biến: GEMINI_API_KEY, DEEPSEEK_API_KEY, ANTHROPIC_API_KEY.
+
+export const maxDuration = 60;
 
 const SYSTEM_PROMPT = `Bạn là công cụ trích xuất từ vựng tiếng Anh cho giáo viên THCS ở Việt Nam.
 Người dùng dán một đoạn văn bản chứa danh sách từ vựng tiếng Anh, có thể lộn xộn, sai định dạng,
@@ -59,48 +64,11 @@ function extractJsonArray(rawText) {
   return JSON.parse(jsonSlice);
 }
 
-// ⚠️ Tên model Gemini có thể đổi theo thời gian (Google ngừng hỗ trợ bản cũ).
-// Nếu sau này lại báo lỗi 404 "model ... no longer available", đổi giá trị
-// bên dưới theo đúng tên model mới mà thông báo lỗi đó gợi ý.
-const GEMINI_MODEL = 'gemini-3.6-flash';
-
-async function callGemini(text) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('Chưa cấu hình GEMINI_API_KEY');
-
-  const maxAttempts = 3;
-  let lastError;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: [{ role: 'user', parts: [{ text }] }],
-        }),
-      }
-    );
-
-    if (res.ok) {
-      const data = await res.json();
-      const rawText = data.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('\n') || '';
-      return extractJsonArray(rawText);
-    }
-
-    // Lỗi 503 (quá tải tạm thời) hoặc 429 (vượt hạn mức tức thời) -> thử lại sau vài giây
-    if ((res.status === 503 || res.status === 429) && attempt < maxAttempts) {
-      lastError = new Error(`Gemini lỗi ${res.status}: ${await res.text()}`);
-      await new Promise((r) => setTimeout(r, 1500 * attempt));
-      continue;
-    }
-
-    throw new Error(`Gemini lỗi ${res.status}: ${await res.text()}`);
-  }
-
-  throw lastError;
+// Kết quả sai định dạng / rỗng cũng bị coi là lỗi => tự thử nhà cung cấp AI kế tiếp
+function parseVocab(rawText) {
+  const items = cleanItems(extractJsonArray(rawText));
+  if (!items || items.length === 0) throw new Error('Không tách được từ vựng nào');
+  return items;
 }
 
 export async function POST(request) {
@@ -108,18 +76,20 @@ export async function POST(request) {
   if (!text || !text.trim()) {
     return NextResponse.json({ error: 'Thiếu nội dung để xử lý' }, { status: 400 });
   }
+  if (text.length > 30000) {
+    return NextResponse.json({ error: 'Đoạn văn bản quá dài (tối đa khoảng 30.000 ký tự). Hãy chia nhỏ rồi xử lý từng phần.' }, { status: 413 });
+  }
 
   try {
-    const rawItems = await callGemini(text);
-    const items = cleanItems(rawItems);
-    if (!items || items.length === 0) {
-      return NextResponse.json({ error: 'AI không tách được từ vựng nào từ đoạn văn bản này. Thử dán lại rõ ràng hơn.' }, { status: 500 });
-    }
-    return NextResponse.json({ items, provider: 'Gemini' });
+    const { value, provider, model } = await generateText({ system: SYSTEM_PROMPT, user: text, maxTokens: 8000, temperature: 0.2, parse: parseVocab });
+    return NextResponse.json({ items: value, provider, model });
   } catch (e) {
-    const msg = (e.message || '').includes('503') || (e.message || '').includes('UNAVAILABLE')
-      ? 'Gemini đang quá tải tạm thời (đã tự thử lại 3 lần). Vui lòng đợi khoảng 1 phút rồi bấm lại.'
-      : (e.message || 'Lỗi không xác định khi gọi Gemini');
-    return NextResponse.json({ error: msg }, { status: 500 });
+    if (e.code === 'not_configured') {
+      return NextResponse.json({ error: 'Chưa cấu hình khóa AI. Hãy thêm GEMINI_API_KEY hoặc DEEPSEEK_API_KEY trong Vercel.' }, { status: 500 });
+    }
+    return NextResponse.json(
+      { error: 'AI không tách được từ vựng từ đoạn văn bản này, hoặc các dịch vụ AI đang quá tải. Vui lòng đợi khoảng 1 phút rồi thử lại, hoặc dán lại rõ ràng hơn.' },
+      { status: 500 }
+    );
   }
 }

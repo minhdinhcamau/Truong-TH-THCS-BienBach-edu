@@ -6,7 +6,7 @@ export function CmRoot({ children }) {
   return (
     <div className="cm-root">
       <style jsx global>{`
-        .cm-root { --cm-red: #c4262e; --cm-red-d: #8f1a20; --cm-ink: #14263d; --cm-muted: #5f6f83; --cm-line: #e1e8f0;
+        .cm-root { --cm-ink: #14263d; --cm-muted: #5f6f83; --cm-line: #e1e8f0;
           --cm-bg: #f3f6fa; --cm-ok: #1a8a58; --cm-warn: #9a6708; --cm-bad: #b3261e; color: var(--cm-ink); line-height: 1.5; }
         .cm-root *, .cm-root *::before, .cm-root *::after { box-sizing: border-box; }
         .cm-root button, .cm-root input, .cm-root select, .cm-root textarea { font-family: inherit; }
@@ -20,8 +20,8 @@ export function CmRoot({ children }) {
         .cm-root .cm-btn { border: 1px solid #d5dbe4; background: #fff; color: var(--cm-ink); border-radius: 10px; padding: 8px 14px; font-weight: 600; font-size: 13px; cursor: pointer; }
         .cm-root .cm-btn:hover:not(:disabled) { background: #f5f7fa; }
         .cm-root .cm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .cm-root .cm-btn-red { background: var(--cm-red); border-color: var(--cm-red); color: #fff; }
-        .cm-root .cm-btn-red:hover:not(:disabled) { background: var(--cm-red-d); }
+        .cm-root .cm-btn-main { background: var(--cm-accent, #2f6f5e); border-color: var(--cm-accent, #2f6f5e); color: #fff; }
+        .cm-root .cm-btn-main:hover:not(:disabled) { background: var(--cm-accent-d, #234f42); }
         .cm-root .cm-btn-ok { background: var(--cm-ok); border-color: var(--cm-ok); color: #fff; }
         .cm-root .cm-btn-danger { color: var(--cm-bad); border-color: #f0c4c0; }
         .cm-root .cm-btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 8px; }
@@ -36,7 +36,7 @@ export function CmRoot({ children }) {
         .cm-root .cm-chip { background: #eceff4; border-radius: 999px; padding: 3px 11px; font-size: 12px; font-weight: 600; }
         .cm-root .cm-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--cm-line); margin-bottom: 14px; }
         .cm-root .cm-tab { border: none; background: none; padding: 10px 14px; font-weight: 700; font-size: 13.5px; color: var(--cm-muted); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; white-space: nowrap; }
-        .cm-root .cm-tab.on { color: var(--cm-red); border-bottom-color: var(--cm-red); }
+        .cm-root .cm-tab.on { color: var(--cm-accent, #2f6f5e); border-bottom-color: var(--cm-accent, #2f6f5e); }
         .cm-root .cm-wrap { overflow-x: auto; }
         .cm-root .cm-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
         .cm-root .cm-tbl th { text-align: left; padding: 8px; border-bottom: 2px solid var(--cm-line); color: var(--cm-muted); font-weight: 700; white-space: nowrap; }

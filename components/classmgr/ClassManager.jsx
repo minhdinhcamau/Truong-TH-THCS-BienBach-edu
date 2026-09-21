@@ -35,11 +35,11 @@ export default function ClassManager({ classId, className, isStaff, role, roleGr
 
   const tabs = useMemo(() => {
     const t = [];
+    if (perms.report) t.push({ key: 'bao-cao', label: 'Báo cáo tuần' });
     if (perms.violation || perms.singing || perms.academic || perms.cadre) t.push({ key: 'ghi-nhan', label: 'Ghi nhận' });
     if (perms.duty || perms.dutyLog) t.push({ key: 'truc-nhat', label: 'Trực nhật' });
     if (perms.seat) t.push({ key: 'so-do', label: 'Sơ đồ lớp & tổ' });
     if (perms.staff) t.push({ key: 'hoc-sinh', label: 'Học sinh & ban cán sự' });
-    if (perms.report) t.push({ key: 'bao-cao', label: 'Báo cáo tuần' });
     return t;
   }, [perms]);
 

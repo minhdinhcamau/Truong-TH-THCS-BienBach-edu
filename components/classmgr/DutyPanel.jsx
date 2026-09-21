@@ -116,8 +116,8 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
         <div className="cm-h">
           <h3>Lịch trực nhật — tuần {fmtDate(weekStart)} – {fmtDate(addDays(weekStart, 6))}</h3>
           <div className="cm-row" style={{ gap: 6 }}>
-            <button className={`cm-btn cm-btn-sm ${weekStart === thisMonday ? 'cm-btn-red' : ''}`} onClick={() => setWeekStart(thisMonday)}>Tuần này</button>
-            <button className={`cm-btn cm-btn-sm ${weekStart === addDays(thisMonday, 7) ? 'cm-btn-red' : ''}`} onClick={() => setWeekStart(addDays(thisMonday, 7))}>Tuần sau</button>
+            <button className={`cm-btn cm-btn-sm ${weekStart === thisMonday ? 'cm-btn-main' : ''}`} onClick={() => setWeekStart(thisMonday)}>Tuần này</button>
+            <button className={`cm-btn cm-btn-sm ${weekStart === addDays(thisMonday, 7) ? 'cm-btn-main' : ''}`} onClick={() => setWeekStart(addDays(thisMonday, 7))}>Tuần sau</button>
           </div>
         </div>
         {savedDays.length === 0 ? (
@@ -142,7 +142,7 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
                         <div className="cm-hint" style={{ margin: '0 0 4px' }}>Ghi nhận Tổ {g}: {lg ? <span className={`cm-pill ${STATUS[lg.status][1]}`}>{STATUS[lg.status][0]}</span> : 'chưa ghi'}</div>
                         <div className="cm-chips">
                           {Object.entries(STATUS).map(([k, [label]]) => (
-                            <button key={k} className={`cm-btn cm-btn-sm ${lg?.status === k ? 'cm-btn-red' : ''}`} onClick={() => log(date, g, k)}>{label}</button>
+                            <button key={k} className={`cm-btn cm-btn-sm ${lg?.status === k ? 'cm-btn-main' : ''}`} onClick={() => log(date, g, k)}>{label}</button>
                           ))}
                         </div>
                       </div>
@@ -173,7 +173,7 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
               <div className="cm-lbl" style={{ marginTop: 0 }}>Các ngày trực</div>
               <div className="cm-chips">
                 {WEEKDAYS.map((wd) => (
-                  <button key={wd} className={`cm-btn cm-btn-sm ${wds.includes(wd) ? 'cm-btn-red' : ''}`} aria-pressed={wds.includes(wd)}
+                  <button key={wd} className={`cm-btn cm-btn-sm ${wds.includes(wd) ? 'cm-btn-main' : ''}`} aria-pressed={wds.includes(wd)}
                     onClick={() => { setWds(wds.includes(wd) ? wds.filter((x) => x !== wd) : [...wds, wd]); setPlan(null); }}>
                     Thứ {wd}
                   </button>
@@ -187,8 +187,8 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
               </div>
             )}
             {mode === 'manual'
-              ? <button className="cm-btn cm-btn-red" onClick={startManual}>Bắt đầu chọn</button>
-              : <button className="cm-btn cm-btn-red" disabled={busy} onClick={propose}>{busy ? 'Đang tính…' : '✨ Trợ lý đề xuất lịch'}</button>}
+              ? <button className="cm-btn cm-btn-main" onClick={startManual}>Bắt đầu chọn</button>
+              : <button className="cm-btn cm-btn-main" disabled={busy} onClick={propose}>{busy ? 'Đang tính…' : '✨ Trợ lý đề xuất lịch'}</button>}
           </div>
           <p className="cm-hint" style={{ marginTop: 8 }}>
             Trợ lý dựa vào điểm và vi phạm của lớp (mục Ghi nhận) để đề xuất kèm lý do; bạn xem, chỉnh rồi mới lưu. Bạn nào trực từ 2 lần trong tuần bắt buộc phải có lý do.
@@ -246,7 +246,7 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
               )}
               <div className="cm-foot">
                 <button className="cm-btn" onClick={() => setPlan(null)}>Bỏ bản nháp</button>
-                <button className="cm-btn cm-btn-red" disabled={busy || missing.length > 0 || plan.length === 0} onClick={save}>{busy ? 'Đang lưu…' : `Lưu lịch trực (${plan.length} lượt)`}</button>
+                <button className="cm-btn cm-btn-main" disabled={busy || missing.length > 0 || plan.length === 0} onClick={save}>{busy ? 'Đang lưu…' : `Lưu lịch trực (${plan.length} lượt)`}</button>
               </div>
             </div>
           )}

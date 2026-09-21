@@ -102,7 +102,7 @@ export default function SeatDesigner({ classId, students, reload, toast }) {
     <>
       <div className="cm-card">
         <div className="cm-h"><h3>Thiết kế sơ đồ lớp</h3><span className="cm-chip">{seatCount} ghế · {seatedIds.size}/{students.length} bạn đã có chỗ</span></div>
-        <p className="cm-hint">Đặt số hàng, số cột và số tổ cho giống lớp học thật. Bấm dấu × ở góc ghế để bỏ ghế, bấm ＋ để thêm lại. Các cột liền nhau thuộc cùng một tổ (cùng màu). Xếp xong bấm “Lưu vào tổ”.</p>
+        <p className="cm-hint">Đặt số hàng, số cột và số tổ cho giống lớp học thật. Bấm dấu × ở góc ghế để bỏ ghế, bấm ＋ để thêm lại. Các cột liền nhau thuộc cùng một tổ (cùng màu), tính từ cửa ra vào. Xếp xong bấm “Lưu vào tổ”.</p>
         <div className="cm-row">
           <label className="cm-row" style={{ gap: 6 }}>Hàng
             <input className="cm-input" style={{ width: 70 }} type="number" min={1} max={12} value={rows} onChange={(e) => resize(Number(e.target.value), cols)} />
@@ -115,17 +115,30 @@ export default function SeatDesigner({ classId, students, reload, toast }) {
           </label>
           <button className="cm-btn" onClick={autoFill} disabled={unseated.length === 0}>⚡ Tự xếp {unseated.length} bạn còn lại</button>
           <button className="cm-btn cm-btn-danger" onClick={clearAll}>Bỏ hết học sinh</button>
-          <button className="cm-btn cm-btn-red" onClick={save} disabled={saving}>{saving ? 'Đang lưu…' : 'Lưu vào tổ'}</button>
+          <button className="cm-btn cm-btn-main" onClick={save} disabled={saving}>{saving ? 'Đang lưu…' : 'Lưu vào tổ'}</button>
         </div>
       </div>
 
       <div className="cm-card">
-        <div style={{ textAlign: 'center', background: '#14263d', color: '#fff', borderRadius: 10, padding: '8px 0', fontWeight: 700, marginBottom: 12 }}>Bảng · Bục giảng</div>
-        <div className="cm-wrap">
+        <p className="cm-hint" style={{ marginBottom: 10 }}>
+          Sơ đồ nhìn từ trên xuống: <b>Tổ 1 sát cửa ra vào</b> (bên trái), <b>Tổ {groupCount}</b> ở phía đối diện bàn giáo viên (bên phải).
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 10, minHeight: 180 }}>
+            <div style={{ background: '#eef3f1', border: '2px dashed #9db7ad', borderRadius: 10, padding: '10px 4px', textAlign: 'center', fontSize: 11.5, fontWeight: 800, color: '#2f6f5e', lineHeight: 1.3 }}>
+              <div style={{ fontSize: 22 }} aria-hidden="true">🧑‍🏫</div>Bàn giáo viên
+            </div>
+            <div style={{ background: '#fff4dc', border: '2px solid #d9b45a', borderRadius: 10, padding: '10px 4px', textAlign: 'center', fontSize: 11.5, fontWeight: 800, color: '#7a4d00', lineHeight: 1.3 }}>
+              <div style={{ fontSize: 22 }} aria-hidden="true">🚪</div>Cửa ra vào
+            </div>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ textAlign: 'center', background: '#14263d', color: '#fff', borderRadius: 10, padding: '8px 0', fontWeight: 700, marginBottom: 12 }}>Bảng</div>
+            <div className="cm-wrap">
           <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(112px, 1fr))`, gap: 8, minWidth: cols * 118 }}>
             {Array.from({ length: cols }, (_, i) => (
               <div key={`h${i}`} style={{ textAlign: 'center', fontSize: 12, fontWeight: 800, color: '#fff', background: groupColor(groupOf(i + 1)), borderRadius: 8, padding: '3px 0' }}>
-                Tổ {groupOf(i + 1)}
+                Tổ {groupOf(i + 1)}{i === 0 ? ' · gần cửa' : ''}{i === cols - 1 && groupCount > 1 ? ' · đối diện bàn GV' : ''}
               </div>
             ))}
             {Array.from({ length: rows }, (_, ri) =>
@@ -163,6 +176,8 @@ export default function SeatDesigner({ classId, students, reload, toast }) {
                 );
               })
             )}
+          </div>
+            </div>
           </div>
         </div>
       </div>

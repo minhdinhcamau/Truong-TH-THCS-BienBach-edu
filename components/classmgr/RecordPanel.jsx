@@ -155,7 +155,7 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
                 {g.list.map((t) => (
                   <button
                     key={t.code}
-                    className={`cm-btn cm-btn-sm ${typeCode === t.code ? 'cm-btn-red' : ''}`}
+                    className={`cm-btn cm-btn-sm ${typeCode === t.code ? 'cm-btn-main' : ''}`}
                     onClick={() => setTypeCode(t.code)}
                     aria-pressed={typeCode === t.code}
                   >
@@ -163,7 +163,7 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
                   </button>
                 ))}
                 {g.kind === 'violation' && (
-                  <button className={`cm-btn cm-btn-sm ${isCustom ? 'cm-btn-red' : ''}`} onClick={() => setTypeCode('khac')} aria-pressed={isCustom}>Vi phạm khác… <b>-1</b></button>
+                  <button className={`cm-btn cm-btn-sm ${isCustom ? 'cm-btn-main' : ''}`} onClick={() => setTypeCode('khac')} aria-pressed={isCustom}>Vi phạm khác… <b>-1</b></button>
                 )}
               </div>
             </div>
@@ -178,7 +178,7 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
           <label className="cm-lbl" htmlFor="rc-note">Ghi chú (không bắt buộc)</label>
           <input id="rc-note" className="cm-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="VD: tiết Toán, đã nhắc 2 lần…" />
           <div className="cm-foot">
-            <button className="cm-btn cm-btn-red" disabled={busy || !studentId || !typeCode} onClick={submit}>{busy ? 'Đang ghi…' : 'Ghi nhận'}</button>
+            <button className="cm-btn cm-btn-main" disabled={busy || !studentId || !typeCode} onClick={submit}>{busy ? 'Đang ghi…' : 'Ghi nhận'}</button>
           </div>
         </div>
       )}

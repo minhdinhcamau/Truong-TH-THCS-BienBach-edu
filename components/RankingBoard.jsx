@@ -26,7 +26,7 @@ function Star({ size = 22 }) {
   );
 }
 
-export default function RankingBoard({ myClassId, onLoaded }) {
+export default function RankingBoard({ myClassId, onLoaded, accent = '#c4262e', accentDark = '#8f1a20', meBg = '#fdeceb' }) {
   const thisMonday = mondayOf(vnTodayIso());
   const [weekStart, setWeekStart] = useState(thisMonday);
   const [rows, setRows] = useState(null);
@@ -80,7 +80,7 @@ export default function RankingBoard({ myClassId, onLoaded }) {
   const others = top.slice(1);
 
   return (
-    <section className="rb" aria-label="Bảng xếp hạng thi đua các lớp">
+    <section className="rb" aria-label="Bảng xếp hạng thi đua các lớp" style={{ '--red': accent, '--red-d': accentDark, '--me-bg': meBg }}>
       <style jsx>{`
         .rb { --red: #c4262e; --red-d: #8f1a20; --gold: #f0b429; --silver: #8b98a8; --bronze: #b9773c;
           --ink: #14263d; --muted: #5f6f83; --line: #e1e8f0; --tint: #f3f6fa; color: var(--ink); }
@@ -130,7 +130,7 @@ export default function RankingBoard({ myClassId, onLoaded }) {
         .trow { display: grid; grid-template-columns: 44px 1fr 74px 74px 82px; align-items: center; gap: 8px; padding: 11px 16px; border-top: 1px solid var(--line); }
         .trow:first-child { border-top: none; }
         .thead { background: var(--tint); font-size: 12px; font-weight: 700; color: var(--muted); }
-        .trow.me { background: #fdeceb; }
+        .trow.me { background: var(--me-bg, #fdeceb); }
         .rk { font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 18px; color: var(--muted); text-align: center; }
         .nm { font-weight: 700; font-size: 14.5px; }
         .n { text-align: right; font-variant-numeric: tabular-nums; font-size: 13.5px; }

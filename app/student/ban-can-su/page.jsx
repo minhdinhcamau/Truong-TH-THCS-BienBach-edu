@@ -6,7 +6,7 @@ import ClassManager from '../../../components/classmgr/ClassManager';
 export default function BanCanSuPage() {
   const { profile, classRole } = useStudent();
   return (
-    <>
+    <div style={{ '--cm-accent': '#225DA3', '--cm-accent-d': '#174a86' }}>
       <h2 className="section-title">Ban cán sự</h2>
       <p className="section-sub">Công cụ dành cho chức vụ của em trong lớp: ghi nhận, trực nhật, sơ đồ lớp…</p>
       {!classRole ? (
@@ -21,6 +21,6 @@ export default function BanCanSuPage() {
           profileId={profile.id}
         />
       )}
-    </>
+    </div>
   );
 }

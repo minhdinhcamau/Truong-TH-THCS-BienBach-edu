@@ -1,23 +1,24 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { useGuard } from '@/lib/useGuard';
 import { useHomeroom } from '@/lib/useHomeroom';
-import { teacherNav } from '@/lib/nav';
-import AppShell from '@/components/AppShell';
+import { useRankingPing } from '@/lib/useRankingPing';
+import HomeroomShell from '@/components/HomeroomShell';
 import ClassManager from '@/components/classmgr/ClassManager';
 
-// Chủ nhiệm lớp: chỉ mở được khi tài khoản giáo viên được phân công chủ nhiệm (TPT / admin xem được mọi lớp).
+// Chủ nhiệm lớp: chỉ mở được khi tài khoản giáo viên được admin phân công chủ nhiệm (TPT / admin xem được mọi lớp).
 export default function HomeroomPage() {
   const router = useRouter();
   const { profile, ready, logout } = useGuard('any');
-  const isStudent = profile && profile.role === 'student' && !profile.is_tpt;
+  const isStudent = !!profile && profile.role === 'student' && !profile.is_tpt;
   const staff = !!profile && (profile.role === 'admin' || !!profile.is_tpt);
   const homeroom = useHomeroom(ready && !isStudent);
   const [allClasses, setAllClasses] = useState([]);
   const [classId, setClassId] = useState('');
+  const [hero, setHero] = useState({ rank: null, of: null, total: null, students: null, cadre: null });
 
   useEffect(() => { if (ready && isStudent) router.replace('/student/ban-can-su'); }, [ready, isStudent, router]);
   useEffect(() => {
@@ -29,35 +30,57 @@ export default function HomeroomPage() {
   useEffect(() => { if (!classId && classes[0]) setClassId(classes[0].class_id); }, [classes, classId]);
   const current = classes.find((c) => c.class_id === classId);
 
-  if (!ready || isStudent || (!staff && !homeroom.loaded)) return <div className="app"><div className="center-loading">Đang tải…</div></div>;
+  const loadHero = useCallback(async () => {
+    if (!classId) return;
+    const [lb, st] = await Promise.all([
+      supabase.rpc('get_class_leaderboard'),
+      supabase.rpc('class_students', { p_class_id: classId }),
+    ]);
+    const row = (lb.data || []).find((r) => r.class_id === classId);
+    setHero({
+      rank: row?.rank ?? null, of: (lb.data || []).length || null, total: row?.total_score ?? null,
+      students: st.data ? st.data.length : null, cadre: st.data ? st.data.filter((s) => s.role).length : null,
+    });
+  }, [classId]);
+
+  useEffect(() => { loadHero(); }, [loadHero]);
+  useRankingPing(loadHero);
+
+  if (!ready || isStudent || (!staff && !homeroom.loaded)) return <div style={{ padding: 60, textAlign: 'center', color: '#5b6e66' }}>Đang tải…</div>;
 
   const allowed = staff || homeroom.classes.length > 0;
+  const roleLabel = staff ? (profile.role === 'admin' ? 'Quản trị viên' : 'Tổng phụ trách Đội') : 'Giáo viên chủ nhiệm';
+
   return (
-    <AppShell profile={profile} roleLabel={staff ? (profile.role === 'admin' ? 'Quản trị viên' : 'Tổng phụ trách Đội') : 'Giáo viên chủ nhiệm'}
-      nav={teacherNav(allowed)} activeHref="/teacher/chu-nhiem" onLogout={logout}>
+    <HomeroomShell profile={profile} roleLabel={roleLabel} active="chu-nhiem" showHomeroom={allowed} onLogout={logout}>
       {!allowed ? (
-        <div className="card" style={{ marginTop: 20 }}>
-          <div className="empty">
-            Bạn chưa được phân công chủ nhiệm lớp nào nên chưa dùng được mục này. Hãy nhờ quản trị viên phân công trong mục “Phân công chủ nhiệm”.
-            <div style={{ marginTop: 12 }}><Link href="/teacher" className="btn">← Về trang giáo viên</Link></div>
+        <div className="hr-card" style={{ marginTop: 20 }}>
+          <div className="hr-empty">
+            Bạn chưa được phân công chủ nhiệm lớp nào nên chưa dùng được mục này.<br />Hãy nhờ quản trị viên phân công chủ nhiệm.
+            <div style={{ marginTop: 14 }}><Link href="/teacher" className="hr-back">← Về trang giáo viên</Link></div>
           </div>
         </div>
       ) : (
         <>
-          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-            <div>
-              <h1 className="pg-title">Chủ nhiệm lớp {current?.class_name || ''}</h1>
-              <p className="pg-sub" style={{ marginBottom: 0 }}>Giao chức vụ ban cán sự, thiết kế sơ đồ lớp, theo dõi ghi nhận và báo cáo tuần để sinh hoạt lớp.</p>
+          <section className="hr-hero">
+            <div className="hr-hero-l">
+              <small>{staff ? 'Xem với quyền quản lý' : `Giáo viên chủ nhiệm · ${profile.full_name}`}</small>
+              <h1>Lớp {current?.class_name || '…'}</h1>
+              <p>{hero.students != null ? `${hero.students} học sinh · ${hero.cadre ?? 0} bạn trong ban cán sự` : 'Đang tải…'}</p>
+              {classes.length > 1 && (
+                <select className="hr-pick" style={{ marginTop: 10 }} value={classId} onChange={(e) => setClassId(e.target.value)} aria-label="Chọn lớp">
+                  {classes.map((c) => <option key={c.class_id} value={c.class_id}>Lớp {c.class_name}</option>)}
+                </select>
+              )}
             </div>
-            {classes.length > 1 && (
-              <select className="input" style={{ width: 150 }} value={classId} onChange={(e) => setClassId(e.target.value)} aria-label="Chọn lớp">
-                {classes.map((c) => <option key={c.class_id} value={c.class_id}>Lớp {c.class_name}</option>)}
-              </select>
-            )}
-          </div>
+            <div className="hr-stats">
+              <div className="hr-stat"><small>Hạng thi đua tuần</small><b>{hero.rank ?? '—'}{hero.of ? <span style={{ fontSize: 15, color: '#b9d6cb' }}>/{hero.of}</span> : null}</b></div>
+              <div className="hr-stat"><small>Điểm thi đua</small><b>{hero.total != null ? Number(hero.total).toLocaleString('vi-VN', { maximumFractionDigits: 1 }) : '—'}</b></div>
+            </div>
+          </section>
           {classId && <ClassManager key={classId} classId={classId} className={current?.class_name} isStaff role={null} roleGroup={null} profileId={profile.id} />}
         </>
       )}
-    </AppShell>
+    </HomeroomShell>
   );
 }
