@@ -113,6 +113,37 @@ export default function AdminPage() {
   const [rowBusyId, setRowBusyId] = useState(null)
   const [rowMsg, setRowMsg] = useState({ id: null, text: '', isError: false })
 
+  // ---------- Sửa tên / đổi lớp ngay trong bảng (chỉ admin làm được) ----------
+  const [editRowId, setEditRowId] = useState(null)
+  const [editName, setEditName] = useState('')
+  const [editClassIdForRow, setEditClassIdForRow] = useState('')
+
+  function openEditRow(u) {
+    setEditRowId(u.id)
+    setEditName(u.full_name || '')
+    setEditClassIdForRow(u.class_id || '')
+    setResetRowId(null)
+  }
+
+  async function saveEditRow(u) {
+    setRowBusyId(u.id)
+    setRowMsg({ id: null, text: '', isError: false })
+    try {
+      const body = { userId: u.id, fullName: editName }
+      if (u.role === 'student') body.classId = editClassIdForRow || null
+      await authedFetch('/api/admin/update-account', { method: 'PATCH', body: JSON.stringify(body) })
+      setUsers((prev) =>
+        prev.map((x) => (x.id === u.id ? { ...x, full_name: editName, ...(u.role === 'student' ? { class_id: editClassIdForRow || null } : {}) } : x))
+      )
+      setEditRowId(null)
+      setRowMsg({ id: u.id, text: 'Đã lưu.', isError: false })
+    } catch (err) {
+      setRowMsg({ id: u.id, text: err.message, isError: true })
+    } finally {
+      setRowBusyId(null)
+    }
+  }
+
   // ---- Nhập danh sách học sinh hàng loạt ----
   const [rosterClassId, setRosterClassId] = useState('')
   const [rosterResults, setRosterResults] = useState(null)
@@ -1472,10 +1503,40 @@ export default function AdminPage() {
                           <span style={{ color: '#8aa39c', fontSize: 11 }}>—</span>
                         )}
                       </td>
-                      <td>{u.full_name || '—'}</td>
+                      <td>
+                        {editRowId === u.id ? (
+                          <input
+                            className={styles.inlineInput}
+                            style={{ width: 150 }}
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            placeholder="Họ tên"
+                          />
+                        ) : (
+                          u.full_name || '—'
+                        )}
+                      </td>
                       <td>{u.role === 'student' ? (u.student_code || '—') : u.email}</td>
                       <td>{ROLE_LABEL[u.role] || u.role}</td>
-                      <td>{u.role === 'student' ? (classNameById[u.class_id] || '—') : '—'}</td>
+                      <td>
+                        {editRowId === u.id && u.role === 'student' ? (
+                          <select
+                            className={styles.inlineInput}
+                            style={{ width: 110 }}
+                            value={editClassIdForRow}
+                            onChange={(e) => setEditClassIdForRow(e.target.value)}
+                          >
+                            <option value="">— Chưa có lớp —</option>
+                            {classes.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        ) : u.role === 'student' ? (
+                          classNameById[u.class_id] || '—'
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td>
                         {u.role === 'student' ? (
                           <span className={isExpiringSoon(u.expires_at) ? styles.expiring : ''}>
@@ -1488,7 +1549,20 @@ export default function AdminPage() {
                       </td>
                       <td>
                         <div className={styles.actions}>
-                          {resetRowId === u.id ? (
+                          {editRowId === u.id ? (
+                            <>
+                              <button
+                                className={styles.smallConfirm}
+                                onClick={() => saveEditRow(u)}
+                                disabled={rowBusyId === u.id || !editName.trim()}
+                              >
+                                Lưu
+                              </button>
+                              <button className={styles.smallCancel} onClick={() => setEditRowId(null)}>
+                                Huỷ
+                              </button>
+                            </>
+                          ) : resetRowId === u.id ? (
                             <>
                               <input
                                 className={styles.inlineInput}
@@ -1516,6 +1590,9 @@ export default function AdminPage() {
                             </>
                           ) : (
                             <>
+                              <button className={styles.linkBtn} onClick={() => openEditRow(u)}>
+                                Sửa tên{u.role === 'student' ? ' / lớp' : ''}
+                              </button>
                               <button className={styles.linkBtn} onClick={() => openReset(u)}>
                                 Đặt lại mật khẩu
                               </button>

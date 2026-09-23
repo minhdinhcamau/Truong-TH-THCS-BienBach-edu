@@ -3,10 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { addDays, fmtIso, mondayOf, timeVN, vnTodayIso } from '@/lib/dates';
 import { roleText } from '@/lib/roles';
+import StudentPicker from './StudentPicker';
 
 const KIND_LABEL = { violation: 'Vi phạm', singing: 'Không hát', plus: 'Điểm cộng', cadre_ok: 'Không vi phạm' };
+const KIND_TONE = { violation: 'bad', singing: 'bad', plus: 'ok', cadre_ok: 'mute' };
 
 // Ghi nhận trong lớp: mỗi chức vụ chỉ thấy những mục mình được phép ghi (theo perms).
+// Thiết kế theo từng bước, tối ưu cho điện thoại: chọn học sinh (gom theo tổ) → chọn loại → ghi nhận.
 export default function RecordPanel({ classId, students, perms, role, roleGroup, profileId, toast }) {
   const today = vnTodayIso();
   const monday = mondayOf(today);
@@ -42,9 +45,9 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
     [types, perms]
   );
   const groups = [
-    { kind: 'violation', title: 'Vi phạm trong lớp', list: allowed.filter((t) => t.kind === 'violation') },
-    { kind: 'singing', title: 'Không hát (chào cờ, khi Sao đỏ kiểm tra)', list: allowed.filter((t) => t.kind === 'singing') },
-    { kind: 'plus', title: 'Điểm cộng (xung phong, điểm 9, 10)', list: allowed.filter((t) => t.kind === 'plus') },
+    { kind: 'violation', title: '🚫 Vi phạm trong lớp', list: allowed.filter((t) => t.kind === 'violation') },
+    { kind: 'singing', title: '🎤 Không hát', list: allowed.filter((t) => t.kind === 'singing') },
+    { kind: 'plus', title: '✨ Điểm cộng', list: allowed.filter((t) => t.kind === 'plus') },
   ].filter((g) => g.list.length > 0);
 
   // Tổ trưởng / tổ phó chỉ ghi được thành viên trong tổ của mình
@@ -52,9 +55,11 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
   const candidates = students.filter((s) => !scoped || s.group_no === roleGroup);
   const picked = allowed.find((t) => t.code === typeCode);
   const isCustom = typeCode === 'khac';
+  const selectedStudent = students.find((s) => s.student_id === studentId);
+  const readyToSubmit = !!studentId && !!typeCode && (!isCustom || custom.trim());
 
   async function submit() {
-    if (!studentId || !typeCode) {
+    if (!readyToSubmit) {
       toast({ type: 'error', text: 'Hãy chọn học sinh và mục cần ghi nhận.' });
       return;
     }
@@ -70,6 +75,7 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
     }
     const who = students.find((s) => s.student_id === studentId)?.full_name || '';
     toast({ type: 'ok', text: `Đã ghi nhận: ${who} — ${isCustom ? custom : picked?.label}.` });
+    setStudentId('');
     setNote('');
     setCustom('');
     setTypeCode('');
@@ -99,33 +105,60 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
   const canDelete = (r) => perms.staff || r.recorded_by === profileId;
 
   return (
-    <>
+    <div className="rp-root">
+      <style jsx>{`
+        .rp-root { display: flex; flex-direction: column; gap: 14px; }
+        .rp-step-h { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 13.5px; margin: 2px 0 10px; color: var(--cm-ink); }
+        .rp-step-n { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--cm-accent, #2f6f5e); color: #fff; font-size: 12px; display: grid; place-items: center; }
+        .rp-type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+        .rp-type { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 11px 13px; border-radius: 12px; border: 1.5px solid var(--cm-line); background: #fff; cursor: pointer; min-height: 54px; text-align: left; }
+        .rp-type.on { border-color: var(--cm-accent, #2f6f5e); background: #f3f9f6; }
+        .rp-type-lbl { font-size: 13px; font-weight: 700; line-height: 1.25; }
+        .rp-type-pt { font-size: 13px; font-weight: 800; }
+        .rp-type-pt.neg { color: var(--cm-bad); } .rp-type-pt.pos { color: var(--cm-ok); }
+        .rp-summary { background: #f3f9f6; border: 1.5px dashed var(--cm-accent, #2f6f5e); border-radius: 12px; padding: 12px 14px; font-size: 13.5px; }
+        .rp-summary b { color: var(--cm-accent-d, #234f42); }
+        .rp-submit { position: sticky; bottom: 10px; }
+        .rp-submit button { width: 100%; padding: 15px; font-size: 15px; border-radius: 14px; box-shadow: 0 8px 20px -8px rgba(0,0,0,0.25); }
+
+        .rec-list { display: grid; gap: 8px; }
+        .rec-row { border: 1px solid var(--cm-line); border-radius: 12px; padding: 11px 13px; }
+        .rec-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        .rec-name { font-weight: 800; font-size: 14px; }
+        .rec-meta { font-size: 11.5px; color: var(--cm-muted); margin-top: 2px; }
+        .rec-pts { font-family: inherit; font-weight: 800; font-size: 16px; white-space: nowrap; }
+        .rec-body { margin-top: 6px; font-size: 13.5px; }
+        .rec-note { color: var(--cm-muted); font-size: 12.5px; margin-top: 2px; }
+        .rec-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+
+        .cd-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--cm-line); border-radius: 12px; padding: 10px 12px; }
+        .cd-name { font-weight: 800; font-size: 13.5px; }
+        .cd-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+      `}</style>
+
       {perms.cadre && (
         <div className="cm-card">
           <div className="cm-h"><h3>Kiểm tra ban cán sự hôm nay</h3></div>
-          <p className="cm-hint">Ban cán sự cũng phải gương mẫu. Nếu bạn nào không vi phạm hôm nay, bấm “Không vi phạm”; nếu có, bấm “Ghi vi phạm”.</p>
+          <p className="cm-hint">Ban cán sự cũng phải gương mẫu. Không vi phạm thì bấm xác nhận; có thì ghi vi phạm như bình thường.</p>
           {cadre.length === 0 ? (
             <div className="cm-empty">Chưa có ban cán sự nào được giao chức vụ.</div>
           ) : (
-            <div className="cm-wrap">
-              <table className="cm-tbl">
-                <tbody>
-                  {cadre.map((s) => (
-                    <tr key={s.student_id}>
-                      <td><b>{s.full_name}</b> <span className="cm-chip">{roleText(s.role, s.group_no)}</span></td>
-                      <td>
-                        {s.violations > 0 ? <span className="cm-pill bad">{s.violations} vi phạm</span>
-                          : s.confirmed_ok ? <span className="cm-pill ok">Không vi phạm ✓</span>
-                          : <span className="cm-pill mute">Chưa kiểm tra</span>}
-                      </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {!s.confirmed_ok && s.violations === 0 && <button className="cm-btn cm-btn-sm cm-btn-ok" onClick={() => cadreOk(s)}>Không vi phạm</button>}{' '}
-                        {perms.violation && <button className="cm-btn cm-btn-sm cm-btn-danger" onClick={() => quickViolation(s)}>Ghi vi phạm</button>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="rec-list">
+              {cadre.map((s) => (
+                <div key={s.student_id} className="cd-row">
+                  <div>
+                    <div className="cd-name">{s.full_name}</div>
+                    <span className="cm-chip">{roleText(s.role, s.group_no)}</span>
+                  </div>
+                  <div className="cd-actions">
+                    {s.violations > 0 ? <span className="cm-pill bad">{s.violations} vi phạm</span>
+                      : s.confirmed_ok ? <span className="cm-pill ok">Không vi phạm ✓</span>
+                      : <span className="cm-pill mute">Chưa kiểm tra</span>}
+                    {!s.confirmed_ok && s.violations === 0 && <button className="cm-btn cm-btn-sm cm-btn-ok" onClick={() => cadreOk(s)}>Không vi phạm</button>}
+                    {perms.violation && <button className="cm-btn cm-btn-sm cm-btn-danger" onClick={() => quickViolation(s)}>Ghi vi phạm</button>}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -134,36 +167,26 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
       {groups.length > 0 && (
         <div className="cm-card">
           <div className="cm-h"><h3>Ghi nhận mới</h3></div>
-          <div className="cm-row" style={{ alignItems: 'flex-end' }}>
-            <div className="cm-grow">
-              <label className="cm-lbl" htmlFor="rc-stu" style={{ marginTop: 0 }}>Học sinh{scoped ? ` (tổ ${roleGroup})` : ''}</label>
-              <select id="rc-stu" className="cm-input" value={studentId} onChange={(e) => setStudentId(e.target.value)}>
-                <option value="">— Chọn học sinh —</option>
-                {candidates.map((s) => <option key={s.student_id} value={s.student_id}>{s.full_name}{s.group_no ? ` · Tổ ${s.group_no}` : ''}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="cm-lbl" htmlFor="rc-date" style={{ marginTop: 0 }}>Ngày</label>
-              <input id="rc-date" type="date" className="cm-input" value={date} max={today} min={perms.staff ? undefined : monday} onChange={(e) => setDate(e.target.value || today)} />
-            </div>
-          </div>
 
+          <div className="rp-step-h"><span className="rp-step-n">1</span> Chọn học sinh{scoped ? ` (Tổ ${roleGroup})` : ''}</div>
+          <StudentPicker students={candidates} value={studentId} onChange={setStudentId} scopeGroup={scoped ? roleGroup : null} />
+
+          <div className="rp-step-h" style={{ marginTop: 16 }}><span className="rp-step-n">2</span> Chọn nội dung</div>
           {groups.map((g) => (
-            <div key={g.kind}>
-              <div className="cm-lbl">{g.title}</div>
-              <div className="cm-chips">
+            <div key={g.kind} style={{ marginBottom: 10 }}>
+              <div className="cm-lbl" style={{ marginTop: 0 }}>{g.title}</div>
+              <div className="rp-type-grid">
                 {g.list.map((t) => (
-                  <button
-                    key={t.code}
-                    className={`cm-btn cm-btn-sm ${typeCode === t.code ? 'cm-btn-main' : ''}`}
-                    onClick={() => setTypeCode(t.code)}
-                    aria-pressed={typeCode === t.code}
-                  >
-                    {t.label} <b>{t.points > 0 ? `+${t.points}` : t.points}</b>
+                  <button key={t.code} type="button" className={`rp-type ${typeCode === t.code ? 'on' : ''}`} onClick={() => setTypeCode(t.code)} aria-pressed={typeCode === t.code}>
+                    <span className="rp-type-lbl">{t.label}</span>
+                    <span className={`rp-type-pt ${t.points < 0 ? 'neg' : 'pos'}`}>{t.points > 0 ? `+${t.points}` : t.points} điểm</span>
                   </button>
                 ))}
                 {g.kind === 'violation' && (
-                  <button className={`cm-btn cm-btn-sm ${isCustom ? 'cm-btn-main' : ''}`} onClick={() => setTypeCode('khac')} aria-pressed={isCustom}>Vi phạm khác… <b>-1</b></button>
+                  <button type="button" className={`rp-type ${isCustom ? 'on' : ''}`} onClick={() => setTypeCode('khac')} aria-pressed={isCustom}>
+                    <span className="rp-type-lbl">Vi phạm khác…</span>
+                    <span className="rp-type-pt neg">-1 điểm</span>
+                  </button>
                 )}
               </div>
             </div>
@@ -175,41 +198,59 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
               <input id="rc-custom" className="cm-input" value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="VD: Ăn quà vặt trong giờ" />
             </>
           )}
-          <label className="cm-lbl" htmlFor="rc-note">Ghi chú (không bắt buộc)</label>
+
+          <div className="rp-step-h" style={{ marginTop: 16 }}><span className="rp-step-n">3</span> Ghi chú & ngày</div>
+          <label className="cm-lbl" htmlFor="rc-note" style={{ marginTop: 0 }}>Ghi chú (không bắt buộc)</label>
           <input id="rc-note" className="cm-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="VD: tiết Toán, đã nhắc 2 lần…" />
-          <div className="cm-foot">
-            <button className="cm-btn cm-btn-main" disabled={busy || !studentId || !typeCode} onClick={submit}>{busy ? 'Đang ghi…' : 'Ghi nhận'}</button>
+          {perms.staff && (
+            <>
+              <label className="cm-lbl" htmlFor="rc-date">Ngày</label>
+              <input id="rc-date" type="date" className="cm-input" value={date} max={today} onChange={(e) => setDate(e.target.value || today)} />
+            </>
+          )}
+
+          {readyToSubmit && (
+            <div className="rp-summary" style={{ marginTop: 14 }}>
+              Sẽ ghi: <b>{selectedStudent?.full_name}</b> — {isCustom ? custom : picked?.label}
+              {' '}(<b>{isCustom ? -1 : picked?.points > 0 ? `+${picked.points}` : picked?.points} điểm</b>)
+            </div>
+          )}
+
+          <div className="cm-foot rp-submit">
+            <button className="cm-btn cm-btn-main" disabled={busy || !readyToSubmit} onClick={submit}>{busy ? 'Đang ghi…' : '✓ Ghi nhận'}</button>
           </div>
         </div>
       )}
 
       <div className="cm-card">
-        <div className="cm-h"><h3>Ghi nhận tuần này ({fmtIso(monday)} – {fmtIso(addDays(monday, 6))})</h3></div>
+        <div className="cm-h"><h3>Ghi nhận tuần này</h3><span className="cm-chip">{fmtIso(monday)} – {fmtIso(addDays(monday, 6))}</span></div>
         {records.length === 0 ? (
           <div className="cm-empty">Chưa có ghi nhận nào trong tuần.</div>
         ) : (
-          <div className="cm-wrap">
-            <table className="cm-tbl">
-              <thead><tr><th>Ngày</th><th>Học sinh</th><th>Nội dung</th><th>Điểm</th><th>Người ghi</th><th></th></tr></thead>
-              <tbody>
-                {records.map((r) => (
-                  <tr key={r.id}>
-                    <td className="cm-num">{fmtIso(r.occurred_date)}<div className="cm-hint" style={{ margin: 0 }}>{timeVN(r.created_at)}</div></td>
-                    <td><b>{r.student_name}</b></td>
-                    <td>
-                      <span className={`cm-pill ${r.kind === 'plus' ? 'ok' : r.kind === 'cadre_ok' ? 'mute' : 'bad'}`}>{KIND_LABEL[r.kind]}</span> {r.label}
-                      {r.note ? <div className="cm-hint" style={{ margin: 0 }}>{r.note}</div> : null}
-                    </td>
-                    <td className="cm-num" style={{ fontWeight: 800, color: r.points < 0 ? 'var(--cm-bad)' : r.points > 0 ? 'var(--cm-ok)' : 'inherit' }}>{r.points > 0 ? `+${r.points}` : r.points}</td>
-                    <td>{r.recorded_by_name || '—'}</td>
-                    <td style={{ textAlign: 'right' }}>{canDelete(r) && <button className="cm-btn cm-btn-sm cm-btn-danger" onClick={() => remove(r)}>Xoá</button>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="rec-list">
+            {records.map((r) => (
+              <div key={r.id} className="rec-row">
+                <div className="rec-top">
+                  <div>
+                    <div className="rec-name">{r.student_name}</div>
+                    <div className="rec-meta">{fmtIso(r.occurred_date)} · {timeVN(r.created_at)} · {r.recorded_by_name || '—'}</div>
+                  </div>
+                  <div className={`rec-pts cm-pill ${KIND_TONE[r.kind]}`} style={{ fontSize: 14 }}>{r.points > 0 ? `+${r.points}` : r.points}</div>
+                </div>
+                <div className="rec-body">
+                  <span className={`cm-pill ${KIND_TONE[r.kind]}`}>{KIND_LABEL[r.kind]}</span> {r.label}
+                  {r.note ? <div className="rec-note">{r.note}</div> : null}
+                </div>
+                {canDelete(r) && (
+                  <div className="rec-foot">
+                    <button className="cm-btn cm-btn-sm cm-btn-danger" onClick={() => remove(r)}>Xoá</button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }

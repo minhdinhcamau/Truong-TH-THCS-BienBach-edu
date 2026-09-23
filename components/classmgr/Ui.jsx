@@ -12,20 +12,23 @@ export function CmRoot({ children }) {
         .cm-root button, .cm-root input, .cm-root select, .cm-root textarea { font-family: inherit; }
         .cm-root :focus-visible { outline: 3px solid #f4b73d; outline-offset: 2px; }
         .cm-root .cm-card { background: #fff; border: 1px solid var(--cm-line); border-radius: 14px; padding: 16px 18px; margin-bottom: 14px; }
+        @media (max-width: 480px) { .cm-root .cm-card { padding: 14px; border-radius: 12px; } }
         .cm-root .cm-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; }
         .cm-root .cm-h h3 { margin: 0; font-size: 16.5px; font-family: 'Baloo 2', 'Be Vietnam Pro', sans-serif; }
         .cm-root .cm-hint { color: var(--cm-muted); font-size: 12.5px; margin: 0 0 10px; }
         .cm-root .cm-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
         .cm-root .cm-grow { flex: 1; min-width: 150px; }
-        .cm-root .cm-btn { border: 1px solid #d5dbe4; background: #fff; color: var(--cm-ink); border-radius: 10px; padding: 8px 14px; font-weight: 600; font-size: 13px; cursor: pointer; }
+        .cm-root .cm-btn { border: 1px solid #d5dbe4; background: #fff; color: var(--cm-ink); border-radius: 10px; padding: 10px 16px; font-weight: 600; font-size: 13.5px; cursor: pointer;
+          min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; -webkit-tap-highlight-color: transparent; }
         .cm-root .cm-btn:hover:not(:disabled) { background: #f5f7fa; }
         .cm-root .cm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .cm-root .cm-btn-main { background: var(--cm-accent, #2f6f5e); border-color: var(--cm-accent, #2f6f5e); color: #fff; }
         .cm-root .cm-btn-main:hover:not(:disabled) { background: var(--cm-accent-d, #234f42); }
         .cm-root .cm-btn-ok { background: var(--cm-ok); border-color: var(--cm-ok); color: #fff; }
         .cm-root .cm-btn-danger { color: var(--cm-bad); border-color: #f0c4c0; }
-        .cm-root .cm-btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 8px; }
-        .cm-root .cm-input { width: 100%; padding: 8px 11px; border: 1px solid #d5dbe4; border-radius: 10px; font-size: 13.5px; background: #fff; color: var(--cm-ink); }
+        .cm-root .cm-btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; min-height: 32px; }
+        .cm-root .cm-input { width: 100%; padding: 11px 12px; border: 1.5px solid #d5dbe4; border-radius: 10px; font-size: 16px; background: #fff; color: var(--cm-ink); min-height: 44px; }
+        .cm-root select.cm-input { -webkit-appearance: none; appearance: none; background-image: linear-gradient(45deg, transparent 50%, #7b8a9c 50%), linear-gradient(135deg, #7b8a9c 50%, transparent 50%); background-position: calc(100% - 18px) center, calc(100% - 13px) center; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 32px; }
         .cm-root .cm-lbl { display: block; font-size: 12.5px; font-weight: 700; margin: 10px 0 4px; }
         .cm-root .cm-pill { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
         .cm-root .cm-pill.ok { background: #e6f6ee; color: var(--cm-ok); }
@@ -44,8 +47,10 @@ export function CmRoot({ children }) {
         .cm-root .cm-empty { color: var(--cm-muted); font-size: 13.5px; text-align: center; padding: 18px 4px; }
         .cm-root .cm-num { font-variant-numeric: tabular-nums; }
         .cm-root .cm-backdrop { position: fixed; inset: 0; background: rgba(20,28,40,0.5); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 16px; }
-        .cm-root .cm-modal { background: #fff; border-radius: 16px; padding: 20px; width: 100%; max-width: 560px; max-height: 88vh; overflow: auto; }
+        .cm-root .cm-modal { background: #fff; border-radius: 16px; padding: 18px; width: 100%; max-width: 560px; max-height: 88vh; overflow: auto; }
+        @media (max-width: 480px) { .cm-root .cm-modal { padding: 16px; border-radius: 14px; } }
         .cm-root .cm-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
+        @media (max-width: 560px) { .cm-root .cm-foot { flex-direction: column-reverse; } .cm-root .cm-foot .cm-btn { width: 100%; } }
         .cm-root .cm-toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 600; max-width: calc(100% - 32px);
           padding: 12px 20px; border-radius: 999px; text-align: center; font-weight: 700; font-size: 13.5px; color: #fff; box-shadow: 0 10px 26px -8px rgba(0,0,0,0.35); }
         .cm-root .cm-toast.ok { background: var(--cm-ok); }

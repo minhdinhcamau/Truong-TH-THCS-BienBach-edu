@@ -7,6 +7,8 @@ const key = (r, c) => `${r}-${c}`;
 
 // Lớp trưởng / GVCN: thiết kế sơ đồ chỗ ngồi (thêm / bớt ghế), xếp học sinh vào ghế, rồi lưu vào tổ.
 // Tổ được chia theo cột ghế: các cột liền nhau thuộc cùng một tổ.
+// Hướng phòng học: Bảng ở trên cùng, Bàn giáo viên phía trên-phải (ngay trên Tổ 1), Cửa ra vào dọc theo mép trái
+// (ngay cạnh tổ có số lớn nhất) — cột trái nhất = tổ số lớn nhất, cột phải nhất = Tổ 1.
 export default function SeatDesigner({ classId, students, reload, toast }) {
   const [rows, setRows] = useState(6);
   const [cols, setCols] = useState(8);
@@ -34,7 +36,14 @@ export default function SeatDesigner({ classId, students, reload, toast }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const groupOf = (c) => Math.min(groupCount, Math.max(1, Math.ceil((c * groupCount) / cols)));
+  // Cột trái nhất (c = 1) ứng với tổ có SỐ LỚN NHẤT (gần cửa); cột phải nhất ứng với Tổ 1 (gần bàn GV).
+  const groupOf = useCallback(
+    (c) => {
+      const mirrored = cols - c + 1;
+      return Math.min(groupCount, Math.max(1, Math.ceil((mirrored * groupCount) / cols)));
+    },
+    [cols, groupCount]
+  );
   const seatedIds = useMemo(() => new Set(Object.values(cells).filter((x) => x.on && x.student_id).map((x) => x.student_id)), [cells]);
   const unseated = students.filter((s) => !seatedIds.has(s.student_id));
   const seatCount = Object.values(cells).filter((x) => x.on).length;
@@ -102,7 +111,7 @@ export default function SeatDesigner({ classId, students, reload, toast }) {
     <>
       <div className="cm-card">
         <div className="cm-h"><h3>Thiết kế sơ đồ lớp</h3><span className="cm-chip">{seatCount} ghế · {seatedIds.size}/{students.length} bạn đã có chỗ</span></div>
-        <p className="cm-hint">Đặt số hàng, số cột và số tổ cho giống lớp học thật. Bấm dấu × ở góc ghế để bỏ ghế, bấm ＋ để thêm lại. Các cột liền nhau thuộc cùng một tổ (cùng màu), tính từ cửa ra vào. Xếp xong bấm “Lưu vào tổ”.</p>
+        <p className="cm-hint">Đặt số hàng, số cột và số tổ cho giống lớp học thật. Bấm dấu × ở góc ghế để bỏ ghế, bấm ＋ để thêm lại. Các cột liền nhau thuộc cùng một tổ (cùng màu). Xếp xong bấm “Lưu vào tổ”.</p>
         <div className="cm-row">
           <label className="cm-row" style={{ gap: 6 }}>Hàng
             <input className="cm-input" style={{ width: 70 }} type="number" min={1} max={12} value={rows} onChange={(e) => resize(Number(e.target.value), cols)} />
@@ -121,62 +130,88 @@ export default function SeatDesigner({ classId, students, reload, toast }) {
 
       <div className="cm-card">
         <p className="cm-hint" style={{ marginBottom: 10 }}>
-          Sơ đồ nhìn từ trên xuống: <b>Tổ 1 sát cửa ra vào</b> (bên trái), <b>Tổ {groupCount}</b> ở phía đối diện bàn giáo viên (bên phải).
+          Sơ đồ nhìn từ trên xuống, đúng như phòng học thật: bảng ở phía trên, bàn giáo viên phía trên bên phải (ngay trên Tổ 1),
+          cửa ra vào chạy dọc mép trái (cạnh Tổ {groupCount}).
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: 10 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 10, minHeight: 180 }}>
-            <div style={{ background: '#eef3f1', border: '2px dashed #9db7ad', borderRadius: 10, padding: '10px 4px', textAlign: 'center', fontSize: 11.5, fontWeight: 800, color: '#2f6f5e', lineHeight: 1.3 }}>
-              <div style={{ fontSize: 22 }} aria-hidden="true">🧑‍🏫</div>Bàn giáo viên
+        <div style={{ minWidth: 0 }}>
+          {/* Bảng, lùi vào phía trong (không sát mép) để chừa chỗ cho bàn giáo viên ở góc trên bên phải */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingLeft: 44 }}>
+            <div
+              style={{
+                flex: '1 1 auto', maxWidth: 'calc(100% - 150px)', margin: '0 8px 0 0', textAlign: 'center',
+                background: '#14263d', color: '#fff', borderRadius: '4px 4px 14px 14px', padding: '7px 0',
+                fontWeight: 700, fontSize: 13, letterSpacing: 1,
+              }}
+            >
+              BẢNG
             </div>
-            <div style={{ background: '#fff4dc', border: '2px solid #d9b45a', borderRadius: 10, padding: '10px 4px', textAlign: 'center', fontSize: 11.5, fontWeight: 800, color: '#7a4d00', lineHeight: 1.3 }}>
-              <div style={{ fontSize: 22 }} aria-hidden="true">🚪</div>Cửa ra vào
+            <div
+              style={{
+                flex: 'none', width: 130, textAlign: 'center', background: '#fff4dc', border: '2px solid #d9b45a',
+                borderRadius: 10, padding: '6px 4px', fontSize: 11, fontWeight: 800, color: '#7a4d00', lineHeight: 1.25,
+              }}
+            >
+              <div style={{ fontSize: 20 }} aria-hidden="true">🧑‍🏫</div>Bàn giáo viên
             </div>
           </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ textAlign: 'center', background: '#14263d', color: '#fff', borderRadius: 10, padding: '8px 0', fontWeight: 700, marginBottom: 12 }}>Bảng</div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '36px 1fr', gap: 10, marginTop: 8 }}>
+            {/* Cửa ra vào: dải dọc bên trái, chạy suốt chiều cao sơ đồ ghế */}
+            <div
+              style={{
+                background: '#eef3f1', border: '2px dashed #9db7ad', borderRadius: 10, display: 'flex',
+                flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 2px',
+              }}
+              aria-label="Cửa ra vào"
+              title="Cửa ra vào"
+            >
+              <span style={{ fontSize: 18 }} aria-hidden="true">🚪</span>
+              <span style={{ writingMode: 'vertical-rl', fontSize: 11, fontWeight: 800, color: '#2f6f5e', letterSpacing: 1 }}>CỬA RA VÀO</span>
+            </div>
+
             <div className="cm-wrap">
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(112px, 1fr))`, gap: 8, minWidth: cols * 118 }}>
-            {Array.from({ length: cols }, (_, i) => (
-              <div key={`h${i}`} style={{ textAlign: 'center', fontSize: 12, fontWeight: 800, color: '#fff', background: groupColor(groupOf(i + 1)), borderRadius: 8, padding: '3px 0' }}>
-                Tổ {groupOf(i + 1)}{i === 0 ? ' · gần cửa' : ''}{i === cols - 1 && groupCount > 1 ? ' · đối diện bàn GV' : ''}
-              </div>
-            ))}
-            {Array.from({ length: rows }, (_, ri) =>
-              Array.from({ length: cols }, (_, ci) => {
-                const r = ri + 1;
-                const c = ci + 1;
-                const k = key(r, c);
-                const cell = cells[k] || { on: true, student_id: '' };
-                const color = groupColor(groupOf(c));
-                if (!cell.on) {
-                  return (
-                    <button key={k} className="cm-btn" style={{ borderStyle: 'dashed', color: '#8a97a8', minHeight: 58 }} onClick={() => setCell(k, { on: true })} aria-label={`Thêm ghế hàng ${r} cột ${c}`}>＋ ghế</button>
-                  );
-                }
-                return (
-                  <div key={k} style={{ position: 'relative', border: `2px solid ${color}`, borderRadius: 10, padding: '18px 6px 6px', background: cell.student_id ? '#fff' : '#f7f9fc' }}>
-                    <button
-                      className="cm-btn cm-btn-sm"
-                      style={{ position: 'absolute', top: 2, right: 2, padding: '0 6px', lineHeight: 1.4 }}
-                      onClick={() => setCell(k, { on: false, student_id: '' })}
-                      aria-label={`Bỏ ghế hàng ${r} cột ${c}`}
-                    >×</button>
-                    <select
-                      className="cm-input"
-                      style={{ padding: '4px 4px', fontSize: 12 }}
-                      value={cell.student_id}
-                      onChange={(e) => setCell(k, { student_id: e.target.value })}
-                      aria-label={`Học sinh ngồi hàng ${r} cột ${c}`}
-                    >
-                      <option value="">— trống —</option>
-                      {cell.student_id && <option value={cell.student_id}>{nameOf(cell.student_id)}</option>}
-                      {unseated.map((s) => <option key={s.student_id} value={s.student_id}>{s.full_name}</option>)}
-                    </select>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, minmax(112px, 1fr))`, gap: 8, minWidth: cols * 118 }}>
+                {Array.from({ length: cols }, (_, i) => (
+                  <div key={`h${i}`} style={{ textAlign: 'center', fontSize: 12, fontWeight: 800, color: '#fff', background: groupColor(groupOf(i + 1)), borderRadius: 8, padding: '3px 0' }}>
+                    Tổ {groupOf(i + 1)}
                   </div>
-                );
-              })
-            )}
-          </div>
+                ))}
+                {Array.from({ length: rows }, (_, ri) =>
+                  Array.from({ length: cols }, (_, ci) => {
+                    const r = ri + 1;
+                    const c = ci + 1;
+                    const k = key(r, c);
+                    const cell = cells[k] || { on: true, student_id: '' };
+                    const color = groupColor(groupOf(c));
+                    if (!cell.on) {
+                      return (
+                        <button key={k} className="cm-btn" style={{ borderStyle: 'dashed', color: '#8a97a8', minHeight: 58 }} onClick={() => setCell(k, { on: true })} aria-label={`Thêm ghế hàng ${r} cột ${c}`}>＋ ghế</button>
+                      );
+                    }
+                    return (
+                      <div key={k} style={{ position: 'relative', border: `2px solid ${color}`, borderRadius: 10, padding: '18px 6px 6px', background: cell.student_id ? '#fff' : '#f7f9fc' }}>
+                        <button
+                          className="cm-btn cm-btn-sm"
+                          style={{ position: 'absolute', top: 2, right: 2, padding: '0 6px', lineHeight: 1.4 }}
+                          onClick={() => setCell(k, { on: false, student_id: '' })}
+                          aria-label={`Bỏ ghế hàng ${r} cột ${c}`}
+                        >×</button>
+                        <select
+                          className="cm-input"
+                          style={{ padding: '4px 4px', fontSize: 12 }}
+                          value={cell.student_id}
+                          onChange={(e) => setCell(k, { student_id: e.target.value })}
+                          aria-label={`Học sinh ngồi hàng ${r} cột ${c}`}
+                        >
+                          <option value="">— trống —</option>
+                          {cell.student_id && <option value={cell.student_id}>{nameOf(cell.student_id)}</option>}
+                          {unseated.map((s) => <option key={s.student_id} value={s.student_id}>{s.full_name}</option>)}
+                        </select>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { addDays, fmtDate, fmtIso, mondayOf, vnTodayIso } from '@/lib/dates';
 import { MODES, missingReasons, planDuty } from '@/lib/dutyPlanner';
+import DutyReveal from './DutyReveal';
 
 const WEEKDAYS = [2, 3, 4, 5, 6, 7];
 const STATUS = { tot: ['Trực tốt', 'ok'], chua_tot: ['Chưa tốt', 'warn'], khong_truc: ['Không trực', 'bad'] };
@@ -16,6 +17,8 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
   const [saved, setSaved] = useState([]);
   const [logs, setLogs] = useState([]);
   const [mode, setMode] = useState('group_low');
+  const [wholeGroup, setWholeGroup] = useState(true); // chế độ trực chéo: cả tổ cùng trực (khuyên dùng)
+  const [reveal, setReveal] = useState(false);
   const [wds, setWds] = useState([2, 3, 4, 5, 6]);
   const [perDay, setPerDay] = useState(4);
   const [plan, setPlan] = useState(null); // null = chưa soạn
@@ -51,7 +54,7 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
       toast({ type: 'error', text: error.message });
       return;
     }
-    const res = planDuty({ mode, members: data.members, days, perDay: Number(perDay) || 4, lastWeekDuty: data.last_week_duty });
+    const res = planDuty({ mode, members: data.members, days, perDay: Number(perDay) || 4, lastWeekDuty: data.last_week_duty, wholeGroup: mode === 'rotation' && wholeGroup });
     setPlan(res.rows);
     setWarnings(res.warnings);
   }
@@ -168,6 +171,13 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
             ))}
           </div>
 
+          {mode === 'rotation' && (
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13.5, cursor: 'pointer', marginTop: 10, background: '#f3f9f6', border: '1px solid var(--cm-line)', borderRadius: 10, padding: '8px 12px' }}>
+              <input type="checkbox" checked={wholeGroup} onChange={(e) => { setWholeGroup(e.target.checked); setPlan(null); }} />
+              Trực cả tổ mỗi ngày (khuyên dùng cho trực chéo — cả tổ cùng trực, không tách lẻ từng bạn)
+            </label>
+          )}
+
           <div className="cm-row" style={{ marginTop: 12, alignItems: 'flex-end' }}>
             <div>
               <div className="cm-lbl" style={{ marginTop: 0 }}>Các ngày trực</div>
@@ -180,7 +190,7 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
                 ))}
               </div>
             </div>
-            {mode !== 'manual' && (
+            {mode !== 'manual' && !(mode === 'rotation' && wholeGroup) && (
               <div>
                 <label className="cm-lbl" htmlFor="dp-per" style={{ marginTop: 0 }}>Số bạn / ngày</label>
                 <input id="dp-per" type="number" min={1} max={15} className="cm-input" style={{ width: 90 }} value={perDay} onChange={(e) => setPerDay(e.target.value)} />
@@ -246,11 +256,20 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
               )}
               <div className="cm-foot">
                 <button className="cm-btn" onClick={() => setPlan(null)}>Bỏ bản nháp</button>
+                <button className="cm-btn" disabled={plan.length === 0} onClick={() => setReveal(true)}>🎲 Quay ngẫu nhiên xem trước</button>
                 <button className="cm-btn cm-btn-main" disabled={busy || missing.length > 0 || plan.length === 0} onClick={save}>{busy ? 'Đang lưu…' : `Lưu lịch trực (${plan.length} lượt)`}</button>
               </div>
             </div>
           )}
         </div>
+      )}
+
+      {reveal && plan && (
+        <DutyReveal
+          rows={plan.map((r) => ({ date: r.date, label: r.label, name: r.name, group_no: r.group_no }))}
+          leaderOf={(g) => students.find((s) => s.role === 'to_truong' && s.role_group === g)?.full_name || null}
+          onClose={() => setReveal(false)}
+        />
       )}
     </>
   );
