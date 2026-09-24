@@ -41,16 +41,20 @@ export default function StudentPicker({ students, value, onChange, scopeGroup, p
         .sp-search input { width: 100%; padding: 11px 14px 11px 38px; border: 1.5px solid var(--cm-line); border-radius: 12px; font-size: 15px; background: #fff; color: var(--cm-ink); }
         .sp-search input:focus { border-color: var(--cm-accent, #2f6f5e); outline: none; }
         .sp-search::before { content: '🔎'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; opacity: 0.6; }
-        .sp-groups { display: flex; flex-direction: column; gap: 12px; max-height: 340px; overflow-y: auto; padding-right: 2px; }
+        .sp-groups { display: flex; flex-direction: column; gap: 12px; max-height: 420px; overflow-y: auto; padding-right: 2px; }
         .sp-gh { font-size: 12px; font-weight: 800; color: #fff; display: inline-flex; align-self: flex-start; padding: 3px 12px; border-radius: 999px; }
-        .sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; }
-        .sp-chip { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 12px; border: 1.5px solid var(--cm-line); background: #fff; cursor: pointer; text-align: left; font-size: 13.5px; font-weight: 600; color: var(--cm-ink); min-height: 46px; }
+        .sp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+        .sp-chip {
+          display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px;
+          padding: 10px 6px 9px; border-radius: 14px; border: 1.5px solid var(--cm-line); background: #fff;
+          cursor: pointer; text-align: center; min-height: 82px; position: relative;
+        }
         .sp-chip:active { transform: scale(0.98); }
         .sp-chip.on { border-color: var(--cm-accent, #2f6f5e); background: #f3f9f6; box-shadow: 0 0 0 1px var(--cm-accent, #2f6f5e) inset; }
-        .sp-av { flex: none; width: 26px; height: 26px; border-radius: 50%; background: #dfe6ec; color: #46586b; font-size: 10.5px; font-weight: 800; display: grid; place-items: center; }
+        .sp-av { flex: none; width: 34px; height: 34px; border-radius: 50%; background: #dfe6ec; color: #46586b; font-size: 12.5px; font-weight: 800; display: grid; place-items: center; }
         .sp-chip.on .sp-av { background: var(--cm-accent, #2f6f5e); color: #fff; }
-        .sp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sp-check { flex: none; color: var(--cm-accent, #2f6f5e); font-weight: 800; }
+        .sp-name { font-size: 12.5px; font-weight: 700; line-height: 1.28; color: var(--cm-ink); word-break: break-word; }
+        .sp-check { position: absolute; top: 6px; right: 8px; color: var(--cm-accent, #2f6f5e); font-weight: 800; font-size: 13px; }
         .sp-empty { text-align: center; color: var(--cm-muted); font-size: 13.5px; padding: 18px 0; }
         .sp-selected { display: flex; align-items: center; gap: 8px; background: #f3f9f6; border: 1.5px solid var(--cm-accent, #2f6f5e); border-radius: 12px; padding: 8px 12px; font-size: 13.5px; font-weight: 700; }
         .sp-selected button { margin-left: auto; border: none; background: none; color: var(--cm-muted); font-size: 16px; cursor: pointer; padding: 2px 6px; }
@@ -58,7 +62,7 @@ export default function StudentPicker({ students, value, onChange, scopeGroup, p
 
       {selected && (
         <div className="sp-selected">
-          <span className="sp-av" style={{ background: 'var(--cm-accent, #2f6f5e)', color: '#fff' }}>{initials(selected.full_name)}</span>
+          <span className="sp-av" style={{ width: 26, height: 26, fontSize: 10.5, background: 'var(--cm-accent, #2f6f5e)', color: '#fff' }}>{initials(selected.full_name)}</span>
           Đã chọn: {selected.full_name}{selected.group_no ? ` · Tổ ${selected.group_no}` : ''}
           <button onClick={() => onChange('')} aria-label="Bỏ chọn">✕</button>
         </div>
@@ -76,9 +80,9 @@ export default function StudentPicker({ students, value, onChange, scopeGroup, p
             <div className="sp-grid" style={{ marginTop: scopeGroup ? 0 : 6 }}>
               {list.map((s) => (
                 <button key={s.student_id} type="button" className={`sp-chip ${value === s.student_id ? 'on' : ''}`} onClick={() => onChange(s.student_id)} aria-pressed={value === s.student_id}>
+                  {value === s.student_id && <span className="sp-check">✓</span>}
                   <span className="sp-av">{initials(s.full_name)}</span>
                   <span className="sp-name">{s.full_name}</span>
-                  {value === s.student_id && <span className="sp-check">✓</span>}
                 </button>
               ))}
             </div>

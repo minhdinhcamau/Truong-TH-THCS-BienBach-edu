@@ -109,7 +109,7 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
   function quickViolation(s) {
     setStudentId(s.student_id);
     setTypeCode(allowed.find((t) => t.kind === 'violation')?.code || '');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.getElementById('rp-new-record')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   const canDelete = (r) => perms.staff || r.recorded_by === profileId;
@@ -176,7 +176,7 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
       )}
 
       {groups.length > 0 && (
-        <div className="cm-card">
+        <div className="cm-card" id="rp-new-record">
           <div className="cm-h"><h3>Ghi nhận mới</h3></div>
 
           <div className="rp-step-h"><span className="rp-step-n">1</span> Chọn học sinh{scoped ? ` (Tổ ${effectiveGroup}${isCross ? ' — tổ em đang giám sát tuần này' : ''})` : ''}</div>
