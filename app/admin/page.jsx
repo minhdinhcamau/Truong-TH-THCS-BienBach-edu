@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '../../lib/supabaseClient'
 import { generateStrongPassword } from '../../lib/generatePassword'
-import * as XLSX from 'xlsx'
 import styles from './admin.module.css'
 import QaArchivePanel from './QaArchivePanel'
 import AwardXpForm from '@/components/AwardXpForm'
 import SendNotificationPanel from '@/components/SendNotificationPanel'
 import NotificationHistoryPanel from '@/components/NotificationHistoryPanel'
+import ClassAccountExport from '@/components/ClassAccountExport'
+import { exportAccountsExcel } from '@/lib/exportAccountsExcel'
 
 const ROLE_LABEL = { admin: 'Quản trị viên', teacher: 'Giáo viên', student: 'Học sinh' }
 const GRADE_OPTIONS = [6, 7, 8, 9]
@@ -574,6 +575,8 @@ export default function AdminPage() {
       })
       setRowMsg({ id: user.id, text: `Đã đặt mật khẩu mới: ${resetPassword}`, isError: false })
       setResetRowId(null)
+      // Admin vua dat lai mat khau -> khong con la mat khau hoc sinh tu doi
+      setUsers((prev) => prev.map((x) => (x.id === user.id ? { ...x, password_changed_at: null } : x)))
     } catch (err) {
       setRowMsg({ id: user.id, text: err.message, isError: true })
     } finally {
@@ -605,7 +608,8 @@ export default function AdminPage() {
   // Đọc thẳng file sổ điểm / sổ điểm danh sẵn có của giáo viên (không cần file mẫu riêng).
   // File dạng này luôn có vài dòng tiêu đề rác phía trên, rồi tới dòng header thật chứa
   // "Mã học sinh" và "Họ và tên" (họ tên bị tách làm 2 cột liền nhau do merge cell).
-  function parseRosterSheet(sheet) {
+  // XLSX duoc truyen vao (tai bang dynamic import luc bam tai file) de trang admin nhe hon.
+  function parseRosterSheet(XLSX, sheet) {
     const raw = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false })
 
     let headerRowIdx = -1
@@ -657,9 +661,10 @@ export default function AdminPage() {
 
     try {
       const buffer = await file.arrayBuffer()
+      const XLSX = await import('xlsx')
       const wb = XLSX.read(buffer, { cellDates: true })
       const sheet = wb.Sheets[wb.SheetNames[0]]
-      const { students, error } = parseRosterSheet(sheet)
+      const { students, error } = parseRosterSheet(XLSX, sheet)
 
       if (error) {
         setRosterError(error)
@@ -685,31 +690,21 @@ export default function AdminPage() {
     }
   }
 
-  // Xuat danh sach tai khoan + mat khau (chi cac dong tao THANH CONG) ra 1
-  // file Excel theo dung ten lop, de in/cap phat cho hoc sinh. Chi dung
-  // duoc ngay sau khi nhap — mat khau chi hien thi dang chu 1 lan duy nhat
-  // luc tao, he thong khong luu lai duoi dang doc duoc.
-  function exportRosterToExcel() {
+  // Xuat danh sach tai khoan + mat khau (chi cac dong tao THANH CONG) cua dot
+  // vua nhap ra file Excel dinh dang dep. Muon xuat lai cho lop bat ky luc nao
+  // thi dung cong cu "Xuat tai khoan theo lop" (cap lai mat khau roi xuat).
+  async function exportRosterToExcel() {
     if (!rosterResults) return
     const className = classes.find((c) => c.id === rosterClassId)?.name || 'lop'
     const rows = rosterResults
       .filter((r) => r.success)
-      .map((r) => ({
-        'Họ và tên': r.fullName,
-        'Lớp': className,
-        'Mã học sinh (đăng nhập)': r.studentCode,
-        'Mật khẩu': r.password,
-      }))
+      .map((r) => ({ fullName: r.fullName, studentCode: r.studentCode, password: r.password }))
     if (rows.length === 0) return
-
-    const ws = XLSX.utils.json_to_sheet(rows)
-    ws['!cols'] = [{ wch: 26 }, { wch: 10 }, { wch: 22 }, { wch: 16 }]
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Tài khoản')
-
-    const safeClassName = className.replace(/[^\w\-]+/g, '_')
-    const dateStr = new Date().toISOString().slice(0, 10)
-    XLSX.writeFile(wb, `tai-khoan-${safeClassName}-${dateStr}.xlsx`)
+    try {
+      await exportAccountsExcel({ className, rows })
+    } catch (err) {
+      setRosterError('Không tạo được file Excel: ' + err.message)
+    }
   }
 
   const filteredUsers = useMemo(() => {
@@ -1325,6 +1320,11 @@ export default function AdminPage() {
               ))}
             </div>
           )}
+
+          <hr className={styles.sectionDivider} />
+
+          {/* ---------------- XUẤT TÀI KHOẢN THEO LỚP ---------------- */}
+          <ClassAccountExport users={users} classes={classes} authedFetch={authedFetch} onDone={loadUsers} />
         </section>
 
         <section className={styles.listCard}>

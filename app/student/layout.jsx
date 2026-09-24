@@ -188,6 +188,20 @@ export default function StudentLayout({ children }) {
                 </Link>
               )}
               {!isAdminViewing && <NotificationBell studentId={profile.id} />}
+              {!isAdminViewing && (
+                <Link
+                  href="/student/doi-mat-khau"
+                  title="Đổi mật khẩu"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '8px 14px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.5)',
+                    background: 'rgba(255,255,255,0.14)', color: '#fff', fontWeight: 600, fontSize: 12.5,
+                    textDecoration: 'none', whiteSpace: 'nowrap',
+                  }}
+                >
+                  🔑 Đổi mật khẩu
+                </Link>
+              )}
               <button className="logout-btn" onClick={handleLogout}>Đăng xuất</button>
             </div>
           </div>
