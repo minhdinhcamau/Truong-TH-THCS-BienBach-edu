@@ -685,6 +685,33 @@ export default function AdminPage() {
     }
   }
 
+  // Xuat danh sach tai khoan + mat khau (chi cac dong tao THANH CONG) ra 1
+  // file Excel theo dung ten lop, de in/cap phat cho hoc sinh. Chi dung
+  // duoc ngay sau khi nhap — mat khau chi hien thi dang chu 1 lan duy nhat
+  // luc tao, he thong khong luu lai duoi dang doc duoc.
+  function exportRosterToExcel() {
+    if (!rosterResults) return
+    const className = classes.find((c) => c.id === rosterClassId)?.name || 'lop'
+    const rows = rosterResults
+      .filter((r) => r.success)
+      .map((r) => ({
+        'Họ và tên': r.fullName,
+        'Lớp': className,
+        'Mã học sinh (đăng nhập)': r.studentCode,
+        'Mật khẩu': r.password,
+      }))
+    if (rows.length === 0) return
+
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws['!cols'] = [{ wch: 26 }, { wch: 10 }, { wch: 22 }, { wch: 16 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Tài khoản')
+
+    const safeClassName = className.replace(/[^\w\-]+/g, '_')
+    const dateStr = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `tai-khoan-${safeClassName}-${dateStr}.xlsx`)
+  }
+
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       if (roleFilter !== 'all' && u.role !== roleFilter) return false
@@ -1275,11 +1302,18 @@ export default function AdminPage() {
 
           {rosterResults && (
             <div className={styles.successBox}>
-              <p>
-                <strong>
-                  Đã tạo {rosterResults.filter((r) => r.success).length}/{rosterResults.length} tài khoản.
-                </strong>
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <p style={{ margin: 0 }}>
+                  <strong>
+                    Đã tạo {rosterResults.filter((r) => r.success).length}/{rosterResults.length} tài khoản.
+                  </strong>
+                </p>
+                {rosterResults.some((r) => r.success) && (
+                  <button type="button" className={styles.genButton} onClick={exportRosterToExcel}>
+                    📥 Xuất file Excel (tài khoản + mật khẩu)
+                  </button>
+                )}
+              </div>
               {rosterResults.map((r, i) => (
                 <p key={i} style={{ margin: '4px 0' }}>
                   {r.success ? (
