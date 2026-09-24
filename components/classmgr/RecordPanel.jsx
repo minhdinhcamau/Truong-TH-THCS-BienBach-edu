@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { addDays, fmtIso, mondayOf, timeVN, vnTodayIso } from '@/lib/dates';
 import { roleText } from '@/lib/roles';
 import StudentPicker from './StudentPicker';
+import WatchDutyPanel from './WatchDutyPanel';
 
 const KIND_LABEL = { violation: 'Vi phạm', singing: 'Không hát', plus: 'Điểm cộng', cadre_ok: 'Không vi phạm' };
 const KIND_TONE = { violation: 'bad', singing: 'bad', plus: 'ok', cadre_ok: 'mute' };
@@ -22,6 +23,7 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
   const [busy, setBusy] = useState(false);
   const [records, setRecords] = useState([]);
   const [cadre, setCadre] = useState([]);
+  const [watchGroup, setWatchGroup] = useState(null); // tổ đang được phân công giám sát chéo tuần này (null = chưa xác định / không phải tổ trưởng-tổ phó)
 
   useEffect(() => {
     supabase.from('class_record_types').select('*').order('sort_order').then(({ data }) => setTypes(data || []));
@@ -40,6 +42,12 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
 
   useEffect(() => { loadRecords(); loadCadre(); }, [loadRecords, loadCadre]);
 
+  useEffect(() => {
+    if (role !== 'to_truong' && role !== 'to_pho') return;
+    supabase.rpc('class_my_watch_group', { p_class_id: classId }).then(({ data }) => setWatchGroup(data ?? roleGroup));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId, role]);
+
   const allowed = useMemo(
     () => types.filter((t) => (t.perm === 'violation' && perms.violation) || (t.perm === 'singing' && perms.singing) || (t.perm === 'academic' && perms.academic)),
     [types, perms]
@@ -52,7 +60,9 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
 
   // Tổ trưởng / tổ phó chỉ ghi được thành viên trong tổ của mình
   const scoped = !perms.staff && (role === 'to_truong' || role === 'to_pho');
-  const candidates = students.filter((s) => !scoped || s.group_no === roleGroup);
+  const effectiveGroup = watchGroup || roleGroup; // tổ trưởng/tổ phó ghi nhận cho tổ đang giám sát (có thể khác tổ của mình nếu đã xếp trực chéo)
+  const isCross = scoped && effectiveGroup !== roleGroup;
+  const candidates = students.filter((s) => !scoped || s.group_no === effectiveGroup);
   const picked = allowed.find((t) => t.code === typeCode);
   const isCustom = typeCode === 'khac';
   const selectedStudent = students.find((s) => s.student_id === studentId);
@@ -106,6 +116,7 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
 
   return (
     <div className="rp-root">
+      <WatchDutyPanel classId={classId} canManage={perms.staff || role === 'lop_truong'} toast={toast} />
       <style jsx>{`
         .rp-root { display: flex; flex-direction: column; gap: 14px; }
         .rp-step-h { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 13.5px; margin: 2px 0 10px; color: var(--cm-ink); }
@@ -168,8 +179,8 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
         <div className="cm-card">
           <div className="cm-h"><h3>Ghi nhận mới</h3></div>
 
-          <div className="rp-step-h"><span className="rp-step-n">1</span> Chọn học sinh{scoped ? ` (Tổ ${roleGroup})` : ''}</div>
-          <StudentPicker students={candidates} value={studentId} onChange={setStudentId} scopeGroup={scoped ? roleGroup : null} />
+          <div className="rp-step-h"><span className="rp-step-n">1</span> Chọn học sinh{scoped ? ` (Tổ ${effectiveGroup}${isCross ? ' — tổ em đang giám sát tuần này' : ''})` : ''}</div>
+          <StudentPicker students={candidates} value={studentId} onChange={setStudentId} scopeGroup={scoped ? effectiveGroup : null} />
 
           <div className="rp-step-h" style={{ marginTop: 16 }}><span className="rp-step-n">2</span> Chọn nội dung</div>
           {groups.map((g) => (
