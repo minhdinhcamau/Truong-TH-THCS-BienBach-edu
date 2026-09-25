@@ -73,7 +73,7 @@ export default function MusicLessonPlayPage() {
     setLoading(true);
     const { data: l } = await supabase
       .from('music_lessons')
-      .select('*, music_units(id, order_index, course_id)')
+      .select('*, music_units(id, order_index)')
       .eq('id', lessonId)
       .single();
     setLesson(l);

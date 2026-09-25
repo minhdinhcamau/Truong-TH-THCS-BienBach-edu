@@ -1,13 +1,11 @@
 'use client';
 // Đặt tại: app/teacher/music/lessons/[lessonId]/page.jsx
-//
-// Trang giáo viên soạn 1 bài nhạc (music_lessons.notes). Vì việc click trực
-// tiếp lên khuông nhạc (SVG do VexFlow vẽ) để định vị đúng cao độ khá phức
-// tạp/dễ lỗi khi tự làm từ đầu, bản này dùng CÁCH NHẬP AN TOÀN HƠN: bấm vào
-// phím đàn bên dưới để thêm nốt theo đúng trường độ đang chọn — khuông nhạc
-// phía trên chỉ để XEM TRƯỚC (đọc lại đúng mảng `notes`, không bắt sự kiện
-// click). Nếu sau này vẫn muốn click-thẳng-lên-khuông-nhạc, có thể nâng cấp
-// tiếp bằng cách bắt toạ độ Y trên SVG rồi quy đổi ra bậc cao độ trên khuông.
+// BẢN CẬP NHẬT v2: theo cấu trúc 2 tầng mới (music_units -> music_lessons),
+// thêm chọn "loại bài" (Bài hát có lời / Bài đọc nhạc không lời), nhập
+// nhạc sĩ + lời thơ cho bài hát, và ô nhập LỜI cho từng nốt khi soạn bài
+// hát (để khớp cách trình bày kiểu "Con đường học trò": mỗi nốt đi kèm 1
+// chữ trong lời). Cách nhập nốt vẫn giữ nguyên: bấm phím đàn theo trường
+// độ đang chọn, khuông nhạc + Tone.js chỉ đọc lại đúng dữ liệu đã nhập.
 //
 // npm install vexflow tone   (nếu repo chưa có 2 gói này)
 
@@ -34,22 +32,28 @@ export default function MusicLessonComposerPage() {
 
   const [lesson, setLesson] = useState(null);
   const [notes, setNotes] = useState([]);
+  const [composer, setComposer] = useState('');
+  const [lyricist, setLyricist] = useState('');
   const [selectedDuration, setSelectedDuration] = useState('quarter');
   const [saving, setSaving] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  const isSong = lesson?.kind === 'song';
 
   useEffect(() => { load(); }, [lessonId]);
 
   async function load() {
     const { data: l, error } = await supabase
       .from('music_lessons')
-      .select('*, music_units(id, title, course_id)')
+      .select('*, music_units(id, title)')
       .eq('id', lessonId)
       .single();
     if (error) { setErrorMsg(error.message); return; }
     setLesson(l);
     setNotes(l?.notes || []);
+    setComposer(l?.composer || '');
+    setLyricist(l?.lyricist || '');
   }
 
   useEffect(() => { if (lesson) renderStaff(); }, [notes, lesson]);
@@ -59,11 +63,11 @@ export default function MusicLessonComposerPage() {
     staffRef.current.innerHTML = '';
     if (notes.length === 0) return;
 
-    const { Renderer, Stave, StaveNote, Voice, Formatter, Accidental } = await import('vexflow');
+    const { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, Annotation } = await import('vexflow');
 
-    const width = Math.max(380, 60 + notes.length * 55);
+    const width = Math.max(380, 60 + notes.length * (isSong ? 70 : 55));
     const renderer = new Renderer(staffRef.current, Renderer.Backends.SVG);
-    renderer.resize(width, 160);
+    renderer.resize(width, isSong ? 190 : 160);
     const context = renderer.getContext();
 
     const stave = new Stave(10, 20, width - 20);
@@ -78,6 +82,10 @@ export default function MusicLessonComposerPage() {
       const key = `${letter}${accidental || ''}/${octave}`;
       const sn = new StaveNote({ keys: [key], duration: durationToVexKey(n.duration) });
       if (accidental) sn.addModifier(new Accidental(accidental));
+      if (isSong && n.lyric) {
+        const ann = new Annotation(n.lyric).setFont('Be Vietnam Pro, sans-serif', 12).setVerticalJustification(Annotation.VerticalJustify.BOTTOM);
+        sn.addModifier(ann);
+      }
       return sn;
     });
 
@@ -91,8 +99,12 @@ export default function MusicLessonComposerPage() {
   function addNote(pitch) {
     setNotes((prev) => [
       ...prev,
-      { pitch, duration: selectedDuration, startBeat: prev.reduce((s, n) => s + durationBeats(n.duration), 0) },
+      { pitch, duration: selectedDuration, startBeat: prev.reduce((s, n) => s + durationBeats(n.duration), 0), lyric: '' },
     ]);
+  }
+
+  function setLyricAt(idx, lyric) {
+    setNotes((prev) => prev.map((n, i) => (i === idx ? { ...n, lyric } : n)));
   }
 
   function removeNoteAt(idx) {
@@ -135,10 +147,9 @@ export default function MusicLessonComposerPage() {
   async function handleSave() {
     setSaving(true);
     setErrorMsg('');
-    const { error } = await supabase
-      .from('music_lessons')
-      .update({ notes, updated_at: new Date().toISOString() })
-      .eq('id', lessonId);
+    const payload = { notes, updated_at: new Date().toISOString() };
+    if (isSong) { payload.composer = composer || null; payload.lyricist = lyricist || null; }
+    const { error } = await supabase.from('music_lessons').update(payload).eq('id', lessonId);
     setSaving(false);
     if (error) { setErrorMsg(error.message); return; }
     router.push(`/teacher/music/units/${lesson.music_units.id}`);
@@ -150,18 +161,25 @@ export default function MusicLessonComposerPage() {
     <div className="wrap">
       <style jsx>{`
         .wrap { max-width: 760px; margin: 0 auto; padding: 28px 24px 80px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
-        h1 { font-size: 22px; color: #17302d; margin: 14px 0 4px; }
+        h1 { font-size: 22px; color: #17302d; margin: 14px 0 4px; display: flex; align-items: center; gap: 8px; }
+        .kind-pill { font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+        .kind-pill.song { color: #58A700; background: #EAFBEA; }
+        .kind-pill.reading { color: #b45309; background: #FEF3E2; }
         .sub-note { color: #6b7f7a; font-size: 13.5px; margin: 0 0 22px; max-width: 560px; }
         .card { background: #fff; border-radius: 18px; padding: 20px 22px; margin-bottom: 18px; border: 1px solid #e5eeec; box-shadow: 0 2px 8px rgba(23,48,45,0.04); }
         .card h2 { margin: 0 0 14px; font-size: 15px; color: #17302d; }
         .card-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
         .card-head h2 { margin: 0; }
+        .meta-row { display: flex; gap: 10px; flex-wrap: wrap; }
+        .meta-row > div { flex: 1; min-width: 180px; }
+        label.field-label { display: block; font-size: 12.5px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+        input.field { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1.5px solid #e2e8f0; font-size: 13.5px; font-family: inherit; box-sizing: border-box; }
         .duration-row { display: flex; gap: 8px; flex-wrap: wrap; }
         .dur-btn { border: 1.5px solid #e2e8f0; background: #fff; border-radius: 999px; padding: 8px 16px; font-size: 13.5px; font-weight: 600; color: #374151; cursor: pointer; }
         .dur-btn.active { border-color: #225da3; background: #E9F2FC; color: #225da3; }
         .keyboard { display: flex; gap: 6px; flex-wrap: wrap; }
-        .key { width: 56px; height: 76px; border-radius: 10px; border: 1.5px solid #dbe7f3; background: #fff; cursor: pointer;
-          display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 10px; gap: 2px; }
+        .key { width: 56px; height: 76px; borderRadius: 10px; border: 1.5px solid #dbe7f3; background: #fff; cursor: pointer;
+          display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 10px; gap: 2px; border-radius: 10px; }
         .key:hover { background: #E9F2FC; border-color: #225da3; }
         .key:active { transform: translateY(1px); }
         .key-name { font-weight: 700; font-size: 13px; color: #17302d; }
@@ -171,20 +189,35 @@ export default function MusicLessonComposerPage() {
         .toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
         .staff { overflow-x: auto; min-height: 40px; }
         .empty { text-align: center; color: #9ca3af; padding: 20px; font-size: 13.5px; }
-        .notes-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-        .note-pill { display: inline-flex; align-items: center; gap: 6px; background: #f3f6f5; border-radius: 999px; padding: 5px 6px 5px 12px; font-size: 12.5px; font-weight: 600; color: #374151; }
-        .note-pill button { border: none; background: #e5e7eb; color: #4b5563; border-radius: 50%; width: 18px; height: 18px; line-height: 1; cursor: pointer; font-size: 11px; }
+        .notes-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .note-pill { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; background: #f3f6f5; border-radius: 12px; padding: 8px 10px; font-size: 12.5px; font-weight: 600; color: #374151; min-width: 64px; }
+        .note-pill .pill-top { display: flex; align-items: center; gap: 6px; }
+        .note-pill button { border: none; background: #e5e7eb; color: #4b5563; border-radius: 50%; width: 16px; height: 16px; line-height: 1; cursor: pointer; font-size: 10px; }
+        .lyric-input { width: 60px; padding: 3px 5px; border-radius: 6px; border: 1px solid #dbe7f3; font-size: 11.5px; text-align: center; font-family: inherit; }
         .error { color: #a3374a; font-size: 13.5px; background: #fdeef0; padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; }
         .save-btn { width: 100%; padding: 14px; background: #225da3; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 3px 0 #184270; }
         .save-btn:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; }
       `}</style>
 
       <Link href={`/teacher/music/units/${lesson.music_units.id}`} style={backLinkStyle}>← {lesson.music_units.title}</Link>
-      <h1>{lesson.title}</h1>
+      <h1>
+        {lesson.title}
+        <span className={isSong ? 'kind-pill song' : 'kind-pill reading'}>{isSong ? '🎤 Bài hát' : '🎼 Bài đọc nhạc'}</span>
+      </h1>
       <p className="sub-note">
-        Chọn trường độ rồi bấm vào phím đàn để thêm nốt. Khuông nhạc và nút "Nghe thử" luôn đọc thẳng từ dữ liệu bạn vừa nhập,
-        nên không thể bị lệch nhau.
+        Chọn trường độ rồi bấm vào phím đàn để thêm nốt{isSong ? ', gõ lời ứng với từng nốt ngay bên dưới khuông nhạc' : ''}.
+        Khuông nhạc và nút "Nghe thử" luôn đọc thẳng từ dữ liệu bạn vừa nhập.
       </p>
+
+      {isSong && (
+        <div className="card">
+          <h2>Thông tin bài hát</h2>
+          <div className="meta-row">
+            <div><label className="field-label">Nhạc sĩ</label><input className="field" value={composer} onChange={(e) => setComposer(e.target.value)} placeholder="VD: Nguyễn Văn Hiên" /></div>
+            <div><label className="field-label">Lời thơ / tác giả lời</label><input className="field" value={lyricist} onChange={(e) => setLyricist(e.target.value)} placeholder="VD: Ý thơ Từ Nguyên Thạch" /></div>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <h2>Trường độ đang chọn</h2>
@@ -225,8 +258,13 @@ export default function MusicLessonComposerPage() {
           <div className="notes-list">
             {notes.map((n, idx) => (
               <span key={idx} className="note-pill">
-                {idx + 1}. {pitchToVietnamese(n.pitch)}{pitchOctave(n.pitch)}
-                <button onClick={() => removeNoteAt(idx)} title="Xoá nốt này">×</button>
+                <span className="pill-top">
+                  {idx + 1}. {pitchToVietnamese(n.pitch)}{pitchOctave(n.pitch)}
+                  <button onClick={() => removeNoteAt(idx)} title="Xoá nốt này">×</button>
+                </span>
+                {isSong && (
+                  <input className="lyric-input" placeholder="lời…" value={n.lyric || ''} onChange={(e) => setLyricAt(idx, e.target.value)} />
+                )}
               </span>
             ))}
           </div>
