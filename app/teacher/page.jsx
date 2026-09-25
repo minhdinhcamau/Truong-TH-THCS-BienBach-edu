@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
 import { ENGLISH_SUBJECT_ID } from '../../lib/englishXp';
+import { MUSIC_SUBJECT_ID } from '../../lib/musicXp';
 import { isoToUTC, vnTodayIso } from '../../lib/dates';
 import { norm } from '../../lib/tkb';
 
@@ -342,6 +343,14 @@ export default function TeacherDashboard() {
                     <Link key={s.id} href="/teacher/english" className="tp-subj on">
                       <div className="tp-subj-ic" aria-hidden="true">{iconOf(s.name)}</div>
                       <div><b>{s.name}</b><span className="ready">Soạn lộ trình & bài học</span></div>
+                    </Link>
+                  );
+                }
+                if (s.id === MUSIC_SUBJECT_ID) {
+                  return (
+                    <Link key={s.id} href="/teacher/music" className="tp-subj on">
+                      <div className="tp-subj-ic" aria-hidden="true">{iconOf(s.name)}</div>
+                      <div><b>{s.name}</b><span className="ready">Soạn chủ đề, bài hát & bài đọc nhạc</span></div>
                     </Link>
                   );
                 }

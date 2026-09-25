@@ -1,9 +1,10 @@
 'use client';
 // Đặt tại: app/admin/mon-hoc/page.jsx
-// Phân công giáo viên dạy môn học (dùng chung cho mọi môn có gate kiểu
-// "chỉ hiện khi được phân công" — hiện tại là Âm nhạc). Mirror cách làm
-// của trang "Phân công chủ nhiệm" (app/admin/gvcn) nhưng thao tác trên
-// bảng subject_teachers thay vì class_homeroom.
+// SỬA: thao tác trên bảng "teacher_assignments" đã có sẵn trong dự án
+// (không phải "subject_teachers" mình tự đặt nhầm lúc trước) — bảng này
+// đã đang được dùng thật để quyết định môn nào hiện ở "Môn học của bạn"
+// bên app/teacher/page.jsx. NẾU dự án đã có sẵn 1 trang admin khác để
+// phân công môn học rồi thì có thể bỏ qua file này, không cần dùng.
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -46,7 +47,7 @@ export default function SubjectTeacherAssignPage() {
 
   async function loadAssigned() {
     const { data } = await supabase
-      .from('subject_teachers')
+      .from('teacher_assignments')
       .select('id, teacher_id, assigned_at, profiles(full_name)')
       .eq('subject_id', subjectId)
       .order('assigned_at', { ascending: false });
@@ -57,7 +58,7 @@ export default function SubjectTeacherAssignPage() {
     e.preventDefault();
     if (!pickTeacherId) return;
     setErrorMsg('');
-    const { error } = await supabase.from('subject_teachers').insert({
+    const { error } = await supabase.from('teacher_assignments').insert({
       subject_id: subjectId, teacher_id: pickTeacherId, assigned_by: profile.id,
     });
     if (error) { setErrorMsg(error.code === '23505' ? 'Giáo viên này đã được phân công môn này rồi.' : error.message); return; }
@@ -67,7 +68,7 @@ export default function SubjectTeacherAssignPage() {
 
   async function removeAssignment(id) {
     if (!confirm('Bỏ phân công giáo viên này khỏi môn học?')) return;
-    await supabase.from('subject_teachers').delete().eq('id', id);
+    await supabase.from('teacher_assignments').delete().eq('id', id);
     loadAssigned();
   }
 
