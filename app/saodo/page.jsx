@@ -4,14 +4,18 @@ import { supabase } from '@/lib/supabaseClient';
 import { useGuard } from '@/lib/useGuard';
 import { useRankingPing } from '@/lib/useRankingPing';
 import { SAODO_NAV } from '@/lib/nav';
-import { defaultDateIso, fmtIso, getWeekdays, timeVN } from '@/lib/dates';
+import { defaultDateIso, fmtDate, fmtIso, getWeekdays, mondayOf, timeVN, vnTodayIso, weekdaysForMonday } from '@/lib/dates';
 import AppShell, { Modal, Toast } from '@/components/AppShell';
 
 const SESSION_LABEL = { sang: 'Buổi sáng', chieu: 'Buổi chiều' };
 
 export default function SaoDoPage() {
   const { profile, ready, logout } = useGuard('saodo');
-  const weekdays = useMemo(() => getWeekdays(), []);
+  const currentMonday = useMemo(() => mondayOf(vnTodayIso()), []);
+  const [weekMonday, setWeekMonday] = useState(currentMonday); // Thu 2 cua tuan dang xem (tuan nay hoac 1 tuan cu da duoc mo)
+  const [openWeeks, setOpenWeeks] = useState([]); // cac tuan cu TPT da mo cho nhap bu
+  const isCurrentWeek = weekMonday === currentMonday;
+  const weekdays = useMemo(() => (isCurrentWeek ? getWeekdays() : weekdaysForMonday(weekMonday)), [isCurrentWeek, weekMonday]);
   const [selectedDate, setSelectedDate] = useState(defaultDateIso);
   const [reasons, setReasons] = useState([]);
   const [dashboard, setDashboard] = useState([]); // các lớp được TPT phân công
@@ -69,8 +73,12 @@ export default function SaoDoPage() {
   useEffect(() => {
     if (!ready) return;
     (async () => {
-      const { data } = await supabase.from('discipline_reason_types').select('*').order('category').order('sort_order');
-      setReasons(data || []);
+      const [r, ow] = await Promise.all([
+        supabase.from('discipline_reason_types').select('*').eq('is_active', true).order('category').order('sort_order'),
+        supabase.rpc('saodo_open_weeks_list'),
+      ]);
+      setReasons(r.data || []);
+      setOpenWeeks(ow.data || []);
       loadAlerts();
     })();
   }, [ready, loadAlerts]);
@@ -97,6 +105,11 @@ export default function SaoDoPage() {
   const refreshAll = useCallback(async () => {
     await Promise.all([loadDashboard(selectedDate), loadClassData(openId, selectedDate), loadAlerts()]);
   }, [loadDashboard, loadClassData, loadAlerts, selectedDate, openId]);
+
+  function switchWeek(monday) {
+    setWeekMonday(monday);
+    setSelectedDate(monday === currentMonday ? defaultDateIso() : monday);
+  }
 
   useRankingPing(() => { if (ready) refreshAll(); });
 
@@ -130,10 +143,13 @@ export default function SaoDoPage() {
 
   function jumpToAlert(classId, dateIso) {
     setOpenId(classId);
-    if (weekdays.some((d) => d.iso === dateIso)) {
+    const dateMonday = mondayOf(dateIso);
+    const isOpen = dateMonday === currentMonday || openWeeks.some((w) => w.week_start === dateMonday);
+    if (isOpen) {
+      setWeekMonday(dateMonday);
       setSelectedDate(dateIso);
     } else {
-      setMsg({ type: 'error', text: `${fmtIso(dateIso)} đã quá tuần hiện tại — liên hệ cô Tổng phụ trách để xử lý.` });
+      setMsg({ type: 'error', text: `${fmtIso(dateIso)} thuộc tuần đã đóng — nhờ cô Tổng phụ trách mở lại tuần này (mục Lịch năm học) rồi ghi nhận bù.` });
     }
   }
 
@@ -236,6 +252,13 @@ export default function SaoDoPage() {
           font-weight: 700; font-size: 12.5px; cursor: pointer; }
         .alert-chip:hover { background: #ffe3e0; }
 
+        .wk-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .wk { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+        .wk:hover { border-color: #d5dbe4; color: var(--ink); }
+        .wk.on { background: var(--warn); border-color: var(--warn); color: #fff; }
+        .wk.cur.on { background: var(--red); border-color: var(--red); }
+        .wk-note { font-size: 12.5px; color: var(--warn); background: var(--warn-bg); border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; }
+
         .days { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
         .day { border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 8px 4px; cursor: pointer; text-align: center; line-height: 1.25; }
         .day b { display: block; font-size: 13px; }
@@ -324,6 +347,32 @@ export default function SaoDoPage() {
 
       <div className="card">
         <div className="card-h"><h3>Ngày kiểm tra</h3></div>
+
+        {openWeeks.length > 0 && (
+          <div className="wk-row" role="tablist" aria-label="Chọn tuần">
+            <button role="tab" aria-selected={isCurrentWeek} className={`wk cur ${isCurrentWeek ? 'on' : ''}`} onClick={() => switchWeek(currentMonday)}>
+              Tuần này
+            </button>
+            {openWeeks.map((w) => (
+              <button
+                key={w.week_start}
+                role="tab"
+                aria-selected={weekMonday === w.week_start}
+                className={`wk ${weekMonday === w.week_start ? 'on' : ''}`}
+                onClick={() => switchWeek(w.week_start)}
+              >
+                🔓 {w.week_no ? `Tuần ${w.week_no}` : 'Tuần cũ'} ({fmtDate(w.week_start)} – {fmtDate(w.week_end)})
+              </button>
+            ))}
+          </div>
+        )}
+        {!isCurrentWeek && (
+          <div className="wk-note">
+            Cô Tổng phụ trách đã mở tuần này để nhập bù.
+            {openWeeks.find((w) => w.week_start === weekMonday)?.note ? ` Ghi chú: ${openWeeks.find((w) => w.week_start === weekMonday).note}` : ''}
+          </div>
+        )}
+
         <div className="days">
           {weekdays.map((d) => (
             <button
@@ -337,9 +386,11 @@ export default function SaoDoPage() {
             </button>
           ))}
         </div>
-        {isBackfill
-          ? <div className="day-note back">Đang ghi nhận BỔ SUNG cho {dayText} — không phải hôm nay.</div>
-          : <div className="day-note">Hôm nay: {dayText}. Mọi ghi nhận được lưu vào ngày này.</div>}
+        {!isCurrentWeek
+          ? <div className="day-note back">Đang ghi nhận BỔ SUNG cho {dayText} (tuần đã mở).</div>
+          : isBackfill
+            ? <div className="day-note back">Đang ghi nhận BỔ SUNG cho {dayText} — không phải hôm nay.</div>
+            : <div className="day-note">Hôm nay: {dayText}. Mọi ghi nhận được lưu vào ngày này.</div>}
       </div>
 
       <div className="card">
