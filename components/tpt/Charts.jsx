@@ -206,13 +206,19 @@ function heat(v, lo, hi) {
 export function Heatmap({ rows, cols, onPick, activeName, label = 'Điểm thi đua từng lớp theo tuần' }) {
   const list = rows || [];
   if (!list.length || !cols?.length) return <Empty height={120} />;
-  const cell = cols.length > 24 ? 22 : cols.length > 14 ? 28 : 36; const rowH = 26; const labelW = 56; const headH = 24;
+  const rowH = 26; const labelW = 56; const headH = 24;
+  // Nham 1 chieu rong hop ly (~640px) roi suy ra kich thuoc o; gioi han trong khoang
+  // 26-64px de it cot khong bi phong qua to, nhieu cot van cuon ngang duoc.
+  const TARGET_W = 640;
+  const cell = Math.max(26, Math.min(64, Math.round((TARGET_W - labelW) / cols.length)));
   const W = labelW + cols.length * cell + 4; const H = headH + list.length * rowH + 30;
   const all = list.flatMap((r) => r.series.map(Number));
   const lo = Math.min(...all); const hi = Math.max(100, ...all);
+  // width = chinh W (ty le 1:1 voi viewBox) de chu khong bi phong to/thu nho sai; container
+  // co overflow-x rieng nen chi cuon ngang khi W vuot qua be rong khung, khong keo gian chu.
   return (
     <div style={{ overflowX: 'auto' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width={Math.max(W, 320)} role="img" aria-label={label} style={{ display: 'block', fontFamily: FONT, maxWidth: 'none' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} role="img" aria-label={label} style={{ display: 'block', fontFamily: FONT, maxWidth: '100%' }}>
         <title>{label}</title>
         {cols.map((c, i) => (
           <text key={c + i} x={labelW + i * cell + cell / 2} y={16} textAnchor="middle" fontSize="10.5" fill={COLORS.muted}>{c}</text>
