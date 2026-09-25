@@ -1,167 +1,101 @@
 'use client';
+// Đặt tại: app/student/music/units/[unitId]/page.jsx
+// Danh sách bài học trong 1 chủ đề, có trạng thái khoá/mở/hoàn thành —
+// bấm "Bắt đầu" để vào thẳng trang luyện tập (student/music/lessons/[id]).
+
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { getRankForXp } from '@/lib/englishXp';
 
-export default function StudentEnglishHome() {
-  const [profile, setProfile] = useState(null);
-  const [rank, setRank] = useState(null);
-  const [course, setCourse] = useState(null);
-  const [units, setUnits] = useState([]); // [{ ...unit, lessons: [{ ...lesson, progress }] }]
+const backLinkStyle = {
+  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999,
+  border: '1.5px solid #dbe7f3', background: '#fff', color: '#225da3', fontWeight: 600, fontSize: 13.5,
+  textDecoration: 'none', boxShadow: '0 1px 3px rgba(23,48,45,0.04)',
+};
+
+export default function StudentMusicUnitPage() {
+  const { unitId } = useParams();
+  const [unit, setUnit] = useState(null);
+  const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, [unitId]);
 
   async function load() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
+    const { data: u } = await supabase.from('music_units').select('*').eq('id', unitId).single();
+    setUnit(u);
 
-    const { data: p } = await supabase
-      .from('profiles')
-      .select('id, full_name, class_id')
-      .eq('id', user.id)
-      .single();
+    const { data: l } = await supabase.from('music_lessons').select('*').eq('unit_id', unitId).order('order_index', { ascending: true });
+    const { data: progressRows } = await supabase
+      .from('music_lesson_progress')
+      .select('lesson_id, is_unlocked, is_completed, best_score')
+      .eq('student_id', user.id);
+    const progressMap = Object.fromEntries((progressRows || []).map((pr) => [pr.lesson_id, pr]));
 
-    const { data: stats } = await supabase
-      .from('student_stats')
-      .select('total_xp, current_streak')
-      .eq('student_id', user.id)
-      .maybeSingle();
-
-    const totalXp = stats?.total_xp || 0;
-    setProfile({ ...p, xp: totalXp, streak_days: stats?.current_streak || 0 });
-    setRank(await getRankForXp(totalXp));
-
-    // Lấy khối (grade) của lớp học sinh, rồi tìm khóa học Tiếng Anh gán cho khối đó
-    let studentGrade = null;
-    if (p?.class_id) {
-      const { data: cls } = await supabase.from('classes').select('grade').eq('id', p.class_id).single();
-      studentGrade = cls?.grade ?? null;
-    }
-
-    const { data: courses } = await supabase
-      .from('eng_courses')
-      .select('id, title, description')
-      .eq('grade', studentGrade)
-      .order('created_at', { ascending: false })
-      .limit(1);
-    const c = courses?.[0] || null;
-    setCourse(c);
-
-    if (c) {
-      const { data: unitRows } = await supabase
-        .from('eng_units')
-        .select('id, title, order_index, eng_lessons(id, title, order_index, pass_score)')
-        .eq('course_id', c.id)
-        .order('order_index', { ascending: true });
-
-      const { data: progressRows } = await supabase
-        .from('eng_lesson_progress')
-        .select('lesson_id, is_unlocked, is_completed, best_score')
-        .eq('student_id', user.id);
-      const progressMap = Object.fromEntries((progressRows || []).map((pr) => [pr.lesson_id, pr]));
-
-      // Sắp bài học theo order_index, và mở khóa bài đầu tiên nếu chưa có bản ghi progress nào
-      const sortedUnits = (unitRows || []).map((u) => ({
-        ...u,
-        eng_lessons: [...u.eng_lessons].sort((a, b) => a.order_index - b.order_index),
-      }));
-      let isFirstLessonOverall = true;
-      const unitsWithProgress = sortedUnits.map((u) => ({
-        ...u,
-        lessons: u.eng_lessons.map((l) => {
-          const prog = progressMap[l.id];
-          const unlocked = prog?.is_unlocked || isFirstLessonOverall;
-          if (isFirstLessonOverall) isFirstLessonOverall = false;
-          return { ...l, unlocked, completed: prog?.is_completed || false, bestScore: prog?.best_score || 0 };
-        }),
-      }));
-      setUnits(unitsWithProgress);
-    }
-
+    let isFirst = true;
+    const withProgress = (l || []).map((lesson) => {
+      const prog = progressMap[lesson.id];
+      const unlocked = prog?.is_unlocked || isFirst;
+      if (isFirst) isFirst = false;
+      return { ...lesson, unlocked, completed: prog?.is_completed || false, bestScore: prog?.best_score || 0 };
+    });
+    setLessons(withProgress);
     setLoading(false);
   }
 
-  if (loading) return <p style={{ padding: 24 }}>Đang tải...</p>;
-  if (!course) return <p style={{ padding: 24 }}>Lớp bạn chưa được gán khóa học Tiếng Anh nào. Hỏi giáo viên nhé.</p>;
+  if (loading || !unit) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Đang tải...</div>;
 
   return (
-    <div style={{ padding: 24, maxWidth: 640, margin: '0 auto' }}>
-      <div style={statsBar}>
-        <div>
-          <strong>{profile.full_name}</strong>
-          <div style={{ fontSize: 13 }}>
-            <span style={{ color: rank?.badge_color, fontWeight: 600 }}>{rank?.name}</span>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <span>⭐ {profile.xp} XP</span>
-          <span>🔥 {profile.streak_days} ngày</span>
-        </div>
-      </div>
+    <div className="wrap">
+      <style jsx>{`
+        .wrap { max-width: 700px; margin: 0 auto; padding: 28px 24px 64px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
+        h1 { font-size: 22px; color: #17302d; margin: 14px 0 20px; }
+        .lesson-list { display: grid; gap: 10px; }
+        .lesson-row { background: #fff; border: 1px solid #e5eeec; border-radius: 14px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 1px 4px rgba(23,48,45,0.03); }
+        .lesson-left { display: flex; align-items: center; gap: 12px; }
+        .kind-icon { font-size: 22px; }
+        .lesson-title { font-weight: 700; font-size: 15px; color: #17302d; }
+        .lesson-sub { font-size: 11.5px; color: #6b7f7a; }
+        .status-btn { border: none; border-radius: 10px; padding: 9px 18px; font-weight: 700; font-size: 13.5px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .status-btn.start { background: #58CC02; color: #fff; box-shadow: 0 3px 0 #46a302; }
+        .status-btn.done { background: #EAFBEA; color: #58A700; }
+        .status-btn.locked { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+        .empty { text-align: center; color: #9ca3af; padding: 30px; background: #fff; border-radius: 14px; border: 1px dashed #cfe2f7; }
+      `}</style>
 
-      <h1 style={{ marginTop: 24 }}>{course.title}</h1>
+      <Link href="/student/music" style={backLinkStyle}>← Âm nhạc</Link>
+      <h1>{unit.title}</h1>
 
-      {units.map((u) => (
-        <div key={u.id} style={{ marginTop: 24 }}>
-          <h3>{u.title}</h3>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-            {u.lessons.map((l) => (
-              <LessonNode key={l.id} lesson={l} />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LessonNode({ lesson }) {
-  const content = (
-    <div
-      style={{
-        ...node,
-        background: lesson.completed ? '#22C55E' : lesson.unlocked ? '#2563eb' : '#D1D5DB',
-        cursor: lesson.unlocked ? 'pointer' : 'not-allowed',
-      }}
-      title={lesson.title}
-    >
-      {lesson.completed ? '✓' : lesson.unlocked ? '▶' : '🔒'}
-    </div>
-  );
-  return (
-    <div style={{ textAlign: 'center', width: 72 }}>
-      {lesson.unlocked ? (
-        <Link href={`/student/english/lessons/${lesson.id}`}>{content}</Link>
+      {lessons.length === 0 ? (
+        <div className="empty">Chủ đề này chưa có bài học nào.</div>
       ) : (
-        content
+        <div className="lesson-list">
+          {lessons.map((l) => (
+            <div key={l.id} className="lesson-row">
+              <div className="lesson-left">
+                <span className="kind-icon">{l.kind === 'song' ? '🎤' : '🎼'}</span>
+                <div>
+                  <div className="lesson-title">{l.title}</div>
+                  <div className="lesson-sub">
+                    {l.kind === 'song' ? 'Bài hát' : 'Bài đọc nhạc'}
+                    {l.completed ? ` · Đã đạt ${l.bestScore}%` : ''}
+                  </div>
+                </div>
+              </div>
+              {l.unlocked ? (
+                <Link href={`/student/music/lessons/${l.id}`} className={l.completed ? 'status-btn done' : 'status-btn start'}>
+                  {l.completed ? '✓ Học lại' : '▶ Bắt đầu'}
+                </Link>
+              ) : (
+                <span className="status-btn locked">🔒 Khoá</span>
+              )}
+            </div>
+          ))}
+        </div>
       )}
-      <div style={{ fontSize: 11, marginTop: 4 }}>{lesson.title}</div>
     </div>
   );
 }
-
-const statsBar = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  background: '#F9FAFB',
-  border: '1px solid #e5e7eb',
-  borderRadius: 8,
-  padding: 12,
-};
-
-const node = {
-  width: 56,
-  height: 56,
-  borderRadius: '50%',
-  color: '#fff',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: 20,
-  margin: '0 auto',
-};

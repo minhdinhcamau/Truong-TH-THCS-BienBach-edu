@@ -23,7 +23,9 @@ function shuffleTypeFor(i) {
 function buildQuestionQueue(notes) {
   // Giữ đúng thứ tự nốt trong bài (khác với Tiếng Anh xáo trộn từ vựng) vì
   // đây là 1 đoạn nhạc có trình tự — học sinh đang học chính bài nhạc đó.
-  return notes.map((n, i) => ({ type: shuffleTypeFor(i), pitch: n.pitch, step: i }));
+  // Bỏ nốt hoa mỹ (grace note) ra khỏi bài luyện tập — đây là nốt trang trí,
+  // không nên bắt học sinh bấm đúng như 1 nốt chính.
+  return notes.filter((n) => n.duration !== 'grace').map((n, i) => ({ type: shuffleTypeFor(i), pitch: n.pitch, step: i }));
 }
 
 function SpeakerIcon({ size = 22 }) {
