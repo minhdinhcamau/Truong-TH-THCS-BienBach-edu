@@ -38,6 +38,12 @@ const TABS = [
     icon: <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />,
   },
   {
+    href: '/student/khieu-nai',
+    label: 'Khiếu nại',
+    match: (p) => p.startsWith('/student/khieu-nai'),
+    icon: <path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3.1l-8-14a2 2 0 0 0-3.4 0z" />,
+  },
+  {
     href: '/student/bang-tin',
     label: 'Bảng tin',
     match: (p) => p.startsWith('/student/bang-tin'),
