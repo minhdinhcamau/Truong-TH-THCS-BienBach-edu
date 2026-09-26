@@ -22,9 +22,10 @@ export default function MusicUnitLessonsPage() {
   const [newKind, setNewKind] = useState('song');
   const [creating, setCreating] = useState(false);
 
-  useEffect(() => { load(); }, [unitId]);
+  useEffect(() => { if (unitId) load(); }, [unitId]);
 
   async function load() {
+    if (!unitId) return;
     const { data: u } = await supabase.from('music_units').select('*').eq('id', unitId).single();
     setUnit(u);
     const { data: l } = await supabase.from('music_lessons').select('*').eq('unit_id', unitId).order('order_index', { ascending: true });
@@ -41,7 +42,8 @@ export default function MusicUnitLessonsPage() {
       .select()
       .single();
     setCreating(false);
-    if (error) { alert(error.message); return; }
+    if (error) { alert('Không tạo được bài học: ' + error.message); return; }
+    if (!data) { alert('Không tạo được bài học — có thể tài khoản chưa được phân công đúng môn Âm nhạc. Nhờ admin kiểm tra teacher_assignments.'); return; }
     router.push(`/teacher/music/lessons/${data.id}`);
   }
 

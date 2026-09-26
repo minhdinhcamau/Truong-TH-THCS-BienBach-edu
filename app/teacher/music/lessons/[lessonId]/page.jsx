@@ -59,9 +59,10 @@ export default function MusicLessonComposerPage() {
 
   const isSong = lesson?.kind === 'song';
 
-  useEffect(() => { load(); }, [lessonId]);
+  useEffect(() => { if (lessonId) load(); }, [lessonId]);
 
   async function load() {
+    if (!lessonId) return;
     const { data: l, error } = await supabase
       .from('music_lessons')
       .select('*, music_units(id, title)')
@@ -234,9 +235,13 @@ export default function MusicLessonComposerPage() {
       updated_at: new Date().toISOString(),
     };
     if (isSong) { payload.composer = composer || null; payload.lyricist = lyricist || null; }
-    const { error } = await supabase.from('music_lessons').update(payload).eq('id', lessonId);
+    const { data, error } = await supabase.from('music_lessons').update(payload).eq('id', lessonId).select();
     setSaving(false);
     if (error) { setErrorMsg(error.message); return; }
+    if (!data || data.length === 0) {
+      setErrorMsg('Lưu không thành công — 0 dòng được cập nhật. Nhiều khả năng tài khoản chưa thật sự nằm trong teacher_assignments cho môn Âm nhạc (RLS chặn âm thầm). Kiểm tra lại phân công rồi thử lại.');
+      return;
+    }
     router.push(`/teacher/music/units/${lesson.music_units.id}`);
   }
 

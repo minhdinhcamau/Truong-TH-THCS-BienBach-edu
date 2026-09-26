@@ -1,8 +1,8 @@
 'use client';
 // Đặt tại: app/teacher/music/page.jsx
-// Trang gốc "Âm nhạc" bên giáo viên — CHỈ vào được khi useMusicAccess()
-// báo assigned=true (được admin phân công ở app/admin/mon-hoc). Liệt kê
-// các chủ đề (music_units) giáo viên đã tạo, cho tạo chủ đề mới.
+// BẢN CẬP NHẬT — thêm nút xoá chủ đề (bấm giữ trên thẻ, có xác nhận),
+// và kiểm tra rõ lỗi khi tạo chủ đề thất bại (trước đây có thể lỗi âm thầm
+// nếu RLS chặn mà không có dòng nào được tạo).
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -27,16 +27,18 @@ export default function TeacherMusicHome() {
   const [newTitle, setNewTitle] = useState('');
   const [newGrade, setNewGrade] = useState('');
   const [creating, setCreating] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => { if (access.loaded && access.assigned) load(); }, [access.loaded, access.assigned]);
 
   async function load() {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('music_units')
       .select('*, music_lessons(id, kind)')
       .eq('created_by', profile.id)
       .order('order_index', { ascending: true });
+    if (error) setErrorMsg(error.message);
     setUnits(data || []);
     setLoading(false);
   }
@@ -45,14 +47,28 @@ export default function TeacherMusicHome() {
     e.preventDefault();
     if (!newTitle.trim()) return;
     setCreating(true);
+    setErrorMsg('');
     const { data, error } = await supabase
       .from('music_units')
       .insert({ title: newTitle, grade: newGrade ? Number(newGrade) : null, order_index: units.length, created_by: profile.id })
       .select()
       .single();
     setCreating(false);
-    if (error) { alert(error.message); return; }
+    if (error) { setErrorMsg('Không tạo được chủ đề: ' + error.message); return; }
+    if (!data) {
+      // Không có lỗi nhưng cũng không có dòng trả về -> nhiều khả năng bị RLS chặn âm thầm
+      // (tài khoản chưa thật sự nằm trong teacher_assignments cho môn Âm nhạc).
+      setErrorMsg('Không tạo được chủ đề — có thể tài khoản chưa được phân công đúng môn Âm nhạc trong bảng teacher_assignments. Nhờ admin kiểm tra lại.');
+      return;
+    }
     router.push(`/teacher/music/units/${data.id}`);
+  }
+
+  async function deleteUnit(id, title) {
+    if (!confirm(`Xoá chủ đề "${title}" và TOÀN BỘ bài học bên trong? Không thể hoàn tác.`)) return;
+    const { error } = await supabase.from('music_units').delete().eq('id', id);
+    if (error) { alert('Không xoá được: ' + error.message); return; }
+    load();
   }
 
   if (!ready || !access.loaded) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Đang tải...</div>;
@@ -85,15 +101,19 @@ export default function TeacherMusicHome() {
         input, select { padding: 11px 13px; border-radius: 11px; border: 1.5px solid #e2e8f0; font-size: 14px; font-family: inherit; box-sizing: border-box; }
         .add-btn { background: #58CC02; color: #fff; border: none; border-radius: 11px; padding: 0 20px; font-weight: 700; cursor: pointer; box-shadow: 0 3px 0 #46a302; }
         .add-btn:disabled { background: #9ca3af; box-shadow: none; }
+        .error { color: #a3374a; font-size: 13.5px; background: #fdeef0; padding: 10px 14px; border-radius: 10px; margin-top: 12px; }
         .unit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-        .unit-card { display: block; background: #fff; border-radius: 18px; padding: 22px; text-decoration: none; color: inherit; border: 1px solid #e5eeec; box-shadow: 0 2px 8px rgba(23,48,45,0.05); }
+        .unit-card { position: relative; background: #fff; border-radius: 18px; padding: 22px; border: 1px solid #e5eeec; box-shadow: 0 2px 8px rgba(23,48,45,0.05); }
         .unit-card:hover { box-shadow: 0 8px 20px rgba(34,93,163,0.12); border-color: #b9d4ee; }
+        .unit-card a { text-decoration: none; color: inherit; display: block; }
         .unit-title { font-weight: 700; font-size: 16px; color: #17302d; margin-bottom: 6px; }
         .unit-meta { display: flex; gap: 6px; flex-wrap: wrap; }
         .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
         .badge.grade { color: #225da3; background: #E9F2FC; }
         .badge.song { color: #58A700; background: #EAFBEA; }
         .badge.reading { color: #b45309; background: #FEF3E2; }
+        .del-btn { position: absolute; top: 12px; right: 12px; border: none; background: #fdeef0; color: #a3374a; border-radius: 8px; width: 26px; height: 26px; font-size: 13px; cursor: pointer; }
+        .del-btn:hover { background: #fbdadf; }
         .empty { text-align: center; color: #9ca3af; padding: 40px; background: #fff; border-radius: 14px; border: 1px dashed #cfe2f7; }
       `}</style>
 
@@ -110,6 +130,7 @@ export default function TeacherMusicHome() {
           </select>
           <button className="add-btn" disabled={creating}>{creating ? 'Đang tạo…' : '+ Tạo'}</button>
         </form>
+        {errorMsg && <div className="error">{errorMsg}</div>}
       </div>
 
       {loading ? (
@@ -122,15 +143,18 @@ export default function TeacherMusicHome() {
             const nSong = (u.music_lessons || []).filter((l) => l.kind === 'song').length;
             const nReading = (u.music_lessons || []).filter((l) => l.kind === 'sight_reading').length;
             return (
-              <Link key={u.id} href={`/teacher/music/units/${u.id}`} className="unit-card">
-                <div className="unit-title">{u.title}</div>
-                <div className="unit-meta">
-                  {u.grade && <span className="badge grade">Khối {u.grade}</span>}
-                  {nSong > 0 && <span className="badge song">🎤 {nSong} bài hát</span>}
-                  {nReading > 0 && <span className="badge reading">🎼 {nReading} đọc nhạc</span>}
-                  {nSong === 0 && nReading === 0 && <span className="badge grade">Chưa có bài học</span>}
-                </div>
-              </Link>
+              <div key={u.id} className="unit-card">
+                <button className="del-btn" onClick={() => deleteUnit(u.id, u.title)} title="Xoá chủ đề này">🗑</button>
+                <Link href={`/teacher/music/units/${u.id}`}>
+                  <div className="unit-title">{u.title}</div>
+                  <div className="unit-meta">
+                    {u.grade && <span className="badge grade">Khối {u.grade}</span>}
+                    {!u.grade && <span className="badge grade">Mọi khối</span>}
+                    {nSong > 0 && <span className="badge song">🎤 {nSong} bài hát</span>}
+                    {nReading > 0 && <span className="badge reading">🎼 {nReading} đọc nhạc</span>}
+                  </div>
+                </Link>
+              </div>
             );
           })}
         </div>

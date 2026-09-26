@@ -69,9 +69,10 @@ export default function MusicLessonPlayPage() {
   const [checked, setChecked] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
-  useEffect(() => { load(); }, [lessonId]);
+  useEffect(() => { if (lessonId) load(); }, [lessonId]);
 
   async function load() {
+    if (!lessonId) return;
     setLoading(true);
     const { data: l } = await supabase
       .from('music_lessons')
