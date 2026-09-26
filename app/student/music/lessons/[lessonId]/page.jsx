@@ -1,15 +1,19 @@
 'use client';
 // Đặt tại: app/student/music/lessons/[lessonId]/page.jsx
-// BẢN VIẾT LẠI TOÀN BỘ (v2) theo đúng yêu cầu:
-//  - Bàn phím PIANO THẬT (phím trắng/đen đúng hình dạng), âm thanh piano thật
-//    (Tone.Sampler, mẫu piano công khai của chính thư viện Tone.js).
-//  - KHÔNG còn kiểu quiz "hỏi từng nốt rời rạc" — học sinh chơi liền mạch
-//    CẢ BÀI, nốt chạy ngang từ phải sang trái tới vạch chờ, bấm đúng phím
-//    khi nốt tới vạch (giống Duolingo Music).
-//  - Bỏ số quãng tám khi hiển thị (Sol4 -> Sol).
-//  - 3 cấp độ Chậm/Vừa/Nhanh, phải qua cấp trước mới mở cấp sau.
-//  - Chấm 2 chỉ số riêng: Cao độ (bấm đúng phím) và Tiết tấu (đúng nhịp),
-//    ra sao (0-3) theo điểm trung bình — CHỈ LƯU lần nhiều sao nhất.
+// BẢN VIẾT LẠI v3 theo góp ý sau khi thử thật trên điện thoại:
+//  - Chặn menu "Copy" khi đè lâu trên di động (user-select:none + chặn
+//    contextmenu), tự bật toàn màn hình khi bắt đầu (trình duyệt nào hỗ trợ).
+//  - Bàn phím CHỈ hiện đúng các phím có trong bài (không hiện phím thừa),
+//    phóng to hết cỡ theo chiều ngang cho dễ bấm.
+//  - BỎ trái tim — không còn giới hạn số lần sai, chơi hết bài là có kết quả.
+//  - Thêm cấp "Luyện tập": KHÔNG chạy theo nhịp — bấm đúng nốt xong nhạc
+//    mới trôi tiếp, không có áp lực thời gian. Cấp "Chậm" cũng chậm hơn nữa.
+//  - Bỏ âm thanh khi bấm sai/trễ quá — chỉ hiện chữ nổi "Hơi trễ / Tuyệt /
+//    Hoàn hảo" theo độ chính xác, có hiệu ứng bay lên rồi mờ dần.
+//  - Thanh nốt nhạc hiện luôn TÊN NỐT để học sinh dễ đọc trước khi bấm.
+//  - Vạch chờ giờ là 1 dải mờ có hiệu ứng nhấp nháy nhẹ cho đẹp mắt.
+//  - Thêm nốt móc đơn chấm dôi (musicNotes.js) cho các bài dân ca có đảo phách
+//    kiểu "Lý kéo chài".
 //
 // npm install tone   (nếu repo chưa có)
 
@@ -17,16 +21,24 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { finishMusicLessonAttempt } from '@/lib/musicXp';
-import { pitchToVietnamese, durationBeats, pitchToMidi, buildPianoKeys, starsForScore, LEVELS } from '@/lib/musicNotes';
+import { pitchToVietnamese, durationBeats, pitchToMidi, starsForScore, LEVELS } from '@/lib/musicNotes';
 
-const HIT_TOLERANCE = 0.4;   // giây — sai lệch tối đa vẫn tính là đúng nhịp
-const PPS = 200;             // pixel/giây — tốc độ nốt chạy ngang
-const HIT_LINE_PCT = 18;     // vạch chờ cách mép trái (%)
+const PPS = 170; // pixel/giây tốc độ nốt chạy ngang (cấp Chậm/Vừa/Nhanh)
+const HIT_LINE_PCT = 20;
+const PERFECT_T = 0.12, GREAT_T = 0.25, LATE_T = 0.42; // ngưỡng (giây) cho Hoàn hảo/Tuyệt/Hơi trễ
 
-function laneColor(i, n) {
-  const hues = [265, 210, 160, 30, 340, 90, 0, 190];
+function laneColor(i) {
+  const hues = [265, 210, 160, 30, 340, 90, 5, 190, 45, 120];
   return `hsl(${hues[i % hues.length]}, 70%, 55%)`;
 }
+function judgeLabel(err) {
+  if (err <= PERFECT_T) return { text: 'Hoàn hảo', color: '#58CC02' };
+  if (err <= GREAT_T) return { text: 'Tuyệt', color: '#1CB0F6' };
+  return { text: 'Hơi trễ', color: '#F5A623' };
+}
+
+const noSelectStyle = { userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' };
+function block(e) { e.preventDefault(); }
 
 export default function MusicLessonPlayPage() {
   const { lessonId } = useParams();
@@ -34,21 +46,26 @@ export default function MusicLessonPlayPage() {
   const samplerRef = useRef(null);
   const rafRef = useRef(null);
   const startTimeRef = useRef(0);
+  const pauseOffsetRef = useRef(0);
   const containerRef = useRef(null);
+  const pageRef = useRef(null);
 
   const [lesson, setLesson] = useState(null);
   const [nextLessonId, setNextLessonId] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [levelProgress, setLevelProgress] = useState({ slow: { unlocked: true, stars: 0 }, medium: { unlocked: false, stars: 0 }, fast: { unlocked: false, stars: 0 } });
+  const [levelProgress, setLevelProgress] = useState(
+    Object.fromEntries(LEVELS.map((l, i) => [l.key, { unlocked: i === 0, stars: 0 }]))
+  );
 
-  const [level, setLevel] = useState(null); // null = màn chọn cấp độ
+  const [level, setLevel] = useState(null);
   const [samplerReady, setSamplerReady] = useState(false);
   const [phase, setPhase] = useState('select'); // select | ready | playing | result
-  const [hearts, setHearts] = useState(5);
-  const [, forceTick] = useState(0);
   const [result, setResult] = useState(null);
+  const [popups, setPopups] = useState([]); // [{id, text, color, lane}]
+  const [containerWidth, setContainerWidth] = useState(360);
+  const [, forceRender] = useState(0);
 
-  const timelineRef = useRef([]); // [{ pitch, time, duration, judged, timingError }]
+  const timelineRef = useRef([]);
   const answerLogsRef = useRef([]);
 
   useEffect(() => { if (lessonId) load(); }, [lessonId]);
@@ -69,8 +86,8 @@ export default function MusicLessonPlayPage() {
     const { data: prog } = await supabase
       .from('music_lesson_progress').select('level, is_unlocked, stars')
       .eq('student_id', user.id).eq('lesson_id', lessonId);
-    const map = { slow: { unlocked: true, stars: 0 }, medium: { unlocked: false, stars: 0 }, fast: { unlocked: false, stars: 0 } };
-    (prog || []).forEach((p) => { map[p.level] = { unlocked: p.is_unlocked, stars: p.stars }; });
+    const map = Object.fromEntries(LEVELS.map((lv, i) => [lv.key, { unlocked: i === 0, stars: 0 }]));
+    (prog || []).forEach((p) => { if (map[p.level]) map[p.level] = { unlocked: p.is_unlocked, stars: p.stars }; });
     setLevelProgress(map);
 
     setLoading(false);
@@ -81,11 +98,14 @@ export default function MusicLessonPlayPage() {
     const uniq = [...new Set(notesForPlay.map((n) => n.pitch))];
     return uniq.sort((a, b) => pitchToMidi(a) - pitchToMidi(b));
   }, [notesForPlay]);
-  const pianoKeys = useMemo(() => {
-    if (lanePitches.length === 0) return [];
-    const midis = lanePitches.map(pitchToMidi);
-    return buildPianoKeys(Math.min(...midis) - 1, Math.max(...midis) + 1);
-  }, [lanePitches]);
+
+  useEffect(() => {
+    function measure() { if (containerRef.current) setContainerWidth(containerRef.current.offsetWidth); }
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [phase]);
+  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
   async function ensureSampler() {
     if (samplerRef.current) return samplerRef.current;
@@ -109,21 +129,25 @@ export default function MusicLessonPlayPage() {
 
   function playPitch(pitch, dur = 0.4) {
     if (!samplerRef.current) return;
-    const { sampler } = samplerRef.current;
-    try { sampler.triggerAttackRelease(pitch, dur); } catch (e) { /* nốt ngoài mẫu, bỏ qua */ }
+    try { samplerRef.current.sampler.triggerAttackRelease(pitch, dur); } catch (e) { /* nốt ngoài mẫu, bỏ qua */ }
   }
-  function playMiss() { if (samplerRef.current) { try { samplerRef.current.sampler.triggerAttackRelease('A2', 0.15); } catch (e) {} } }
+
+  function tryFullscreen() {
+    const el = pageRef.current;
+    const req = el?.requestFullscreen || el?.webkitRequestFullscreen;
+    try { req && req.call(el); } catch (e) { /* trình duyệt không hỗ trợ (vd Safari iOS) — bỏ qua, không sao */ }
+  }
 
   async function chooseLevel(lvKey) {
     await ensureSampler();
     setLevel(lvKey);
-    setHearts(lesson.max_hearts || 5);
     setPhase('ready');
   }
 
   function startGame() {
-    const mult = LEVELS.find((l) => l.key === level).mult;
-    const bpm = (lesson.tempo_bpm || 90) * mult;
+    tryFullscreen();
+    const lv = LEVELS.find((l) => l.key === level);
+    const bpm = (lesson.tempo_bpm || 90) * (lv.mult ?? 1);
     let t = 0;
     timelineRef.current = notesForPlay.map((n) => {
       const dur = durationBeats(n.duration) * 60 / bpm;
@@ -132,41 +156,75 @@ export default function MusicLessonPlayPage() {
       return item;
     });
     answerLogsRef.current = [];
-    startTimeRef.current = performance.now() + 1200; // đợi 1.2s đếm nhịp trước khi bắt đầu
+    pauseOffsetRef.current = 0;
+    startTimeRef.current = performance.now() + 1200;
     setPhase('playing');
     rafRef.current = requestAnimationFrame(tick);
   }
 
   function tick() {
-    const elapsed = (performance.now() - startTimeRef.current) / 1000;
+    const raw = (performance.now() - startTimeRef.current) / 1000;
     const timeline = timelineRef.current;
-    let allDone = true;
-    timeline.forEach((n) => {
-      if (n.judged) return;
-      if (elapsed > n.time + HIT_TOLERANCE) {
-        n.judged = 'miss';
-        answerLogsRef.current.push({ exercise_type: 'play_note', question_content: n.pitch, correct_answer: n.pitch, student_answer: null, is_correct: false, time_taken_seconds: 0 });
-        playMiss();
-        setHearts((h) => Math.max(0, h - 1));
-      } else {
-        allDone = false;
+    const isPractice = level === 'practice';
+    let elapsed = raw - pauseOffsetRef.current;
+
+    if (isPractice) {
+      const firstUnjudged = timeline.find((n) => !n.judged);
+      if (firstUnjudged && elapsed >= firstUnjudged.time) {
+        // Khựng lại đúng tại nốt cần bấm — chỉ trôi tiếp khi bấm đúng.
+        pauseOffsetRef.current = raw - firstUnjudged.time;
+        elapsed = firstUnjudged.time;
       }
-    });
-    forceTick((x) => x + 1);
-    if (allDone && elapsed > 0.5) { finishGame(); return; }
-    if (hearts <= 0 && elapsed > 0.5) { finishGame(); return; }
+    } else {
+      let allDone = true;
+      timeline.forEach((n) => {
+        if (n.judged) return;
+        if (elapsed > n.time + LATE_T) {
+          n.judged = 'miss';
+          answerLogsRef.current.push({ exercise_type: 'play_note', question_content: n.pitch, correct_answer: n.pitch, student_answer: null, is_correct: false, time_taken_seconds: 0 });
+        } else { allDone = false; }
+      });
+      if (allDone && elapsed > 0.5) { finishGame(); return; }
+    }
+    if (isPractice && timeline.every((n) => n.judged)) { finishGame(); return; }
+
+    forceRender((x) => x + 1);
     rafRef.current = requestAnimationFrame(tick);
+  }
+
+  function addPopup(text, color, lane) {
+    const id = Math.random().toString(36).slice(2);
+    setPopups((p) => [...p, { id, text, color, lane }]);
+    setTimeout(() => setPopups((p) => p.filter((x) => x.id !== id)), 700);
   }
 
   function handleKeyPress(pitch) {
     if (phase !== 'playing') return;
-    const elapsed = (performance.now() - startTimeRef.current) / 1000;
-    const candidates = timelineRef.current.filter((n) => n.pitch === pitch && !n.judged && Math.abs(n.time - elapsed) <= HIT_TOLERANCE);
-    if (candidates.length === 0) { playPitch(pitch, 0.2); return; } // bấm chơi tự do, không tính điểm
+    const raw = (performance.now() - startTimeRef.current) / 1000;
+    const elapsed = raw - pauseOffsetRef.current;
+    const isPractice = level === 'practice';
+    const laneIdx = lanePitches.indexOf(pitch);
+
+    if (isPractice) {
+      const firstUnjudged = timelineRef.current.find((n) => !n.judged);
+      if (firstUnjudged && firstUnjudged.pitch === pitch) {
+        firstUnjudged.judged = 'hit'; firstUnjudged.timingError = 0;
+        answerLogsRef.current.push({ exercise_type: 'play_note', question_content: pitch, correct_answer: pitch, student_answer: pitch, is_correct: true, time_taken_seconds: 0 });
+        addPopup('Tuyệt', '#1CB0F6', laneIdx);
+        pauseOffsetRef.current = raw - firstUnjudged.time; // giữ mốc để nốt sau tính đúng
+      }
+      playPitch(pitch, 0.4);
+      return;
+    }
+
+    const candidates = timelineRef.current.filter((n) => n.pitch === pitch && !n.judged && Math.abs(n.time - elapsed) <= LATE_T);
+    if (candidates.length === 0) { playPitch(pitch, 0.2); return; }
     const note = candidates.sort((a, b) => Math.abs(a.time - elapsed) - Math.abs(b.time - elapsed))[0];
     note.judged = 'hit';
     note.timingError = Math.abs(note.time - elapsed);
-    answerLogsRef.current.push({ exercise_type: 'play_note', question_content: note.pitch, correct_answer: note.pitch, student_answer: pitch, is_correct: true, time_taken_seconds: Math.round(note.timingError * 10) / 10 });
+    answerLogsRef.current.push({ exercise_type: 'play_note', question_content: note.pitch, correct_answer: note.pitch, student_answer: pitch, is_correct: true, time_taken_seconds: Math.round(note.timingError * 100) / 100 });
+    const j = judgeLabel(note.timingError);
+    addPopup(j.text, j.color, laneIdx);
     playPitch(pitch, Math.min(0.6, note.duration));
   }
 
@@ -178,33 +236,23 @@ export default function MusicLessonPlayPage() {
     const pitchAccuracy = Math.round((hits.length / total) * 100);
     const rhythmSum = timeline.reduce((s, n) => {
       if (n.judged !== 'hit') return s;
-      return s + Math.max(0, 100 - (n.timingError / HIT_TOLERANCE) * 100);
+      return s + Math.max(0, 100 - (n.timingError / LATE_T) * 100);
     }, 0);
-    const rhythmAccuracy = Math.round(rhythmSum / total);
+    const rhythmAccuracy = level === 'practice' ? 100 : Math.round(rhythmSum / total);
     const stars = starsForScore(Math.round((pitchAccuracy + rhythmAccuracy) / 2));
 
     const { data: { user } } = await supabase.auth.getUser();
     const res = await finishMusicLessonAttempt({
       studentId: user.id, lesson, nextLessonId, level,
-      pitchAccuracy, rhythmAccuracy, stars, heartsLeft: hearts, answerLogs: answerLogsRef.current,
+      pitchAccuracy, rhythmAccuracy, stars, heartsLeft: lesson.max_hearts || 5, answerLogs: answerLogsRef.current,
     });
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
     setResult({ ...res, pitchAccuracy, rhythmAccuracy, stars });
     setPhase('result');
   }
 
-  const [containerWidth, setContainerWidth] = useState(360);
-  useEffect(() => {
-    function measure() { if (containerRef.current) setContainerWidth(containerRef.current.offsetWidth); }
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [phase]);
-
-  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
-
   if (loading || !lesson) return <div style={styles.center}>Đang tải...</div>;
 
-  // ============ Màn chọn cấp độ ============
   if (phase === 'select') {
     return (
       <div style={styles.page}>
@@ -217,7 +265,7 @@ export default function MusicLessonPlayPage() {
             return (
               <button key={lv.key} disabled={!p.unlocked} onClick={() => chooseLevel(lv.key)} style={{ ...styles.levelBtn, opacity: p.unlocked ? 1 : 0.45 }}>
                 <span>{p.unlocked ? '▶' : '🔒'} {lv.label}</span>
-                <span style={{ color: '#F5A623' }}>{'⭐'.repeat(p.stars)}{'☆'.repeat(3 - p.stars)}</span>
+                {lv.key !== 'practice' && <span style={{ color: '#F5A623' }}>{'⭐'.repeat(p.stars)}{'☆'.repeat(3 - p.stars)}</span>}
               </button>
             );
           })}
@@ -226,7 +274,6 @@ export default function MusicLessonPlayPage() {
     );
   }
 
-  // ============ Màn sẵn sàng (chờ bấm bắt đầu, tải piano) ============
   if (phase === 'ready') {
     return (
       <div style={styles.page}>
@@ -240,7 +287,6 @@ export default function MusicLessonPlayPage() {
     );
   }
 
-  // ============ Màn kết quả ============
   if (phase === 'result' && result) {
     return (
       <div style={styles.page}>
@@ -264,67 +310,46 @@ export default function MusicLessonPlayPage() {
     );
   }
 
-  // ============ Màn chơi (nốt chạy ngang + piano) ============
-  const elapsed = phase === 'playing' ? (performance.now() - startTimeRef.current) / 1000 : -1.2;
-  const laneHeight = Math.max(36, Math.min(64, 320 / Math.max(1, lanePitches.length)));
+  const raw = (performance.now() - startTimeRef.current) / 1000;
+  const elapsed = raw - pauseOffsetRef.current;
+  const laneHeight = Math.max(40, Math.min(70, 340 / Math.max(1, lanePitches.length)));
 
   return (
-    <div style={styles.playWrap}>
+    <div ref={pageRef} style={{ ...styles.playWrap, ...noSelectStyle }} onContextMenu={block}>
       <div style={styles.topBar}>
-        <div style={styles.hearts}>{Array.from({ length: lesson.max_hearts || 5 }).map((_, i) => (
-          <span key={i} style={{ opacity: i < hearts ? 1 : 0.2 }}>❤️</span>
-        ))}</div>
         <div style={{ color: '#fff', fontWeight: 700 }}>{lesson.title} · {LEVELS.find((l) => l.key === level).label}</div>
       </div>
 
       <div ref={containerRef} style={{ ...styles.lanesWrap, height: laneHeight * lanePitches.length }}>
-        <div style={{ ...styles.hitLine, left: `${HIT_LINE_PCT}%` }} />
+        <div style={styles.hitLine} />
         {lanePitches.map((p, i) => (
-          <div key={p} style={{ ...styles.lane, top: (lanePitches.length - 1 - i) * laneHeight, height: laneHeight, background: i % 2 ? 'rgba(255,255,255,0.03)' : 'transparent' }}>
-            <span style={{ ...styles.laneLabel, color: laneColor(i, lanePitches.length) }}>{pitchToVietnamese(p)}</span>
-          </div>
+          <div key={p} style={{ ...styles.lane, top: (lanePitches.length - 1 - i) * laneHeight, height: laneHeight }} />
         ))}
         {timelineRef.current.map((n, idx) => {
           const laneIdx = lanePitches.indexOf(n.pitch);
           const xPct = HIT_LINE_PCT + ((n.time - elapsed) * PPS / containerWidth) * 100;
-          if (xPct < -15 || xPct > 115) return null;
+          if (xPct < -20 || xPct > 115) return null;
           return (
             <div key={idx} style={{
-              ...styles.noteBlock,
-              left: `${xPct}%`,
-              top: (lanePitches.length - 1 - laneIdx) * laneHeight + 4,
-              height: laneHeight - 8,
-              background: n.judged === 'hit' ? '#58CC02' : n.judged === 'miss' ? '#FF4B4B' : laneColor(laneIdx, lanePitches.length),
-              opacity: n.judged ? 0.55 : 1,
-            }} />
+              ...styles.noteBlock, left: `${xPct}%`,
+              top: (lanePitches.length - 1 - laneIdx) * laneHeight + 4, height: laneHeight - 8,
+              background: n.judged === 'hit' ? '#58CC02' : n.judged === 'miss' ? 'rgba(255,75,75,0.5)' : laneColor(laneIdx),
+              opacity: n.judged ? 0.5 : 1,
+            }}>{pitchToVietnamese(n.pitch)}</div>
           );
         })}
+        {popups.map((pu) => (
+          <div key={pu.id} style={{ ...styles.popup, top: (lanePitches.length - 1 - pu.lane) * laneHeight, color: pu.color }}>{pu.text}</div>
+        ))}
       </div>
 
       <div style={styles.pianoWrap}>
-        <div style={styles.pianoWhite}>
-          {pianoKeys.filter((k) => !k.isBlack).map((k) => (
-            <button key={k.midi} onMouseDown={() => handleKeyPress(k.pitch)} onTouchStart={(e) => { e.preventDefault(); handleKeyPress(k.pitch); }} style={styles.whiteKey}>
-              <span style={{ color: lanePitches.includes(k.pitch) ? laneColor(lanePitches.indexOf(k.pitch), lanePitches.length) : '#c7ccd1', fontWeight: 700, fontSize: 11 }}>{pitchToVietnamese(k.pitch)}</span>
-            </button>
-          ))}
-        </div>
-        <div style={styles.pianoBlackLayer}>
-          {(() => {
-            const whites = pianoKeys.filter((k) => !k.isBlack);
-            const whiteWidthPct = 100 / whites.length;
-            return pianoKeys.filter((k) => k.isBlack).map((k) => {
-              // vị trí: ngay sau phím trắng có midi = k.midi - 1
-              const idx = whites.findIndex((w) => w.midi === k.midi - 1);
-              if (idx === -1) return null;
-              const leftPct = (idx + 1) * whiteWidthPct - whiteWidthPct * 0.28;
-              return (
-                <button key={k.midi} onMouseDown={() => handleKeyPress(k.pitch)} onTouchStart={(e) => { e.preventDefault(); handleKeyPress(k.pitch); }}
-                  style={{ ...styles.blackKey, left: `${leftPct}%`, width: `${whiteWidthPct * 0.56}%` }} />
-              );
-            });
-          })()}
-        </div>
+        {lanePitches.map((p, i) => (
+          <button key={p} onMouseDown={() => handleKeyPress(p)} onTouchStart={(e) => { e.preventDefault(); handleKeyPress(p); }} onContextMenu={block}
+            style={{ ...styles.pianoKey, background: laneColor(i), ...noSelectStyle }}>
+            {pitchToVietnamese(p)}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -341,16 +366,26 @@ const styles = {
   statLabel: { fontSize: 11.5, color: '#6b7280' },
   statVal: { fontSize: 20, fontWeight: 800, color: '#17302d' },
   playWrap: { minHeight: '100vh', background: '#0F1A2A', display: 'flex', flexDirection: 'column' },
-  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px' },
-  hearts: { display: 'flex', gap: 4, fontSize: 18 },
+  topBar: { display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '14px 18px' },
   lanesWrap: { position: 'relative', margin: '0 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 12, overflow: 'hidden' },
-  hitLine: { position: 'absolute', top: 0, bottom: 0, width: 3, background: 'rgba(255,255,255,0.6)' },
-  lane: { position: 'absolute', left: 0, right: 0, display: 'flex', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)' },
-  laneLabel: { position: 'absolute', left: 6, fontSize: 12, fontWeight: 700 },
-  noteBlock: { position: 'absolute', width: 46, borderRadius: 8, transition: 'opacity 0.15s' },
-  pianoWrap: { position: 'relative', marginTop: 'auto', padding: '10px 12px 24px' },
-  pianoWhite: { display: 'flex', width: '100%', height: 110, gap: 2 },
-  whiteKey: { flex: 1, background: '#fff', border: '1px solid #d5dde3', borderRadius: '0 0 8px 8px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 8, cursor: 'pointer' },
-  pianoBlackLayer: { position: 'absolute', top: 10, left: 12, right: 12, height: 66, pointerEvents: 'none' },
-  blackKey: { position: 'absolute', top: 0, height: '100%', background: '#1a1a1a', borderRadius: '0 0 6px 6px', border: '1px solid #000', pointerEvents: 'auto', cursor: 'pointer' },
+  hitLine: {
+    position: 'absolute', top: 0, bottom: 0, left: `${HIT_LINE_PCT}%`, width: 10, marginLeft: -5,
+    background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.12) 60%, transparent 100%)',
+    animation: 'musicPulse 1s ease-in-out infinite',
+  },
+  lane: { position: 'absolute', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.06)' },
+  noteBlock: { position: 'absolute', minWidth: 54, padding: '0 8px', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 13, transition: 'opacity 0.2s', whiteSpace: 'nowrap' },
+  popup: { position: 'absolute', left: `${HIT_LINE_PCT}%`, transform: 'translate(-50%, -140%)', fontWeight: 800, fontSize: 16, animation: 'musicFloat 0.7s ease-out forwards', pointerEvents: 'none' },
+  pianoWrap: { display: 'flex', gap: 4, padding: '14px 12px 28px' },
+  pianoKey: { flex: 1, minHeight: 84, border: 'none', borderRadius: 14, color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 3px 0 rgba(0,0,0,0.25)' },
 };
+
+if (typeof document !== 'undefined' && !document.getElementById('music-anim-style')) {
+  const style = document.createElement('style');
+  style.id = 'music-anim-style';
+  style.innerHTML = `
+    @keyframes musicPulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+    @keyframes musicFloat { 0% { opacity: 0; transform: translate(-50%, -100%); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -220%); } }
+  `;
+  document.head.appendChild(style);
+}
