@@ -131,8 +131,13 @@ export default function MusicLessonComposerPage() {
     return Math.max(32, Math.ceil((last + 8) / 4) * 4);
   }, [notes]);
 
-  function pushHistory() { historyRef.current.push(notes); if (historyRef.current.length > 30) historyRef.current.shift(); }
-  function undo() { const prev = historyRef.current.pop(); if (prev) setNotes(prev); }
+  function pushHistory() { historyRef.current.push({ notes, rangeMin, rangeMax }); if (historyRef.current.length > 30) historyRef.current.shift(); }
+  function undo() {
+    const prev = historyRef.current.pop();
+    if (!prev) return;
+    setNotes(prev.notes); setRangeMin(prev.rangeMin); setRangeMax(prev.rangeMax);
+    force((x) => x + 1);
+  }
 
   useEffect(() => { if (lesson) renderStaff(); }, [notes, lesson, keySignature, timeSignature]);
 
@@ -260,16 +265,74 @@ export default function MusicLessonComposerPage() {
     window.addEventListener('pointerup', onUp);
   }
 
-  function onNoteClick(e, note) {
+  function usedRange() {
+    if (notes.length === 0) return null;
+    const midis = notes.map((n) => pitchToMidi(n.pitch));
+    return { min: Math.min(...midis), max: Math.max(...midis) };
+  }
+  function addOctaveHigh() { pushHistory(); setRangeMax((v) => v + 12); }
+  function removeOctaveHigh() {
+    const used = usedRange();
+    const floor = used ? used.max + 1 : rangeMin + 12;
+    if (rangeMax - 12 < floor) { alert('Không bớt được nữa — trong bài đang có nốt cần tới quãng này.'); return; }
+    pushHistory(); setRangeMax((v) => v - 12);
+  }
+  function addOctaveLow() { pushHistory(); setRangeMin((v) => v - 12); }
+  function removeOctaveLow() {
+    const used = usedRange();
+    const ceil = used ? used.min - 1 : rangeMax - 12;
+    if (rangeMin + 12 > ceil) { alert('Không bớt được nữa — trong bài đang có nốt cần tới quãng này.'); return; }
+    pushHistory(); setRangeMin((v) => v + 12);
+  }
+
+  function onNotePointerDown(e, note) {
     e.stopPropagation();
-    if (paintMode === 'note') { pushHistory(); setNotes((prev) => prev.filter((n) => n !== note)); return; }
-    if (paintMode === 'fermata') { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, fermata: !n.fermata } : n))); return; }
-    if (paintMode === 'tie') { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, tieToNext: !n.tieToNext, slurToNext: false } : n))); return; }
-    if (paintMode === 'slur') { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, slurToNext: !n.slurToNext, tieToNext: false } : n))); return; }
-    if (paintMode === 'lyric') {
-      const text = window.prompt('Lời cho nốt này:', note.lyric || '');
-      if (text !== null) { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, lyric: text } : n))); }
+    if (paintMode !== 'note') {
+      // Các chế độ khác: bấm là làm ngay, không kéo-di-chuyển được.
+      if (paintMode === 'fermata') { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, fermata: !n.fermata } : n))); }
+      else if (paintMode === 'tie') { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, tieToNext: !n.tieToNext, slurToNext: false } : n))); }
+      else if (paintMode === 'slur') { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, slurToNext: !n.slurToNext, tieToNext: false } : n))); }
+      else if (paintMode === 'lyric') {
+        const text = window.prompt('Lời cho nốt này:', note.lyric || '');
+        if (text !== null) { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, lyric: text } : n))); }
+      }
+      return;
     }
+    // Chế độ "Đặt/xoá nốt": bấm giữ rồi kéo = DI CHUYỂN nốt sang vị trí/cao độ khác; bấm không kéo = XOÁ.
+    const startX = e.clientX, startY = e.clientY;
+    const startRow = pitchRows.findIndex((r) => r.pitch === note.pitch);
+    dragRef.current = { moveNote: note, startBeat: note.startBeat, row: startRow, moved: false, previewEnd: note.startBeat + durationBeats(note.duration) };
+    function onMove(ev) {
+      const dxBeats = (ev.clientX - startX) / BEAT_PX;
+      const dyRows = Math.round((ev.clientY - startY) / ROW_H);
+      if (Math.abs(ev.clientX - startX) > 6 || Math.abs(ev.clientY - startY) > 6) dragRef.current.moved = true;
+      const newRow = Math.min(pitchRows.length - 1, Math.max(0, startRow + dyRows));
+      const newStart = Math.max(0, snap(note.startBeat + dxBeats));
+      dragRef.current.row = newRow;
+      dragRef.current.startBeat = newStart;
+      dragRef.current.previewEnd = newStart + durationBeats(note.duration);
+      force((x) => x + 1);
+    }
+    function onUp() {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (!d) return;
+      if (!d.moved) { pushHistory(); setNotes((prev) => prev.filter((n) => n !== note)); force((x) => x + 1); return; }
+      const newPitch = pitchRows[d.row].pitch;
+      pushHistory();
+      setNotes((prev) => {
+        const dur = durationBeats(note.duration);
+        const withoutSelf = prev.filter((n) => n !== note);
+        const filtered = withoutSelf.filter((n) => !(n.pitch === newPitch && n.startBeat < d.startBeat + dur - 0.001 && n.startBeat + durationBeats(n.duration) > d.startBeat + 0.001));
+        const moved = { ...note, pitch: newPitch, startBeat: d.startBeat };
+        return [...filtered, moved].sort((a, b) => a.startBeat - b.startBeat);
+      });
+      force((x) => x + 1);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
 
   function clearAll() { if (notes.length === 0) return; if (confirm('Xoá hết nốt trong bài này?')) { pushHistory(); setNotes([]); } }
@@ -379,8 +442,10 @@ export default function MusicLessonComposerPage() {
           <button onClick={undo} disabled={historyRef.current.length === 0}>↩ Hoàn tác</button>
           <button onClick={clearAll} disabled={notes.length === 0}>🗑 Xoá hết</button>
           <button onClick={playPreview} disabled={notes.length === 0 || playing}>{playing ? '🔊 Đang phát…' : '▶ Nghe thử'}</button>
-          <button onClick={() => setRangeMin((v) => v - 12)}>⬇ Thêm quãng 8 thấp</button>
-          <button onClick={() => setRangeMax((v) => v + 12)}>⬆ Thêm quãng 8 cao</button>
+          <button onClick={addOctaveLow}>⬇ Thêm quãng thấp</button>
+          <button onClick={removeOctaveLow}>✕ Bớt quãng thấp</button>
+          <button onClick={addOctaveHigh}>⬆ Thêm quãng cao</button>
+          <button onClick={removeOctaveHigh}>✕ Bớt quãng cao</button>
         </div>
 
         <div className="roll">
@@ -403,15 +468,19 @@ export default function MusicLessonComposerPage() {
               {notes.map((n, i) => {
                 const ri = pitchRows.findIndex((r) => r.pitch === n.pitch);
                 if (ri === -1) return null;
+                const isBeingMoved = preview && preview.moveNote === n && preview.moved;
                 return (
-                  <div key={i} onPointerDown={(e) => onNoteClick(e, n)}
-                    style={{ ...{}, position: 'absolute', top: ri * ROW_H + 1, left: n.startBeat * BEAT_PX, width: durationBeats(n.duration) * BEAT_PX - 2, background: NOTE_COLOR[n.pitch[0]], height: ROW_H - 3, borderRadius: 6, color: '#fff', fontWeight: 700, fontSize: 10.5, display: 'flex', alignItems: 'center', padding: '0 5px', cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>
+                  <div key={i} onPointerDown={(e) => onNotePointerDown(e, n)}
+                    style={{ position: 'absolute', top: ri * ROW_H + 1, left: n.startBeat * BEAT_PX, width: durationBeats(n.duration) * BEAT_PX - 2, background: NOTE_COLOR[n.pitch[0]], height: ROW_H - 3, borderRadius: 6, color: '#fff', fontWeight: 700, fontSize: 10.5, display: 'flex', alignItems: 'center', padding: '0 5px', cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', opacity: isBeingMoved ? 0.25 : 1 }}>
                     {pitchToVietnamese(n.pitch)}{n.fermata ? ' 𝄐' : ''}{n.tieToNext ? ' ⌒' : ''}{n.slurToNext ? ' ⌣' : ''}{n.lyric ? ` "${n.lyric}"` : ''}
                   </div>
                 );
               })}
-              {preview && (
+              {preview && preview.rowKey && (
                 <div style={{ position: 'absolute', top: pitchRows.findIndex((r) => r.pitch === preview.rowKey.pitch) * ROW_H + 1, left: preview.startBeat * BEAT_PX, width: Math.max(SNAP, (preview.previewEnd || preview.startBeat + SNAP) - preview.startBeat) * BEAT_PX - 2, height: ROW_H - 3, background: 'rgba(34,93,163,0.5)', borderRadius: 6 }} />
+              )}
+              {preview && preview.moveNote && preview.moved && (
+                <div style={{ position: 'absolute', top: preview.row * ROW_H + 1, left: preview.startBeat * BEAT_PX, width: (preview.previewEnd - preview.startBeat) * BEAT_PX - 2, height: ROW_H - 3, background: NOTE_COLOR[preview.moveNote.pitch[0]], opacity: 0.85, borderRadius: 6, border: '2px dashed #fff' }} />
               )}
             </div>
           </div>
