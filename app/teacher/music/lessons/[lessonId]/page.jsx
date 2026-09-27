@@ -1,28 +1,29 @@
 'use client';
 // Đặt tại: app/teacher/music/lessons/[lessonId]/page.jsx
-// BẢN CẬP NHẬT v4 — thêm:
-//  - Chọn NHỊP (2/4, 3/4, 4/4, 6/8) — trước đây bị hard-code 4/4, thiếu UI chọn.
-//  - Nút "↵ Xuống dòng ở nốt tiếp theo": bấm trước khi thêm 1 nốt mới, nốt đó
-//    sẽ bắt đầu MỘT KHUÔNG NHẠC MỚI (dòng mới), giống cách 1 bài hát thật in
-//    ra nhiều dòng. Có thể bật/tắt lại trên từng nốt đã thêm (nút ↵ trên pill).
-//  - Dấu NỐI (tie, ⌒ — 2 nốt CÙNG cao độ, ngân liền không đánh lại) và dấu
-//    LUYẾN (slur, ⌣ — nhiều nốt KHÁC cao độ hát liền 1 hơi, hay dùng khi 1
-//    chữ trải trên nhiều nốt) — bật trên từng nốt (nối/luyến TỚI nốt ngay sau).
-//    Giới hạn: chỉ nối/luyến được trong CÙNG 1 dòng (không nối qua chỗ xuống dòng).
-//  - Nốt hoa mỹ (grace note, chọn ở hàng Trường độ): không tính phách, tự
-//    "gắn" vào nốt chính đứng ngay sau nó khi vẽ khuông nhạc.
-// Giọng, dấu hóa theo giọng, chấm dôi, fermata giữ nguyên như bản trước.
+// VIẾT LẠI TOÀN BỘ (v5) — kiểu "piano roll" như phần mềm dựng nhạc
+// (Synthesia/FL Studio/GarageBand): bàn phím piano dọc bên trái, lưới thời
+// gian bên phải — BẤM vào ô nào là đặt nốt ở ĐÚNG cao độ + thời điểm đó,
+// KÉO ngang lúc bấm để tự chọn ĐỘ DÀI nốt (không kéo = dùng độ dài đang
+// chọn sẵn). Không còn kiểu "bấm phím để nối đuôi nốt mới vào cuối bài".
 //
-// npm install vexflow tone   (nếu repo chưa có 2 gói này)
+// Vì giờ có thể đặt nốt CÁCH QUÃNG (không liền tù tì như trước), những chỗ
+// trống sẽ tự động lấp bằng DẤU LẶNG (rest) khi vẽ ra khuông nhạc bên dưới
+// để bản nhạc luôn đúng chuẩn nhìn từ khuông nhạc.
+//
+// Các chế độ "bấm để..." (đổi bằng thanh nút "Chế độ bấm"):
+//   Đặt/xoá nốt (mặc định) · Gắn/gỡ dấu miễn nhịp · Nối 2 nốt cùng cao độ ·
+//   Luyến 2 nốt khác cao độ · Gõ lời cho nốt (bài hát)
+//
+// npm install vexflow tone   (nếu repo chưa có)
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import {
-  KEYBOARD_PITCHES, DURATIONS, KEY_SIGNATURES, TIME_SIGNATURES,
-  pitchToVietnamese, pitchOctave, pitchLetter,
-  keyDefaultAccidental, durationToVexKey, durationBeats, durationToToneKey,
+  DURATIONS, KEY_SIGNATURES, TIME_SIGNATURES, NOTE_COLOR,
+  pitchToVietnamese, pitchOctave, pitchToMidi, buildPianoKeys,
+  keyDefaultAccidental, durationToVexKey, durationBeats, durationToToneKey, beatsPerMeasure,
 } from '@/lib/musicNotes';
 
 const backLinkStyle = {
@@ -30,17 +31,56 @@ const backLinkStyle = {
   border: '1.5px solid #dbe7f3', background: '#fff', color: '#225da3', fontWeight: 600, fontSize: 13.5,
   textDecoration: 'none', boxShadow: '0 1px 3px rgba(23,48,45,0.04)',
 };
-const OVERRIDE_OPTIONS = [
-  { key: null, label: 'Theo giọng' },
-  { key: '#', label: '♯ Thăng' },
-  { key: 'b', label: '♭ Giáng' },
-  { key: 'n', label: '♮ Bình' },
+const OVERRIDE_OPTIONS = [{ key: null, label: 'Theo giọng' }, { key: '#', label: '♯' }, { key: 'b', label: '♭' }, { key: 'n', label: '♮' }];
+const PAINT_MODES = [
+  { key: 'note', label: '✏️ Đặt / xoá nốt' },
+  { key: 'fermata', label: '𝄐 Miễn nhịp' },
+  { key: 'tie', label: '⌒ Nối' },
+  { key: 'slur', label: '⌣ Luyến' },
+  { key: 'lyric', label: '💬 Lời' },
 ];
+
+const BEAT_PX = 72;
+const ROW_H = 26;
+const SNAP = 0.25; // lưới nhỏ nhất = móc kép
+
+function snap(beats) { return Math.round(beats / SNAP) * SNAP; }
+function nearestDuration(beats) {
+  const list = DURATIONS.filter((d) => d.key !== 'grace');
+  return list.reduce((best, d) => (Math.abs(d.beats - beats) < Math.abs(best.beats - beats) ? d : best), list[0]);
+}
+// Lấp khoảng trống giữa các nốt bằng dấu lặng (rest) — tham lam: luôn chọn
+// trường độ chuẩn LỚN NHẤT vừa khít, cho tới khi lấp đầy khoảng trống.
+function fillGapsWithRests(sortedNotes, endBeat) {
+  const restDurations = [...DURATIONS.filter((d) => d.key !== 'grace')].sort((a, b) => b.beats - a.beats);
+  const out = [];
+  let cursor = 0;
+  sortedNotes.forEach((n) => {
+    let gap = n.startBeat - cursor;
+    while (gap > 0.01) {
+      const d = restDurations.find((rd) => rd.beats <= gap + 0.001) || restDurations[restDurations.length - 1];
+      out.push({ rest: true, duration: d.key, beats: d.beats });
+      gap -= d.beats;
+    }
+    out.push({ rest: false, original: n }); // giữ nguyên tham chiếu gốc để tra cứu nối/luyến đúng chỉ số
+    cursor = n.startBeat + durationBeats(n.duration);
+  });
+  let tailGap = endBeat - cursor;
+  while (tailGap > 0.01) {
+    const d = restDurations.find((rd) => rd.beats <= tailGap + 0.001) || restDurations[restDurations.length - 1];
+    out.push({ rest: true, duration: d.key, beats: d.beats });
+    tailGap -= d.beats;
+  }
+  return out;
+}
 
 export default function MusicLessonComposerPage() {
   const { lessonId } = useParams();
   const router = useRouter();
   const staffRef = useRef(null);
+  const gridScrollRef = useRef(null);
+  const dragRef = useRef(null);
+  const historyRef = useRef([]);
 
   const [lesson, setLesson] = useState(null);
   const [notes, setNotes] = useState([]);
@@ -52,7 +92,10 @@ export default function MusicLessonComposerPage() {
   const [tempoBpm, setTempoBpm] = useState(90);
   const [selectedDuration, setSelectedDuration] = useState('quarter');
   const [accidentalOverride, setAccidentalOverride] = useState(null);
-  const [pendingLineBreak, setPendingLineBreak] = useState(false);
+  const [paintMode, setPaintMode] = useState('note');
+  const [rangeMin, setRangeMin] = useState(60); // C4
+  const [rangeMax, setRangeMax] = useState(72); // C5
+  const [, force] = useState(0);
   const [saving, setSaving] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -64,20 +107,32 @@ export default function MusicLessonComposerPage() {
   async function load() {
     if (!lessonId) return;
     const { data: l, error } = await supabase
-      .from('music_lessons')
-      .select('*, music_units(id, title)')
-      .eq('id', lessonId)
-      .single();
+      .from('music_lessons').select('*, music_units(id, title)').eq('id', lessonId).single();
     if (error) { setErrorMsg(error.message); return; }
     setLesson(l);
-    setNotes(l?.notes || []);
+    const ns = (l?.notes || []).slice().sort((a, b) => (a.startBeat ?? 0) - (b.startBeat ?? 0));
+    setNotes(ns);
     setComposer(l?.composer || '');
     setLyricist(l?.lyricist || '');
     setKeySignature(l?.key_signature || 'C');
     setTimeSignature(l?.time_signature || '4/4');
     setTempoMarking(l?.tempo_marking || '');
     setTempoBpm(l?.tempo_bpm || 90);
+    if (ns.length > 0) {
+      const midis = ns.map((n) => pitchToMidi(n.pitch));
+      setRangeMin(Math.min(...midis) - 2);
+      setRangeMax(Math.max(...midis) + 2);
+    }
   }
+
+  const pitchRows = useMemo(() => buildPianoKeys(rangeMin, rangeMax).reverse(), [rangeMin, rangeMax]); // cao ở trên
+  const gridBeats = useMemo(() => {
+    const last = notes.reduce((m, n) => Math.max(m, n.startBeat + durationBeats(n.duration)), 0);
+    return Math.max(32, Math.ceil((last + 8) / 4) * 4);
+  }, [notes]);
+
+  function pushHistory() { historyRef.current.push(notes); if (historyRef.current.length > 30) historyRef.current.shift(); }
+  function undo() { const prev = historyRef.current.pop(); if (prev) setNotes(prev); }
 
   useEffect(() => { if (lesson) renderStaff(); }, [notes, lesson, keySignature, timeSignature]);
 
@@ -86,125 +141,138 @@ export default function MusicLessonComposerPage() {
     staffRef.current.innerHTML = '';
     if (notes.length === 0) return;
 
-    const { Renderer, Stave, StaveNote, GraceNote, GraceNoteGroup, StaveTie, Curve, Voice, Formatter, Accidental, Articulation } = await import('vexflow');
+    const { Renderer, Stave, StaveNote, Voice, Formatter, Accidental, Articulation, StaveTie, Curve } = await import('vexflow');
+    const bpMeasure = beatsPerMeasure(timeSignature);
+    const measuresPerLine = 4;
+    const lineBeats = bpMeasure * measuresPerLine;
 
-    // 1) Chia thành từng DÒNG (line) theo cờ lineBreak trên mỗi nốt.
-    const lines = [];
-    let current = [];
-    notes.forEach((n, idx) => {
-      if (n.lineBreak && current.length > 0) { lines.push(current); current = []; }
-      current.push({ n, idx });
+    const withRests = fillGapsWithRests(notes, Math.ceil(gridBeats / lineBeats) * lineBeats);
+    // Gán lại startBeat tuyệt đối cho từng phần tử (kể cả rest) để chia dòng đúng.
+    let cursor = 0;
+    const items = withRests.map((it) => {
+      const startBeat = cursor;
+      cursor += it.rest ? it.beats : durationBeats(it.original.duration);
+      return { ...it, startBeat };
     });
-    if (current.length > 0) lines.push(current);
+
+    const lines = [];
+    items.forEach((it) => {
+      const lineNo = Math.floor(it.startBeat / lineBeats);
+      if (!lines[lineNo]) lines[lineNo] = [];
+      lines[lineNo].push(it);
+    });
 
     const lineHeight = isSong ? 190 : 160;
-    const width = Math.max(420, 90 + Math.max(...lines.map((l) => l.length)) * (isSong ? 70 : 55));
+    const width = Math.max(500, measuresPerLine * bpMeasure * 90);
     const renderer = new Renderer(staffRef.current, Renderer.Backends.SVG);
     renderer.resize(width, lineHeight * lines.length + 10);
     const context = renderer.getContext();
-
-    const idxToStaveNote = new Map(); // original notes[] index -> StaveNote đã vẽ (không có với nốt hoa mỹ)
-    const idxToLine = new Map();
+    const idxToStaveNote = new Map();
 
     lines.forEach((lineItems, lineNo) => {
+      if (!lineItems) return;
       const y = 20 + lineNo * lineHeight;
       const stave = new Stave(10, y, width - 20);
       if (lineNo === 0) {
         stave.addClef('treble').addTimeSignature(timeSignature);
-        if (keySignature && keySignature !== 'C') stave.addKeySignature(keySignature);
+        if (keySignature !== 'C') stave.addKeySignature(keySignature);
       }
       stave.setContext(context).draw();
 
-      const staveNotes = [];
-      let pendingGrace = [];
-      lineItems.forEach(({ n, idx }) => {
+      const staveNotes = lineItems.map((it) => {
+        if (it.rest) return new StaveNote({ keys: ['b/4'], duration: durationToVexKey(it.duration) + 'r' });
+        const n = it.original;
         const m = /^([A-G])(#|b)?(\d)$/.exec(n.pitch);
-        const letter = m ? m[1] : 'C';
-        const accidental = m ? (m[2] || '') : '';
-        const octave = m ? m[3] : '4';
-        const vfKey = `${letter.toLowerCase()}${accidental}/${octave}`;
+        const letter = m ? m[1] : 'C', accidental = m ? (m[2] || '') : '', octave = m ? m[3] : '4';
+        const sn = new StaveNote({ keys: [`${letter.toLowerCase()}${accidental}/${octave}`], duration: durationToVexKey(n.duration) });
         const expected = keyDefaultAccidental(keySignature, letter) || '';
-
-        if (n.duration === 'grace') {
-          const gn = new GraceNote({ keys: [vfKey], duration: '8', slash: true });
-          if (accidental !== expected) gn.addModifier(new Accidental(accidental || 'n'));
-          pendingGrace.push(gn);
-          return; // không tự đứng làm 1 nốt trong ô nhịp
-        }
-
-        const sn = new StaveNote({ keys: [vfKey], duration: durationToVexKey(n.duration) });
         if (accidental !== expected) sn.addModifier(new Accidental(accidental || 'n'));
         if (n.fermata) sn.addModifier(new Articulation('a@a').setPosition(3));
-        if (pendingGrace.length > 0) { sn.addModifier(new GraceNoteGroup(pendingGrace).beamNotes()); pendingGrace = []; }
-
-        staveNotes.push(sn);
-        idxToStaveNote.set(idx, sn);
-        idxToLine.set(idx, { context, stave });
+        idxToStaveNote.set(notes.indexOf(n), sn);
+        return sn;
       });
-
-      if (staveNotes.length === 0) return; // dòng chỉ toàn nốt hoa mỹ mồ côi (hiếm) — bỏ qua vẽ voice
-      const totalBeats = lineItems.reduce((s, { n }) => s + durationBeats(n.duration), 0);
-      const voice = new Voice({ numBeats: totalBeats || 4, beatValue: 4 }).setStrict(false);
+      const totalBeats = lineItems.reduce((s, it) => s + (it.rest ? it.beats : durationBeats(it.original.duration)), 0);
+      const voice = new Voice({ numBeats: totalBeats || bpMeasure, beatValue: 4 }).setStrict(false);
       voice.addTickables(staveNotes);
       new Formatter().joinVoices([voice]).format([voice], width - (lineNo === 0 ? 90 : 40));
       voice.draw(context, stave);
     });
 
-    // 2) Vẽ dấu nối (tie) / dấu luyến (slur) — chỉ khi 2 nốt liền kề CÙNG dòng.
-    notes.forEach((n, idx) => {
+    notes.forEach((n, i) => {
       if (!n.tieToNext && !n.slurToNext) return;
-      const a = idxToStaveNote.get(idx);
-      const b = idxToStaveNote.get(idx + 1);
-      const sameLine = idxToLine.get(idx)?.stave === idxToLine.get(idx + 1)?.stave;
-      if (!a || !b || !sameLine) return;
-      if (n.tieToNext) {
-        new StaveTie({ first_note: a, last_note: b, first_indices: [0], last_indices: [0] }).setContext(context).draw();
-      } else if (n.slurToNext) {
-        new Curve(a, b, {}).setContext(context).draw();
-      }
+      const nxt = notes.find((o) => Math.abs(o.startBeat - (n.startBeat + durationBeats(n.duration))) < 0.05 && o.pitch === (n.tieToNext ? n.pitch : o.pitch));
+      const a = idxToStaveNote.get(i);
+      const b = nxt ? idxToStaveNote.get(notes.indexOf(nxt)) : null;
+      if (!a || !b) return;
+      if (n.tieToNext) new StaveTie({ first_note: a, last_note: b, first_indices: [0], last_indices: [0] }).setContext(context).draw();
+      else if (n.slurToNext) new Curve(a, b, {}).setContext(context).draw();
     });
   }
 
-  function addNote(pitchTemplate) {
-    const letter = pitchLetter(pitchTemplate);
-    const octave = pitchOctave(pitchTemplate);
+  function beatFromEvent(clientX) {
+    const rect = gridScrollRef.current.getBoundingClientRect();
+    const x = clientX - rect.left + gridScrollRef.current.scrollLeft;
+    return Math.max(0, x / BEAT_PX);
+  }
+
+  function computePitch(letter, octave) {
     let accidental;
     if (accidentalOverride === 'n') accidental = '';
     else if (accidentalOverride) accidental = accidentalOverride;
     else accidental = keyDefaultAccidental(keySignature, letter) || '';
-    const pitch = `${letter}${accidental}${octave}`;
-
-    setNotes((prev) => [
-      ...prev,
-      {
-        pitch, duration: selectedDuration,
-        startBeat: prev.reduce((s, n) => s + durationBeats(n.duration), 0),
-        lyric: '', fermata: false, lineBreak: pendingLineBreak, tieToNext: false, slurToNext: false,
-      },
-    ]);
-    setAccidentalOverride(null);
-    setPendingLineBreak(false);
+    return `${letter}${accidental}${octave}`;
   }
 
-  function setLyricAt(idx, lyric) { setNotes((prev) => prev.map((n, i) => (i === idx ? { ...n, lyric } : n))); }
-  function toggleFlagAt(idx, field) { setNotes((prev) => prev.map((n, i) => (i === idx ? { ...n, [field]: !n[field] } : n))); }
-
-  function removeNoteAt(idx) {
+  function placeNote(rowKey, startBeat, durKey) {
+    pushHistory();
+    const dur = durationBeats(durKey);
     setNotes((prev) => {
-      let acc = 0;
-      return prev.filter((_, i) => i !== idx).map((n) => {
-        const withStart = { ...n, startBeat: acc };
-        acc += durationBeats(n.duration);
-        return withStart;
-      });
+      const filtered = prev.filter((n) => !(n.startBeat < startBeat + dur - 0.001 && n.startBeat + durationBeats(n.duration) > startBeat + 0.001));
+      const next = [...filtered, { pitch: rowKey.pitch, duration: durKey, startBeat: snap(startBeat), lyric: '', fermata: false, tieToNext: false, slurToNext: false }];
+      return next.sort((a, b) => a.startBeat - b.startBeat);
     });
+    import('tone').then(async (Tone) => { await Tone.start(); const s = new Tone.Synth().toDestination(); s.triggerAttackRelease(rowKey.pitch, '8n'); });
   }
 
-  function undoLast() { setNotes((prev) => prev.slice(0, -1)); }
-  function clearAll() {
-    if (notes.length === 0) return;
-    if (confirm('Xoá hết nốt đã nhập trong bài này?')) setNotes([]);
+  function onGridPointerDown(e, rowKey) {
+    if (paintMode !== 'note') return;
+    e.preventDefault();
+    const startBeat = snap(beatFromEvent(e.clientX));
+    dragRef.current = { rowKey, startBeat, moved: false };
+    function onMove(ev) {
+      const cur = snap(beatFromEvent(ev.clientX));
+      if (Math.abs(cur - startBeat) >= SNAP) dragRef.current.moved = true;
+      dragRef.current.previewEnd = Math.max(startBeat + SNAP, cur);
+      force((x) => x + 1);
+    }
+    function onUp() {
+      const d = dragRef.current;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      if (!d) return;
+      const durKey = d.moved ? nearestDuration(d.previewEnd - d.startBeat).key : selectedDuration;
+      placeNote(d.rowKey, d.startBeat, durKey);
+      dragRef.current = null;
+      setAccidentalOverride(null);
+      force((x) => x + 1);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
+
+  function onNoteClick(e, note) {
+    e.stopPropagation();
+    if (paintMode === 'note') { pushHistory(); setNotes((prev) => prev.filter((n) => n !== note)); return; }
+    if (paintMode === 'fermata') { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, fermata: !n.fermata } : n))); return; }
+    if (paintMode === 'tie') { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, tieToNext: !n.tieToNext, slurToNext: false } : n))); return; }
+    if (paintMode === 'slur') { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, slurToNext: !n.slurToNext, tieToNext: false } : n))); return; }
+    if (paintMode === 'lyric') {
+      const text = window.prompt('Lời cho nốt này:', note.lyric || '');
+      if (text !== null) { pushHistory(); setNotes((prev) => prev.map((n) => (n === note ? { ...n, lyric: text } : n))); }
+    }
+  }
+
+  function clearAll() { if (notes.length === 0) return; if (confirm('Xoá hết nốt trong bài này?')) { pushHistory(); setNotes([]); } }
 
   async function playPreview() {
     if (notes.length === 0 || playing) return;
@@ -213,216 +281,146 @@ export default function MusicLessonComposerPage() {
       const Tone = await import('tone');
       await Tone.start();
       const synth = new Tone.Synth().toDestination();
-      let t = Tone.now();
+      const spb = 60 / (tempoBpm || 90);
+      const base = Tone.now();
+      let maxEnd = 0;
       notes.forEach((n) => {
-        const toneDur = durationToToneKey(n.duration);
-        synth.triggerAttackRelease(n.pitch, toneDur, t);
-        t += Tone.Time(toneDur).toSeconds() * (90 / (tempoBpm || 90));
+        const t = base + n.startBeat * spb;
+        synth.triggerAttackRelease(n.pitch, durationToToneKey(n.duration), t);
+        maxEnd = Math.max(maxEnd, n.startBeat + durationBeats(n.duration));
       });
-      setTimeout(() => setPlaying(false), (t - Tone.now()) * 1000 + 150);
-    } catch (e) {
-      setErrorMsg('Không phát được âm thanh: ' + e.message);
-      setPlaying(false);
-    }
+      setTimeout(() => setPlaying(false), maxEnd * spb * 1000 + 200);
+    } catch (e) { setErrorMsg('Không phát được: ' + e.message); setPlaying(false); }
   }
 
   async function handleSave() {
-    setSaving(true);
-    setErrorMsg('');
-    const payload = {
-      notes, key_signature: keySignature, time_signature: timeSignature,
-      tempo_marking: tempoMarking || null, tempo_bpm: Number(tempoBpm) || 90,
-      updated_at: new Date().toISOString(),
-    };
+    setSaving(true); setErrorMsg('');
+    const payload = { notes, key_signature: keySignature, time_signature: timeSignature, tempo_marking: tempoMarking || null, tempo_bpm: Number(tempoBpm) || 90, updated_at: new Date().toISOString() };
     if (isSong) { payload.composer = composer || null; payload.lyricist = lyricist || null; }
     const { data, error } = await supabase.from('music_lessons').update(payload).eq('id', lessonId).select();
     setSaving(false);
     if (error) { setErrorMsg(error.message); return; }
-    if (!data || data.length === 0) {
-      setErrorMsg('Lưu không thành công — 0 dòng được cập nhật. Nhiều khả năng tài khoản chưa thật sự nằm trong teacher_assignments cho môn Âm nhạc (RLS chặn âm thầm). Kiểm tra lại phân công rồi thử lại.');
-      return;
-    }
+    if (!data || data.length === 0) { setErrorMsg('Lưu không thành công — kiểm tra lại phân công môn Âm nhạc (teacher_assignments).'); return; }
     router.push(`/teacher/music/units/${lesson.music_units.id}`);
   }
 
   if (!lesson) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Đang tải...</div>;
 
+  const preview = dragRef.current;
+
   return (
     <div className="wrap">
       <style jsx>{`
-        .wrap { max-width: 800px; margin: 0 auto; padding: 28px 24px 80px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
-        h1 { font-size: 22px; color: #17302d; margin: 14px 0 4px; display: flex; align-items: center; gap: 8px; }
-        .kind-pill { font-size: 11.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
-        .kind-pill.song { color: #58A700; background: #EAFBEA; }
-        .kind-pill.reading { color: #b45309; background: #FEF3E2; }
-        .sub-note { color: #6b7f7a; font-size: 13.5px; margin: 0 0 22px; max-width: 620px; }
-        .card { background: #fff; border-radius: 18px; padding: 20px 22px; margin-bottom: 18px; border: 1px solid #e5eeec; box-shadow: 0 2px 8px rgba(23,48,45,0.04); }
-        .card h2 { margin: 0 0 14px; font-size: 15px; color: #17302d; }
-        .card-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
-        .card-head h2 { margin: 0; }
+        .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 70px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
+        h1 { font-size: 21px; color: #17302d; margin: 12px 0 4px; }
+        .sub-note { color: #6b7f7a; font-size: 13px; margin: 0 0 16px; max-width: 700px; }
+        .card { background: #fff; border-radius: 16px; padding: 16px 18px; margin-bottom: 14px; border: 1px solid #e5eeec; box-shadow: 0 2px 8px rgba(23,48,45,0.04); }
         .meta-row { display: flex; gap: 10px; flex-wrap: wrap; }
-        .meta-row > div { flex: 1; min-width: 150px; }
-        label.field-label { display: block; font-size: 12.5px; font-weight: 600; color: #374151; margin-bottom: 5px; }
-        input.field, select.field { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1.5px solid #e2e8f0; font-size: 13.5px; font-family: inherit; box-sizing: border-box; }
-        .duration-row, .override-row { display: flex; gap: 8px; flex-wrap: wrap; }
-        .dur-btn, .ov-btn { border: 1.5px solid #e2e8f0; background: #fff; border-radius: 999px; padding: 8px 16px; font-size: 13.5px; font-weight: 600; color: #374151; cursor: pointer; }
-        .dur-btn.active { border-color: #225da3; background: #E9F2FC; color: #225da3; }
-        .ov-btn.active { border-color: #b45309; background: #FEF3E2; color: #b45309; }
-        .keyboard { display: flex; gap: 6px; flex-wrap: wrap; }
-        .key { width: 56px; height: 76px; border-radius: 10px; border: 1.5px solid #dbe7f3; background: #fff; cursor: pointer;
-          display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 10px; gap: 2px; }
-        .key:hover { background: #E9F2FC; border-color: #225da3; }
-        .key:active { transform: translateY(1px); }
-        .key-name { font-weight: 700; font-size: 13px; color: #17302d; }
-        .key-oct { font-size: 10.5px; color: #9ca3af; }
-        .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
-        .toolbar button { border: 1.5px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 8px 14px; font-size: 13px; font-weight: 600; color: #374151; cursor: pointer; }
-        .toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
-        .toolbar button.linebreak.active { border-color: #225da3; background: #E9F2FC; color: #225da3; }
-        .tempo-label { font-size: 13px; font-style: italic; color: #374151; margin-bottom: 6px; }
-        .staff { overflow-x: auto; min-height: 40px; }
-        .empty { text-align: center; color: #9ca3af; padding: 20px; font-size: 13.5px; }
-        .notes-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-        .note-pill { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; background: #f3f6f5; border-radius: 12px; padding: 8px 10px; font-size: 12.5px; font-weight: 600; color: #374151; min-width: 64px; }
-        .note-pill.line-start { border: 1.5px dashed #225da3; }
-        .note-pill .pill-top { display: flex; align-items: center; gap: 4px; }
-        .note-pill .pill-actions { display: flex; gap: 3px; }
-        .note-pill button.icon-btn { border: none; background: transparent; font-size: 12px; cursor: pointer; padding: 0; opacity: 0.3; }
-        .note-pill button.icon-btn.on { opacity: 1; }
-        .note-pill button.x { border: none; background: #e5e7eb; color: #4b5563; border-radius: 50%; width: 16px; height: 16px; line-height: 1; cursor: pointer; font-size: 10px; }
-        .lyric-input { width: 60px; padding: 3px 5px; border-radius: 6px; border: 1px solid #dbe7f3; font-size: 11.5px; text-align: center; font-family: inherit; }
-        .error { color: #a3374a; font-size: 13.5px; background: #fdeef0; padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; }
-        .save-btn { width: 100%; padding: 14px; background: #225da3; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 3px 0 #184270; }
-        .save-btn:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; }
-        .legend { font-size: 11.5px; color: #9ca3af; margin-top: 10px; }
+        .meta-row > div { flex: 1; min-width: 140px; }
+        label.fl { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px; }
+        input.f, select.f { width: 100%; padding: 8px 10px; border-radius: 9px; border: 1.5px solid #e2e8f0; font-size: 13px; font-family: inherit; box-sizing: border-box; }
+        .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+        .chip { border: 1.5px solid #e2e8f0; background: #fff; border-radius: 999px; padding: 6px 13px; font-size: 12.5px; font-weight: 600; color: #374151; cursor: pointer; }
+        .chip.active { border-color: #225da3; background: #E9F2FC; color: #225da3; }
+        .toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
+        .toolbar button { border: 1.5px solid #e2e8f0; background: #fff; border-radius: 9px; padding: 7px 12px; font-size: 12.5px; font-weight: 600; color: #374151; cursor: pointer; }
+        .toolbar button:disabled { opacity: 0.4; }
+        .roll { display: flex; border: 1px solid #e5eeec; border-radius: 12px; overflow: hidden; }
+        .piano-col { flex-shrink: 0; width: 76px; }
+        .grid-scroll { overflow-x: auto; flex: 1; position: relative; }
+        .row-key { height: ${ROW_H}px; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 10.5px; font-weight: 700; border-bottom: 1px solid #eef1f0; box-sizing: border-box; }
+        .grid-row { position: absolute; left: 0; right: 0; height: ${ROW_H}px; border-bottom: 1px solid #eef1f0; }
+        .grid-note { position: absolute; height: ${ROW_H - 3}px; border-radius: 6px; color: #fff; font-weight: 700; font-size: 10.5px; display: flex; align-items: center; padding: 0 5px; cursor: pointer; overflow: hidden; white-space: nowrap; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .staff-card .staff { overflow-x: auto; min-height: 40px; }
+        .error { color: #a3374a; font-size: 13px; background: #fdeef0; padding: 9px 13px; border-radius: 9px; margin-bottom: 12px; }
+        .save-btn { width: 100%; padding: 13px; background: #225da3; color: #fff; border: none; border-radius: 11px; font-weight: 700; font-size: 14.5px; cursor: pointer; box-shadow: 0 3px 0 #184270; }
+        .save-btn:disabled { background: #9ca3af; box-shadow: none; }
       `}</style>
 
       <Link href={`/teacher/music/units/${lesson.music_units.id}`} style={backLinkStyle}>← {lesson.music_units.title}</Link>
-      <h1>
-        {lesson.title}
-        <span className={isSong ? 'kind-pill song' : 'kind-pill reading'}>{isSong ? '🎤 Bài hát' : '🎼 Bài đọc nhạc'}</span>
-      </h1>
-      <p className="sub-note">
-        Chọn giọng &amp; nhịp trước. Dấu hóa tự áp theo giọng khi bấm phím đàn — nốt biến âm thì bấm ♯/♭/♮ trước khi bấm phím
-        cho đúng 1 nốt đó. Muốn xuống dòng, bấm "↵ Xuống dòng" trước khi bấm nốt tiếp theo.
-      </p>
+      <h1>{lesson.title} {isSong ? '🎤' : '🎼'}</h1>
+      <p className="sub-note">Bấm vào ô trên lưới để đặt nốt (theo đúng cao độ của hàng, đúng thời điểm của cột) — kéo ngang lúc bấm để tự chọn độ dài, không kéo thì dùng độ dài đang chọn sẵn bên dưới. Bấm vào 1 nốt đã có để xoá (hoặc để gắn dấu miễn nhịp/nối/luyến/lời tuỳ chế độ bấm đang chọn).</p>
 
       {isSong && (
         <div className="card">
-          <h2>Thông tin bài hát</h2>
           <div className="meta-row">
-            <div><label className="field-label">Nhạc sĩ</label><input className="field" value={composer} onChange={(e) => setComposer(e.target.value)} placeholder="VD: Nguyễn Văn Hiên" /></div>
-            <div><label className="field-label">Lời thơ / tác giả lời</label><input className="field" value={lyricist} onChange={(e) => setLyricist(e.target.value)} placeholder="VD: Ý thơ Từ Nguyên Thạch" /></div>
+            <div><label className="fl">Nhạc sĩ</label><input className="f" value={composer} onChange={(e) => setComposer(e.target.value)} /></div>
+            <div><label className="fl">Lời thơ</label><input className="f" value={lyricist} onChange={(e) => setLyricist(e.target.value)} /></div>
           </div>
         </div>
       )}
 
       <div className="card">
-        <h2>Giọng, nhịp &amp; tốc độ</h2>
         <div className="meta-row">
-          <div>
-            <label className="field-label">Giọng (hóa biểu)</label>
-            <select className="field" value={keySignature} onChange={(e) => setKeySignature(e.target.value)}>
-              {KEY_SIGNATURES.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="field-label">Nhịp</label>
-            <select className="field" value={timeSignature} onChange={(e) => setTimeSignature(e.target.value)}>
-              {TIME_SIGNATURES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="field-label">Chỉ dẫn tốc độ (chữ)</label>
-            <input className="field" value={tempoMarking} onChange={(e) => setTempoMarking(e.target.value)} placeholder="VD: Vừa phải" />
-          </div>
-          <div>
-            <label className="field-label">Tempo phát nhạc (BPM)</label>
-            <input className="field" type="number" min="30" max="220" value={tempoBpm} onChange={(e) => setTempoBpm(e.target.value)} />
-          </div>
+          <div><label className="fl">Giọng</label><select className="f" value={keySignature} onChange={(e) => setKeySignature(e.target.value)}>{KEY_SIGNATURES.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}</select></div>
+          <div><label className="fl">Nhịp</label><select className="f" value={timeSignature} onChange={(e) => setTimeSignature(e.target.value)}>{TIME_SIGNATURES.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+          <div><label className="fl">Chỉ dẫn tốc độ</label><input className="f" value={tempoMarking} onChange={(e) => setTempoMarking(e.target.value)} placeholder="Vừa phải" /></div>
+          <div><label className="fl">Tempo (BPM)</label><input className="f" type="number" value={tempoBpm} onChange={(e) => setTempoBpm(e.target.value)} /></div>
         </div>
       </div>
 
       <div className="card">
-        <h2>Trường độ đang chọn</h2>
-        <div className="duration-row">
-          {DURATIONS.map((d) => (
-            <button key={d.key} className={selectedDuration === d.key ? 'dur-btn active' : 'dur-btn'} onClick={() => setSelectedDuration(d.key)}>
-              {d.label}
-            </button>
-          ))}
+        <label className="fl">Độ dài khi bấm (không kéo)</label>
+        <div className="chip-row" style={{ marginBottom: 10 }}>
+          {DURATIONS.map((d) => <button key={d.key} className={selectedDuration === d.key ? 'chip active' : 'chip'} onClick={() => setSelectedDuration(d.key)}>{d.label}</button>)}
+        </div>
+        <label className="fl">Dấu hóa cho nốt tiếp theo</label>
+        <div className="chip-row" style={{ marginBottom: 10 }}>
+          {OVERRIDE_OPTIONS.map((o) => <button key={o.label} className={accidentalOverride === o.key ? 'chip active' : 'chip'} onClick={() => setAccidentalOverride(o.key)}>{o.label}</button>)}
+        </div>
+        <label className="fl">Chế độ bấm</label>
+        <div className="chip-row">
+          {PAINT_MODES.filter((m) => isSong || m.key !== 'lyric').map((m) => <button key={m.key} className={paintMode === m.key ? 'chip active' : 'chip'} onClick={() => setPaintMode(m.key)}>{m.label}</button>)}
         </div>
       </div>
 
       <div className="card">
-        <h2>Dấu hóa cho nốt tiếp theo (biến âm ngoài giọng)</h2>
-        <div className="override-row">
-          {OVERRIDE_OPTIONS.map((o) => (
-            <button key={o.label} className={accidentalOverride === o.key ? 'ov-btn active' : 'ov-btn'} onClick={() => setAccidentalOverride(o.key)}>
-              {o.label}
-            </button>
-          ))}
+        <div className="toolbar" style={{ marginBottom: 10 }}>
+          <button onClick={undo} disabled={historyRef.current.length === 0}>↩ Hoàn tác</button>
+          <button onClick={clearAll} disabled={notes.length === 0}>🗑 Xoá hết</button>
+          <button onClick={playPreview} disabled={notes.length === 0 || playing}>{playing ? '🔊 Đang phát…' : '▶ Nghe thử'}</button>
+          <button onClick={() => setRangeMin((v) => v - 12)}>⬇ Thêm quãng 8 thấp</button>
+          <button onClick={() => setRangeMax((v) => v + 12)}>⬆ Thêm quãng 8 cao</button>
         </div>
-      </div>
 
-      <div className="card">
-        <h2>Bàn phím — bấm để thêm nốt</h2>
-        <div className="toolbar" style={{ marginBottom: 12 }}>
-          <button className={pendingLineBreak ? 'linebreak active' : 'linebreak'} onClick={() => setPendingLineBreak((v) => !v)}>
-            ↵ Xuống dòng {pendingLineBreak ? '(sẽ áp cho nốt tiếp theo)' : 'ở nốt tiếp theo'}
-          </button>
-        </div>
-        <div className="keyboard">
-          {KEYBOARD_PITCHES.map((p) => (
-            <button key={p} className="key" onClick={() => addNote(p)}>
-              <span className="key-name">{pitchToVietnamese(p)}</span>
-              <span className="key-oct">{pitchOctave(p)}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-head">
-          <h2>Khuông nhạc ({notes.length} nốt)</h2>
-          <div className="toolbar">
-            <button onClick={undoLast} disabled={notes.length === 0}>↩ Xoá nốt cuối</button>
-            <button onClick={clearAll} disabled={notes.length === 0}>🗑 Xoá hết</button>
-            <button onClick={playPreview} disabled={notes.length === 0 || playing}>{playing ? '🔊 Đang phát…' : '▶ Nghe thử'}</button>
+        <div className="roll">
+          <div className="piano-col">
+            {pitchRows.map((k) => (
+              <div key={k.midi} className="row-key" style={{ background: k.isBlack ? '#2a2a2a' : '#fff', color: k.isBlack ? '#fff' : NOTE_COLOR[k.letter] }}>
+                {pitchToVietnamese(k.pitch)}{pitchOctave(k.pitch)}
+              </div>
+            ))}
           </div>
-        </div>
-        {tempoMarking && notes.length > 0 && <p className="tempo-label">{tempoMarking}</p>}
-        <div ref={staffRef} className="staff" />
-        {notes.length === 0 && <p className="empty">Chưa có nốt nào — bấm vào phím đàn ở trên để bắt đầu.</p>}
-
-        {notes.length > 0 && (
-          <>
-            <div className="notes-list">
-              {notes.map((n, idx) => (
-                <span key={idx} className={n.lineBreak ? 'note-pill line-start' : 'note-pill'}>
-                  <span className="pill-top">
-                    {idx + 1}. {pitchToVietnamese(n.pitch)}{pitchOctave(n.pitch)}
-                  </span>
-                  <span className="pill-actions">
-                    <button className={`icon-btn ${n.lineBreak ? 'on' : ''}`} onClick={() => toggleFlagAt(idx, 'lineBreak')} title="Bắt đầu dòng mới ở đây">↵</button>
-                    <button className={`icon-btn ${n.fermata ? 'on' : ''}`} onClick={() => toggleFlagAt(idx, 'fermata')} title="Dấu miễn nhịp (fermata)">𝄐</button>
-                    {idx < notes.length - 1 && (
-                      <>
-                        <button className={`icon-btn ${n.tieToNext ? 'on' : ''}`} onClick={() => toggleFlagAt(idx, 'tieToNext')} title="Nối tới nốt sau (cùng cao độ)">⌒</button>
-                        <button className={`icon-btn ${n.slurToNext ? 'on' : ''}`} onClick={() => toggleFlagAt(idx, 'slurToNext')} title="Luyến tới nốt sau">⌣</button>
-                      </>
-                    )}
-                    <button className="x" onClick={() => removeNoteAt(idx)} title="Xoá nốt này">×</button>
-                  </span>
-                  {isSong && (
-                    <input className="lyric-input" placeholder="lời…" value={n.lyric || ''} onChange={(e) => setLyricAt(idx, e.target.value)} />
-                  )}
-                </span>
+          <div ref={gridScrollRef} className="grid-scroll" style={{ height: pitchRows.length * ROW_H }}>
+            <div style={{ position: 'relative', width: gridBeats * BEAT_PX, height: pitchRows.length * ROW_H }}>
+              {pitchRows.map((k, ri) => (
+                <div key={k.midi} className="grid-row" onPointerDown={(e) => onGridPointerDown(e, k)}
+                  style={{ top: ri * ROW_H, width: gridBeats * BEAT_PX, background: k.isBlack ? '#f7f8f9' : '#fff' }} />
               ))}
+              {Array.from({ length: Math.floor(gridBeats / beatsPerMeasure(timeSignature)) + 1 }).map((_, mi) => (
+                <div key={mi} style={{ position: 'absolute', left: mi * beatsPerMeasure(timeSignature) * BEAT_PX, top: 0, bottom: 0, width: mi === 0 ? 0 : 1.5, background: '#c7ccd1' }} />
+              ))}
+              {notes.map((n, i) => {
+                const ri = pitchRows.findIndex((r) => r.pitch === n.pitch);
+                if (ri === -1) return null;
+                return (
+                  <div key={i} onPointerDown={(e) => onNoteClick(e, n)}
+                    style={{ ...{}, position: 'absolute', top: ri * ROW_H + 1, left: n.startBeat * BEAT_PX, width: durationBeats(n.duration) * BEAT_PX - 2, background: NOTE_COLOR[n.pitch[0]], height: ROW_H - 3, borderRadius: 6, color: '#fff', fontWeight: 700, fontSize: 10.5, display: 'flex', alignItems: 'center', padding: '0 5px', cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>
+                    {pitchToVietnamese(n.pitch)}{n.fermata ? ' 𝄐' : ''}{n.tieToNext ? ' ⌒' : ''}{n.slurToNext ? ' ⌣' : ''}{n.lyric ? ` "${n.lyric}"` : ''}
+                  </div>
+                );
+              })}
+              {preview && (
+                <div style={{ position: 'absolute', top: pitchRows.findIndex((r) => r.pitch === preview.rowKey.pitch) * ROW_H + 1, left: preview.startBeat * BEAT_PX, width: Math.max(SNAP, (preview.previewEnd || preview.startBeat + SNAP) - preview.startBeat) * BEAT_PX - 2, height: ROW_H - 3, background: 'rgba(34,93,163,0.5)', borderRadius: 6 }} />
+              )}
             </div>
-            <p className="legend">↵ xuống dòng · 𝄐 miễn nhịp · ⌒ nối (cùng cao độ) · ⌣ luyến (khác cao độ) — nối/luyến chỉ áp dụng trong cùng 1 dòng.</p>
-          </>
-        )}
+          </div>
+        </div>
+      </div>
+
+      <div className="card staff-card">
+        <label className="fl">Xem trước khuông nhạc (tự chia dòng theo ô nhịp)</label>
+        <div ref={staffRef} className="staff" />
       </div>
 
       {errorMsg && <div className="error">{errorMsg}</div>}

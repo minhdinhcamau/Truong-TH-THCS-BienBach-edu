@@ -99,7 +99,7 @@ export default function MusicLessonPlayPage() {
     setLoading(false);
   }
 
-  const notesForPlay = useMemo(() => (lesson?.notes || []).filter((n) => n.duration !== 'grace'), [lesson]);
+  const notesForPlay = useMemo(() => (lesson?.notes || []).filter((n) => n.duration !== 'grace').slice().sort((a, b) => (a.startBeat || 0) - (b.startBeat || 0)), [lesson]);
   const lanePitches = useMemo(() => {
     const uniq = [...new Set(notesForPlay.map((n) => n.pitch))];
     return uniq.sort((a, b) => pitchToMidi(a) - pitchToMidi(b));
@@ -170,12 +170,9 @@ export default function MusicLessonPlayPage() {
     tryFullscreen();
     const lv = LEVELS.find((l) => l.key === level);
     const bpm = (lesson.tempo_bpm || 90) * (lv.mult ?? 1);
-    let t = 0;
     timelineRef.current = notesForPlay.map((n) => {
       const dur = durationBeats(n.duration) * 60 / bpm;
-      const item = { pitch: n.pitch, time: t, duration: dur, judged: null, timingError: null };
-      t += dur;
-      return item;
+      return { pitch: n.pitch, time: (n.startBeat || 0) * 60 / bpm, duration: dur, judged: null, timingError: null };
     });
     answerLogsRef.current = [];
     pauseOffsetRef.current = 0;
