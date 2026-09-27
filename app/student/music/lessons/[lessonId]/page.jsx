@@ -21,15 +21,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { finishMusicLessonAttempt } from '@/lib/musicXp';
-import { pitchToVietnamese, durationBeats, pitchToMidi, starsForScore, LEVELS } from '@/lib/musicNotes';
+import { pitchToVietnamese, durationBeats, pitchToMidi, buildPianoKeys, NOTE_COLOR, starsForScore, LEVELS } from '@/lib/musicNotes';
 
 const PPS = 170; // pixel/giây tốc độ nốt chạy ngang (cấp Chậm/Vừa/Nhanh)
 const HIT_LINE_PCT = 20;
 const PERFECT_T = 0.12, GREAT_T = 0.25, LATE_T = 0.42; // ngưỡng (giây) cho Hoàn hảo/Tuyệt/Hơi trễ
 
-function laneColor(i) {
+function laneColor(pitchOrIdx) {
+  // Nhận cả tên nốt (ưu tiên) lẫn số thứ tự làn (dự phòng).
+  if (typeof pitchOrIdx === 'string') {
+    const letter = pitchOrIdx[0];
+    return NOTE_COLOR[letter] || '#3B82F6';
+  }
   const hues = [265, 210, 160, 30, 340, 90, 5, 190, 45, 120];
-  return `hsl(${hues[i % hues.length]}, 70%, 55%)`;
+  return `hsl(${hues[pitchOrIdx % hues.length]}, 70%, 55%)`;
 }
 function judgeLabel(err) {
   if (err <= PERFECT_T) return { text: 'Hoàn hảo', color: '#58CC02' };
@@ -63,6 +68,7 @@ export default function MusicLessonPlayPage() {
   const [result, setResult] = useState(null);
   const [popups, setPopups] = useState([]); // [{id, text, color, lane}]
   const [containerWidth, setContainerWidth] = useState(360);
+  const [fullscreen, setFullscreen] = useState(false);
   const [, forceRender] = useState(0);
 
   const timelineRef = useRef([]);
@@ -98,9 +104,18 @@ export default function MusicLessonPlayPage() {
     const uniq = [...new Set(notesForPlay.map((n) => n.pitch))];
     return uniq.sort((a, b) => pitchToMidi(a) - pitchToMidi(b));
   }, [notesForPlay]);
+  const pianoKeys = useMemo(() => {
+    if (lanePitches.length === 0) return [];
+    const midis = lanePitches.map(pitchToMidi);
+    return buildPianoKeys(Math.min(...midis) - 1, Math.max(...midis) + 1);
+  }, [lanePitches]);
 
+  const [isPortrait, setIsPortrait] = useState(false);
   useEffect(() => {
-    function measure() { if (containerRef.current) setContainerWidth(containerRef.current.offsetWidth); }
+    function measure() {
+      if (containerRef.current) setContainerWidth(containerRef.current.offsetWidth);
+      setIsPortrait(window.innerHeight > window.innerWidth && window.innerWidth < 768);
+    }
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
@@ -135,7 +150,14 @@ export default function MusicLessonPlayPage() {
   function tryFullscreen() {
     const el = pageRef.current;
     const req = el?.requestFullscreen || el?.webkitRequestFullscreen;
-    try { req && req.call(el); } catch (e) { /* trình duyệt không hỗ trợ (vd Safari iOS) — bỏ qua, không sao */ }
+    try { req && req.call(el); } catch (e) { /* trình duyệt không hỗ trợ (vd Safari iOS) — dùng bản "toàn màn hình giả" bên dưới thay thế */ }
+    try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
+    setFullscreen(true);
+  }
+  function exitFullscreen() {
+    try { document.fullscreenElement && document.exitFullscreen && document.exitFullscreen(); } catch (e) {}
+    try { screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); } catch (e) {}
+    setFullscreen(false);
   }
 
   async function chooseLevel(lvKey) {
@@ -247,6 +269,8 @@ export default function MusicLessonPlayPage() {
       pitchAccuracy, rhythmAccuracy, stars, heartsLeft: lesson.max_hearts || 5, answerLogs: answerLogsRef.current,
     });
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    try { screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); } catch (e) {}
+    setFullscreen(false);
     setResult({ ...res, pitchAccuracy, rhythmAccuracy, stars });
     setPhase('result');
   }
@@ -281,6 +305,9 @@ export default function MusicLessonPlayPage() {
           <div style={{ fontSize: 44, textAlign: 'center' }}>🎹</div>
           <h1 style={{ textAlign: 'center', color: '#17302d' }}>{lesson.title} — {LEVELS.find((l) => l.key === level).label}</h1>
           <p style={{ textAlign: 'center', color: '#6b7280' }}>{samplerReady ? 'Đàn piano đã sẵn sàng!' : 'Đang tải âm thanh đàn piano…'}</p>
+          <button style={{ ...styles.primaryBtn, background: fullscreen ? '#E9F2FC' : '#fff', color: '#225da3', border: '2px solid #225da3', boxShadow: 'none' }} onClick={() => (fullscreen ? exitFullscreen() : tryFullscreen())}>
+            {fullscreen ? '✓ Đã bật toàn màn hình' : '⛶ Bật toàn màn hình (nên xoay ngang máy)'}
+          </button>
           <button style={styles.primaryBtn} disabled={!samplerReady} onClick={startGame}>{samplerReady ? '▶ Bắt đầu' : 'Đang tải…'}</button>
         </div>
       </div>
@@ -315,12 +342,15 @@ export default function MusicLessonPlayPage() {
   const laneHeight = Math.max(40, Math.min(70, 340 / Math.max(1, lanePitches.length)));
 
   return (
-    <div ref={pageRef} style={{ ...styles.playWrap, ...noSelectStyle }} onContextMenu={block}>
+    <div ref={pageRef} style={{ ...(fullscreen ? styles.playWrapFullscreen : styles.playWrap), ...noSelectStyle }} onContextMenu={block}>
+      {isPortrait && <div style={styles.rotateHint}>📱 Xoay ngang màn hình để chơi thoải mái hơn</div>}
       <div style={styles.topBar}>
+        <button onClick={() => (fullscreen ? exitFullscreen() : tryFullscreen())} style={styles.topBarBtn} title={fullscreen ? 'Thoát toàn màn hình' : 'Bật toàn màn hình'}>{fullscreen ? '⛶' : '⛶'}</button>
         <div style={{ color: '#fff', fontWeight: 700 }}>{lesson.title} · {LEVELS.find((l) => l.key === level).label}</div>
+        <button onClick={() => { exitFullscreen(); router.push('/student/music'); }} style={styles.topBarBtn} title="Thoát bài học">✕</button>
       </div>
 
-      <div ref={containerRef} style={{ ...styles.lanesWrap, height: laneHeight * lanePitches.length }}>
+      <div ref={containerRef} className="music-lanes-wrap" style={{ ...styles.lanesWrap, height: laneHeight * lanePitches.length, flex: '1 1 auto', minHeight: 0 }}>
         <div style={styles.hitLine} />
         {lanePitches.map((p, i) => (
           <div key={p} style={{ ...styles.lane, top: (lanePitches.length - 1 - i) * laneHeight, height: laneHeight }} />
@@ -333,7 +363,7 @@ export default function MusicLessonPlayPage() {
             <div key={idx} style={{
               ...styles.noteBlock, left: `${xPct}%`,
               top: (lanePitches.length - 1 - laneIdx) * laneHeight + 4, height: laneHeight - 8,
-              background: n.judged === 'hit' ? '#58CC02' : n.judged === 'miss' ? 'rgba(255,75,75,0.5)' : laneColor(laneIdx),
+              background: n.judged === 'hit' ? '#58CC02' : n.judged === 'miss' ? 'rgba(255,75,75,0.5)' : laneColor(n.pitch),
               opacity: n.judged ? 0.5 : 1,
             }}>{pitchToVietnamese(n.pitch)}</div>
           );
@@ -344,12 +374,29 @@ export default function MusicLessonPlayPage() {
       </div>
 
       <div style={styles.pianoWrap}>
-        {lanePitches.map((p, i) => (
-          <button key={p} onMouseDown={() => handleKeyPress(p)} onTouchStart={(e) => { e.preventDefault(); handleKeyPress(p); }} onContextMenu={block}
-            style={{ ...styles.pianoKey, background: laneColor(i), ...noSelectStyle }}>
-            {pitchToVietnamese(p)}
-          </button>
-        ))}
+        <div style={styles.pianoWhite}>
+          {pianoKeys.filter((k) => !k.isBlack).map((k) => (
+            <button key={k.midi} onMouseDown={() => handleKeyPress(k.pitch)} onTouchStart={(e) => { e.preventDefault(); handleKeyPress(k.pitch); }} onContextMenu={block}
+              style={{ ...styles.whiteKey, ...noSelectStyle }}>
+              <span style={{ color: NOTE_COLOR[k.letter], fontWeight: 800, fontSize: 13 }}>{pitchToVietnamese(k.pitch)}</span>
+            </button>
+          ))}
+        </div>
+        <div style={styles.pianoBlackLayer}>
+          {(() => {
+            const whites = pianoKeys.filter((k) => !k.isBlack);
+            const whiteWidthPct = 100 / whites.length;
+            return pianoKeys.filter((k) => k.isBlack).map((k) => {
+              const idx = whites.findIndex((w) => w.midi === k.midi - 1);
+              if (idx === -1) return null;
+              const leftPct = (idx + 1) * whiteWidthPct - whiteWidthPct * 0.28;
+              return (
+                <button key={k.midi} onMouseDown={() => handleKeyPress(k.pitch)} onTouchStart={(e) => { e.preventDefault(); handleKeyPress(k.pitch); }} onContextMenu={block}
+                  style={{ ...styles.blackKey, left: `${leftPct}%`, width: `${whiteWidthPct * 0.56}%`, ...noSelectStyle }} />
+              );
+            });
+          })()}
+        </div>
       </div>
     </div>
   );
@@ -366,7 +413,9 @@ const styles = {
   statLabel: { fontSize: 11.5, color: '#6b7280' },
   statVal: { fontSize: 20, fontWeight: 800, color: '#17302d' },
   playWrap: { minHeight: '100vh', background: '#0F1A2A', display: 'flex', flexDirection: 'column' },
-  topBar: { display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '14px 18px' },
+  playWrapFullscreen: { position: 'fixed', inset: 0, zIndex: 9999, minHeight: '100vh', background: '#0F1A2A', display: 'flex', flexDirection: 'column' },
+  topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px' },
+  topBarBtn: { border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', width: 36, height: 36, borderRadius: 10, fontSize: 16, cursor: 'pointer' },
   lanesWrap: { position: 'relative', margin: '0 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 12, overflow: 'hidden' },
   hitLine: {
     position: 'absolute', top: 0, bottom: 0, left: `${HIT_LINE_PCT}%`, width: 10, marginLeft: -5,
@@ -376,9 +425,24 @@ const styles = {
   lane: { position: 'absolute', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.06)' },
   noteBlock: { position: 'absolute', minWidth: 54, padding: '0 8px', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 13, transition: 'opacity 0.2s', whiteSpace: 'nowrap' },
   popup: { position: 'absolute', left: `${HIT_LINE_PCT}%`, transform: 'translate(-50%, -140%)', fontWeight: 800, fontSize: 16, animation: 'musicFloat 0.7s ease-out forwards', pointerEvents: 'none' },
-  pianoWrap: { display: 'flex', gap: 4, padding: '14px 12px 28px' },
-  pianoKey: { flex: 1, minHeight: 84, border: 'none', borderRadius: 14, color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 3px 0 rgba(0,0,0,0.25)' },
+  rotateHint: { position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 14px', borderRadius: 999, fontSize: 12.5, zIndex: 10 },
+  pianoWrap: { position: 'relative', padding: '10px 12px 20px' },
+  pianoWhite: { display: 'flex', width: '100%', height: 'min(150px, 22vh)', gap: 2 },
+  whiteKey: { flex: 1, background: '#fff', border: '1px solid #d5dde3', borderRadius: '0 0 10px 10px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 10, cursor: 'pointer', boxShadow: '0 3px 0 #c3ccd3' },
+  pianoBlackLayer: { position: 'absolute', top: 10, left: 12, right: 12, height: 'min(90px, 13vh)', pointerEvents: 'none' },
+  blackKey: { position: 'absolute', top: 0, height: '100%', background: '#1a1a1a', borderRadius: '0 0 8px 8px', border: '1px solid #000', pointerEvents: 'auto', cursor: 'pointer', boxShadow: '0 3px 0 #000' },
 };
+
+if (typeof document !== 'undefined' && !document.getElementById('music-landscape-style')) {
+  const s = document.createElement('style');
+  s.id = 'music-landscape-style';
+  s.innerHTML = `
+    @media (orientation: landscape) and (max-height: 500px) {
+      .music-lanes-wrap { height: auto !important; max-height: 42vh !important; }
+    }
+  `;
+  document.head.appendChild(s);
+}
 
 if (typeof document !== 'undefined' && !document.getElementById('music-anim-style')) {
   const style = document.createElement('style');
