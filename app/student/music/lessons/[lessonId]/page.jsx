@@ -340,14 +340,19 @@ export default function MusicLessonPlayPage() {
 
   return (
     <div ref={pageRef} style={{ ...(fullscreen ? styles.playWrapFullscreen : styles.playWrap), ...noSelectStyle }} onContextMenu={block}>
-      {isPortrait && <div style={styles.rotateHint}>📱 Xoay ngang màn hình để chơi thoải mái hơn</div>}
       <div style={styles.topBar}>
         <button onClick={() => (fullscreen ? exitFullscreen() : tryFullscreen())} style={styles.topBarBtn} title={fullscreen ? 'Thoát toàn màn hình' : 'Bật toàn màn hình'}>{fullscreen ? '⛶' : '⛶'}</button>
-        <div style={{ color: '#fff', fontWeight: 700 }}>{lesson.title} · {LEVELS.find((l) => l.key === level).label}</div>
+        <div style={{ color: '#fff', fontWeight: 700, textAlign: 'center', flex: 1, padding: '0 8px' }}>{lesson.title} · {LEVELS.find((l) => l.key === level).label}</div>
         <button onClick={() => { exitFullscreen(); router.push('/student/music'); }} style={styles.topBarBtn} title="Thoát bài học">✕</button>
       </div>
+      {isPortrait && (
+        <div style={styles.rotateHint}>
+          <span style={{ fontSize: 16 }}>🔄</span>
+          <span>Xoay ngang thiết bị để có trải nghiệm chơi tốt nhất</span>
+        </div>
+      )}
 
-      <div ref={containerRef} className="music-lanes-wrap" style={{ ...styles.lanesWrap, height: laneHeight * lanePitches.length, flex: '1 1 auto', minHeight: 0 }}>
+      <div ref={containerRef} className="music-lanes-wrap" style={{ ...styles.lanesWrap, height: laneHeight * lanePitches.length }}>
         <div style={styles.hitLine} />
         {lanePitches.map((p, i) => (
           <div key={p} style={{ ...styles.lane, top: (lanePitches.length - 1 - i) * laneHeight, height: laneHeight }} />
@@ -373,7 +378,7 @@ export default function MusicLessonPlayPage() {
       <div style={styles.pianoWrap}>
         <div style={styles.pianoWhite}>
           {pianoKeys.filter((k) => !k.isBlack).map((k) => (
-            <button key={k.midi} onMouseDown={() => handleKeyPress(k.pitch)} onTouchStart={(e) => { e.preventDefault(); handleKeyPress(k.pitch); }} onContextMenu={block}
+            <button key={k.midi} onPointerDown={(e) => { e.preventDefault(); handleKeyPress(k.pitch); }} onContextMenu={block}
               style={{ ...styles.whiteKey, ...noSelectStyle }}>
               <span style={{ color: NOTE_COLOR[k.letter], fontWeight: 800, fontSize: 13 }}>{pitchToVietnamese(k.pitch)}</span>
             </button>
@@ -388,7 +393,7 @@ export default function MusicLessonPlayPage() {
               if (idx === -1) return null;
               const leftPct = (idx + 1) * whiteWidthPct - whiteWidthPct * 0.28;
               return (
-                <button key={k.midi} onMouseDown={() => handleKeyPress(k.pitch)} onTouchStart={(e) => { e.preventDefault(); handleKeyPress(k.pitch); }} onContextMenu={block}
+                <button key={k.midi} onPointerDown={(e) => { e.preventDefault(); handleKeyPress(k.pitch); }} onContextMenu={block}
                   style={{ ...styles.blackKey, left: `${leftPct}%`, width: `${whiteWidthPct * 0.56}%`, ...noSelectStyle }} />
               );
             });
@@ -413,7 +418,7 @@ const styles = {
   playWrapFullscreen: { position: 'fixed', inset: 0, zIndex: 9999, minHeight: '100vh', background: '#0F1A2A', display: 'flex', flexDirection: 'column' },
   topBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px' },
   topBarBtn: { border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', width: 36, height: 36, borderRadius: 10, fontSize: 16, cursor: 'pointer' },
-  lanesWrap: { position: 'relative', margin: '0 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 12, overflow: 'hidden' },
+  lanesWrap: { position: 'relative', margin: 'auto 12px', width: 'calc(100% - 24px)', background: 'rgba(255,255,255,0.04)', borderRadius: 12, overflow: 'hidden' },
   hitLine: {
     position: 'absolute', top: 0, bottom: 0, left: `${HIT_LINE_PCT}%`, width: 10, marginLeft: -5,
     background: 'radial-gradient(ellipse at center, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.12) 60%, transparent 100%)',
@@ -422,7 +427,7 @@ const styles = {
   lane: { position: 'absolute', left: 0, right: 0, borderTop: '1px solid rgba(255,255,255,0.06)' },
   noteBlock: { position: 'absolute', minWidth: 54, padding: '0 8px', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 13, transition: 'opacity 0.2s', whiteSpace: 'nowrap' },
   popup: { position: 'absolute', left: `${HIT_LINE_PCT}%`, transform: 'translate(-50%, -140%)', fontWeight: 800, fontSize: 16, animation: 'musicFloat 0.7s ease-out forwards', pointerEvents: 'none' },
-  rotateHint: { position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '6px 14px', borderRadius: 999, fontSize: 12.5, zIndex: 10 },
+  rotateHint: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, margin: '0 12px 8px', padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.85)', borderRadius: 10, fontSize: 12.5, fontWeight: 500, lineHeight: 1.4 },
   pianoWrap: { position: 'relative', padding: '10px 12px 20px' },
   pianoWhite: { display: 'flex', width: '100%', height: 'min(150px, 22vh)', gap: 2 },
   whiteKey: { flex: 1, background: '#fff', border: '1px solid #d5dde3', borderRadius: '0 0 10px 10px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 10, cursor: 'pointer', boxShadow: '0 3px 0 #c3ccd3' },
