@@ -5,6 +5,13 @@ import { supabase } from '@/lib/supabaseClient';
 
 // Chuong khieu nai o dau moi trang TPT (gan trong AppShell): dem so khieu nai dang cho
 // (ca 2 he thong: diem lop cua TPT/Sao do, va vi pham ca nhan cua ban can su/GVCN), phat
+// 1 tieng "keng" ngan va hien banh mieng khi co khieu nai MOI xuat hien tu lan kiem tra truoc.
+//
+// Dung POLLING (khong dung Supabase Realtime) de KHONG can bat them cau hinh gi trong
+// Supabase Dashboard - chi can RPC tpt_pending_appeals_summary() da co san (fix18.sql).
+
+const POLL_MS = 20000;
+
 // 1 tieng "keng" ngan (~0.18s), da tao san duoi dang WAV base64 hop le - khong can tai
 // file rieng, khong phu thuoc mang ngoai.
 const BEEP = 'data:audio/wav;base64,UklGRsQFAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YaAFAAB/0PzurlgUAil3yfjwtGAaAyVvwfTyumghBSFouvDywHAnBx5hsuvzxXgtCRtaq+fzyn80DBhUo+HyzoY7DxdOnNzx0o1CExVIlNbw1pRJFxVDjdDu2ZtQGxQ+hsrs26FXIBQ6f8Tp3qdeJBU2eL7m36xlKRYycrfj4LFrLxcvbLHf4bZyNBksZqrb4rt5OhsqYKTX4b9/Px0oWp7T4cOFRSAmVZfO4MaLSyMlUZHJ38mRUSYkTIvE3cuWVyokSIW/286cXS4kRH+62c+hYzIlQXm019GlaTYlPnSv1NKqbjsnO26p0dKudD8oOWmkzdOyekQqN2WeytO1f0ksNWCZxtK4hE4uNFyUwtK7iVMxM1iOvtG+jlg0MlSJus/Ak103MlCEtc7Cl2I6Mk1/sczDnGc+Mkp6rMrEoGxBM0d1qMfFo3FFNEVxo8TGp3ZJNUNtnsLGqnpNN0Fpmr/GrX9ROEBllbvGsINVOj9hkbjFsohZPT5djLTEtIxePz5aiLHDtpBiQj1Xg63CuJRmRD1Vf6nAuZdrRz5Se6W+uptvSj5Qd6K8u55zTj9Oc566u6F3UUBMb5q4vKR7VEFLbJa1u6Z/WENJaZKyu6iDXEVJZY6vu6uGX0dIYoqsuqyKY0lHYIapua6NZktHXYOmuK+Rak1HW3+jtrCUblBIWXugtbGXcVJIV3ics7KZdVVJVXWZsbKceFhKVHKWr7KefFtLU2+SrbKgf15MUmyPq7KigmFNUWmMqLKkhWRPUGeIprGmiGdRUGSFo7Cni2pTUGKCoK+ojm1VUGB/nq6pkXBXUF98m62qk3NZUF15mKuqlXZbUVt2laqrmHleUlp0kqirmXxgU1lxj6arm39jVFhvjaSqnYJlVVhtiqKqnoRoVldqh6CqoIdrWFdohJ6poYltWVdngpuoooxwW1dlf5mno45yXVdjfJemo5B1X1diepSlpJJ4YVhheJKjpJR6Y1hgdY+ipJZ9ZVlfc42gpJd/Z1pecYufpJiBaVteb4idpJqEa1xdbYabo5uGbl5dbIOZo5yIcF9daoGXop2KcmBdaX+VoZ2MdGJdaH2ToJ6Nd2RdZnuRn56PeWVeZXmPnp6Re2deZHeNnZ+SfWlfZHWLm5+Tf2tgY3OJmp6VgWxhY3KHmJ6Wg25iYnCFl56XhXBjYm+DlZ2Xh3JkYm2Bk52YiHRlYmx/kpyZinZmYmt9kJuZi3hoYmp7jpqajXppY2l6jZmajntrY2h4i5iaj31sZGh3iZeakH9uZGd1h5aakYFvZWd0hpWZkoJxZmdyhJOZk4RyZ2ZxgpKZlIV0aGZwgZCYlId2aWZvf4+YlYh3amZufY6XlYl5a2dtfIyWlot6bGdseouVlox8bmdseYmUlo1+b2hreIiTlo5/cGhrd4aSlo+AcmlqdYWRlo+Cc2pqdIOQlZCDdGpqc4KPlZGEdmtqcoCOlJGGd2xqcX+NlJKHeG1qcX6Lk5KIem5qcHyKk5KJe29rb3uJkpKKfHBrb3qIkZKLfnFrbnmGkJKMf3JsbniFj5KMgHRsbneEj5KNgXVtbXaDjpKOg3ZubXWBjZKOhHdubXSAjJGOhXhvbXN/i5GPhnlwbXN+iZCPh3txbXJ9iJCPh3xybnJ8h4+PiH1ybnF7ho6PiX5zbnF6hY6Pin90b3B5hI2PioB1b3B4g4yPi4F2cHB3gouPi4J3cHB2gYuPjIN4cXB2gIqOjIR5cXB1f4mOjIV6cnB1foiOjYV7c3B0fYeNjYZ8dHB0fIaNjYd9dHBze4WMjYd+dXFze4SMjYh/dnFzeoOLjYmAd3FyeYKKjYmBeHJyeIKKjYqCeHJyeIGJjIqCeXNyd4CIjIqDenNyd3+HjIqEe3Rydn6Hi4uEfHVydn2Gi4uFfXVydX2Fi4uGfXZzdXyEios=';
@@ -19,7 +26,13 @@ export default function AppealAlert() {
   const flashTimer = useRef(null);
 
   const poll = useCallback(async () => {
-    const { data, error } = await supabase.rpc('tpt_pending_appeals_summary', { p_limit: 10 });
+    let res;
+    try {
+      res = await supabase.rpc('tpt_pending_appeals_summary', { p_limit: 10 });
+    } catch (e) {
+      return; // mat mang tam thoi: bo qua, lan kiem tra sau se thu lai
+    }
+    const { data, error } = res || {};
     if (error || !data) return;
     setCount(data.count || 0);
     setItems(data.items || []);
@@ -28,7 +41,7 @@ export default function AppealAlert() {
     if (seenIds.current) {
       const fresh = (data.items || []).filter((x) => !seenIds.current.has(x.id));
       if (fresh.length > 0) {
-        audioRef.current?.play().catch(() => {}); // trinh duyet co the chan tu phat neu chua co tuong tac nao - bo qua loi
+        try { audioRef.current?.play()?.catch?.(() => {}); } catch (e) { /* trinh duyet chan tu phat am thanh - bo qua */ }
         const f = fresh[0];
         clearTimeout(flashTimer.current);
         setFlash({
