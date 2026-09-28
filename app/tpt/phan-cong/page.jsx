@@ -26,11 +26,49 @@ export default function TptSaodoPage() {
   const [accLoading, setAccLoading] = useState(false);
   const [busyId, setBusyId] = useState(null);
 
+  // Phân công tự động
+  const [autoOpen, setAutoOpen] = useState(false);
+  const [avoidRounds, setAvoidRounds] = useState(2);
+  const [running, setRunning] = useState(false);
+  const [autoResult, setAutoResult] = useState(null);
+  const [history, setHistory] = useState([]);
+
+  // Nhật ký trừ điểm của 1 Sao đỏ
+  const [activity, setActivity] = useState(null); // { name, rows }
+
   const loadRoster = useCallback(async () => {
     const { data, error } = await supabase.rpc('tpt_saodo_roster');
     if (error) setMsg({ type: 'error', text: error.message });
     else setRoster(data || []);
   }, []);
+
+  const loadHistory = useCallback(async () => {
+    const { data, error } = await supabase.rpc('tpt_saodo_rounds_history', { p_rounds: 3 });
+    if (!error) setHistory(data || []);
+  }, []);
+
+  async function runAutoAssign() {
+    if (!window.confirm('Phân công tự động sẽ THAY THẾ toàn bộ phân công Sao đỏ đang có bằng phân công mới. Tiếp tục?')) return;
+    setRunning(true);
+    const { data, error } = await supabase.rpc('tpt_auto_assign_saodo', { p_avoid_last_rounds: Number(avoidRounds) });
+    setRunning(false);
+    if (error) {
+      setMsg({ type: 'error', text: error.message });
+      return;
+    }
+    setAutoResult(data);
+    loadRoster();
+    loadHistory();
+  }
+
+  async function openActivity(r) {
+    const { data, error } = await supabase.rpc('tpt_saodo_activity', { p_user_id: r.user_id, p_days: 30 });
+    if (error) {
+      setMsg({ type: 'error', text: error.message });
+      return;
+    }
+    setActivity({ name: r.full_name, rows: data || [] });
+  }
 
   useEffect(() => {
     if (!ready) return;
@@ -133,7 +171,10 @@ export default function TptSaodoPage() {
           <h1 className="pg-title">Đội Sao đỏ</h1>
           <p className="pg-sub" style={{ marginBottom: 0 }}>Cấp quyền Sao đỏ và phân công lớp mà mỗi bạn phải kiểm tra. Sao đỏ chỉ thấy đúng các lớp được phân công.</p>
         </div>
-        <button className="btn btn-red" onClick={() => setShowAccounts(true)}>＋ Cấp quyền Sao đỏ mới</button>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn" onClick={() => { setAutoOpen(true); setAutoResult(null); loadHistory(); }}>🔀 Phân công tự động</button>
+          <button className="btn btn-red" onClick={() => setShowAccounts(true)}>＋ Cấp quyền Sao đỏ mới</button>
+        </div>
       </div>
 
       {uncovered.length > 0 && !loading && (
@@ -171,6 +212,7 @@ export default function TptSaodoPage() {
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <button className="btn btn-sm" onClick={() => openAssign(r)}>Phân công lớp</button>{' '}
+                      <button className="btn btn-sm" onClick={() => openActivity(r)}>Nhật ký</button>{' '}
                       <button className="btn btn-sm btn-danger" disabled={busyId === r.user_id} onClick={() => setSaodo(r, false)}>Thu hồi</button>
                     </td>
                   </tr>
@@ -266,6 +308,85 @@ export default function TptSaodoPage() {
             )}
           </div>
           {accounts.length >= 300 && <div className="hint" style={{ marginTop: 8 }}>Đang hiện 300 tài khoản đầu tiên — hãy lọc theo lớp hoặc gõ tên để thu hẹp.</div>}
+        </Modal>
+      )}
+
+      {autoOpen && (
+        <Modal title="Phân công Sao đỏ tự động" onClose={() => setAutoOpen(false)}>
+          <p className="hint" style={{ marginTop: 0 }}>
+            Tự động chia mỗi lớp cho một bạn Sao đỏ, ưu tiên không lặp lại đúng cặp Sao đỏ – lớp như vài lần phân công gần đây.
+            Sẽ THAY THẾ toàn bộ phân công đang có.
+          </p>
+          <label className="lbl" htmlFor="avoid" style={{ marginTop: 0 }}>Tránh lặp với</label>
+          <select id="avoid" className="input" value={avoidRounds} onChange={(e) => setAvoidRounds(e.target.value)}>
+            <option value="1">1 lần gần nhất</option>
+            <option value="2">2 lần gần nhất</option>
+            <option value="3">3 lần gần nhất</option>
+          </select>
+
+          {autoResult && (
+            <div style={{ marginTop: 14, background: 'var(--ok-bg)', border: '1px solid #bfe6d3', borderRadius: 12, padding: '12px 16px' }}>
+              <p style={{ margin: 0, color: 'var(--ok)' }}>
+                Đã phân công <strong>{autoResult.classes}</strong> lớp cho <strong>{autoResult.saodo}</strong> bạn Sao đỏ.
+                {autoResult.repeated > 0
+                  ? ` ${autoResult.repeated} lớp phải lặp lại người do không đủ lựa chọn mới.`
+                  : ' Không lớp nào bị lặp lại người.'}
+              </p>
+            </div>
+          )}
+
+          {history.length > 0 && (
+            <>
+              <div className="lbl">Lịch sử phân công tự động (3 lần gần nhất)</div>
+              <div className="tbl-wrap">
+                <table className="tbl">
+                  <thead><tr><th>Lúc chạy</th><th>Sao đỏ</th><th>Lớp</th></tr></thead>
+                  <tbody>
+                    {history.map((h, i) => (
+                      <tr key={i}>
+                        <td>{new Date(h.round_at).toLocaleString('vi-VN')}</td>
+                        <td>{h.saodo_name}</td>
+                        <td>{h.class_name}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          <div className="modal-f">
+            <button className="btn" onClick={() => setAutoOpen(false)}>Đóng</button>
+            <button className="btn btn-red" disabled={running} onClick={runAutoAssign}>
+              {running ? 'Đang phân công…' : '🔀 Phân công tự động'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {activity && (
+        <Modal title={`Nhật ký trừ điểm — ${activity.name}`} wide onClose={() => setActivity(null)}>
+          <p className="hint" style={{ marginTop: 0 }}>30 ngày gần nhất, không tính lượt "Đã kiểm tra".</p>
+          {activity.rows.length === 0 ? (
+            <div className="empty">Chưa có lần trừ điểm nào trong 30 ngày gần đây.</div>
+          ) : (
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead><tr><th>Ngày</th><th>Lớp</th><th>Nội dung</th><th>Điểm</th><th>Học sinh</th></tr></thead>
+                <tbody>
+                  {activity.rows.map((r) => (
+                    <tr key={r.id}>
+                      <td>{new Date(r.occurred_date).toLocaleDateString('vi-VN')}</td>
+                      <td>{r.class_name}</td>
+                      <td>{r.reason_label}{r.note ? <div className="hint" style={{ margin: 0 }}>{r.note}</div> : null}</td>
+                      <td className="num" style={{ fontWeight: 800, color: r.points < 0 ? 'var(--red)' : 'var(--ok)' }}>{r.points}</td>
+                      <td>{r.student_name || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Modal>
       )}
 

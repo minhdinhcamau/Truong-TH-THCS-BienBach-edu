@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useRef } from 'react';
+import AppealAlert from './tpt/AppealAlert';
 
 function initialsOf(name) {
   if (!name) return '?';
@@ -168,6 +169,10 @@ export default function AppShell({ profile, roleLabel, nav = [], activeHref, onL
               <div className="who-n">{profile?.full_name}</div>
               <div className="who-r">{roleLabel}</div>
             </div>
+            {(profile?.is_tpt || profile?.role === "admin") && <AppealAlert />}
+            {profile?.role === "teacher" && (
+              <Link href="/teacher" className="out-btn">← Trang giáo viên</Link>
+            )}
             {profile?.role === "admin" && <Link href="/admin" className="out-btn">Trang quản trị</Link>}
             <button className="out-btn" onClick={onLogout}>Đăng xuất</button>
           </div>

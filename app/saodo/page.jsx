@@ -30,9 +30,11 @@ export default function SaoDoPage() {
   const [msg, setMsg] = useState(null);
 
   const [reporting, setReporting] = useState(null); // lỗi nề nếp đang xác nhận
-  const [rStudent, setRStudent] = useState('');
+  const [rStudentId, setRStudentId] = useState('');
   const [rNote, setRNote] = useState('');
   const [editing, setEditing] = useState(null);
+  const [roster, setRoster] = useState([]); // hoc sinh cua lop dang mo, de CHON thay vi go ten
+  const [neGroup, setNeGroup] = useState('');
 
   const selectedDay = weekdays.find((d) => d.iso === selectedDate) || weekdays[0];
   const dayText = `${selectedDay.label} (${selectedDay.shortLabel})`;
@@ -53,16 +55,19 @@ export default function SaoDoPage() {
     if (!classId) {
       setPeriods([]);
       setDayRows([]);
+      setRoster([]);
       return;
     }
-    const [p, d] = await Promise.all([
+    const [p, d, ros] = await Promise.all([
       supabase.rpc('saodo_class_periods', { p_class_id: classId, p_date: date }),
       supabase.rpc('get_class_day', { p_class_id: classId, p_date: date }),
+      supabase.rpc('class_roster_for_saodo', { p_class_id: classId }),
     ]);
     if (p.error) setMsg({ type: 'error', text: p.error.message });
     else setPeriods(p.data || []);
     if (d.error) setMsg({ type: 'error', text: d.error.message });
     else setDayRows(d.data || []);
+    if (!ros.error) setRoster(ros.data || []);
   }, []);
 
   const loadAlerts = useCallback(async () => {
@@ -115,6 +120,20 @@ export default function SaoDoPage() {
 
   const neNepReasons = useMemo(() => reasons.filter((r) => r.category === 'ne_nep'), [reasons]);
   const editableReasons = useMemo(() => reasons.filter((r) => r.category !== 'hoc_tap'), [reasons]);
+
+  const PRESET_GROUPS = ['Sĩ số', 'Vệ sinh', 'Nề nếp', 'Đạo đức, tác phong', 'Khác'];
+  const GROUP_ICON = { 'Sĩ số': '🧑‍🎓', 'Vệ sinh': '🧹', 'Nề nếp': '📋', 'Đạo đức, tác phong': '🎯', 'Khác': '🔹' };
+  const neNepGroups = useMemo(() => {
+    const s2 = new Set();
+    neNepReasons.forEach((r) => s2.add(r.group_label || 'Nề nếp'));
+    const extra = Array.from(s2).filter((g) => !PRESET_GROUPS.includes(g)).sort((a, b) => a.localeCompare(b, 'vi'));
+    return [...PRESET_GROUPS.filter((g) => s2.has(g)), ...extra];
+  }, [neNepReasons]);
+  const activeNeGroup = neNepGroups.includes(neGroup) ? neGroup : neNepGroups[0] || '';
+  const neNepReasonsInGroup = useMemo(
+    () => neNepReasons.filter((r) => (r.group_label || 'Nề nếp') === activeNeGroup),
+    [neNepReasons, activeNeGroup]
+  );
   const ptsOf = (letter) =>
     reasons.find((r) => r.category === 'hoc_tap' && String(r.label).toLowerCase().startsWith(`giờ ${letter.toLowerCase()}`))?.points;
 
@@ -175,8 +194,9 @@ export default function SaoDoPage() {
       p_class_id: openId,
       p_reason_code: reporting.code,
       p_note: rNote.trim() || null,
-      p_student_name: rStudent.trim() || null,
+      p_student_name: null,
       p_occurred_date: selectedDate,
+      p_student_id: rStudentId || null,
     });
     setBusy(false);
     if (error) {
@@ -217,7 +237,8 @@ export default function SaoDoPage() {
       p_id: editing.id,
       p_reason_code: editing.reason_code,
       p_note: editing.note || null,
-      p_student_name: editing.student_name || null,
+      p_student_name: null,
+      p_student_id: editing.student_id || null,
     });
     setBusy(false);
     if (error) setMsg({ type: 'error', text: error.message });
@@ -296,6 +317,12 @@ export default function SaoDoPage() {
         .seg button.a { background: var(--ok); color: #fff; }
         .seg button.b { background: #e0a020; color: #fff; }
         .seg button.c { background: var(--red); color: #fff; }
+
+        .ne-grp-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .ne-grp { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 14px; font-weight: 700;
+          font-size: 12.5px; color: var(--muted); cursor: pointer; }
+        .ne-grp:hover { border-color: #d5dbe4; color: var(--ink); }
+        .ne-grp.on { background: var(--red); border-color: var(--red); color: #fff; }
 
         .rg { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
         .rb { display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; padding: 12px 14px;
@@ -490,18 +517,37 @@ export default function SaoDoPage() {
           )}
 
           {tab === 'nenep' && (
-            <div className="rg">
-              {neNepReasons.map((r) => (
-                <button
-                  key={r.code}
-                  className="rb"
-                  disabled={busy}
-                  onClick={() => { setReporting(r); setRStudent(''); setRNote(''); }}
-                >
-                  <span>{r.label}</span>
-                  <span className="rb-p">{r.points} đ</span>
-                </button>
-              ))}
+            <div>
+              <div className="ne-grp-row" role="tablist" aria-label="Chọn nhóm nội dung">
+                {neNepGroups.map((g) => (
+                  <button
+                    key={g}
+                    role="tab"
+                    aria-selected={activeNeGroup === g}
+                    className={`ne-grp ${activeNeGroup === g ? 'on' : ''}`}
+                    onClick={() => setNeGroup(g)}
+                  >
+                    {GROUP_ICON[g] || '📁'} {g}
+                  </button>
+                ))}
+              </div>
+              {neNepReasonsInGroup.length === 0 ? (
+                <div className="empty">Nhóm này chưa có nội dung nào.</div>
+              ) : (
+                <div className="rg">
+                  {neNepReasonsInGroup.map((r) => (
+                    <button
+                      key={r.code}
+                      className="rb"
+                      disabled={busy}
+                      onClick={() => { setReporting(r); setRStudentId(''); setRNote(''); }}
+                    >
+                      <span>{r.label}</span>
+                      <span className="rb-p">{r.points} đ</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -524,7 +570,7 @@ export default function SaoDoPage() {
                       <div className={`log-p num ${r.points < 0 ? 'neg' : 'zero'}`}>{r.points}</div>
                       {canEditRow(r) ? (
                         <div style={{ marginTop: 4 }}>
-                          <button className="btn btn-sm" title="Sửa" onClick={() => setEditing({ id: r.id, reason_code: r.reason_code, note: r.note || '', student_name: r.student_name || '' })}>✎</button>{' '}
+                          <button className="btn btn-sm" title="Sửa" onClick={() => setEditing({ id: r.id, reason_code: r.reason_code, note: r.note || '', student_id: r.student_id || '' })}>✎</button>{' '}
                           <button className="btn btn-sm btn-danger" title="Xoá" onClick={() => deleteRow(r)}>🗑</button>
                         </div>
                       ) : r.period_rating_id ? (
@@ -544,8 +590,14 @@ export default function SaoDoPage() {
           <div className="hint" style={{ margin: 0 }}>Lớp {openClass?.class_name} · {isBackfill ? `bổ sung cho ${dayText}` : `hôm nay ${dayText}`}</div>
           <div style={{ fontWeight: 700, marginTop: 8 }}>{reporting.label}</div>
           <div className="pts-big">{reporting.points} điểm</div>
-          <label className="lbl" htmlFor="r-stu">Tên học sinh vi phạm (nếu là lỗi cá nhân)</label>
-          <input id="r-stu" className="input" value={rStudent} onChange={(e) => setRStudent(e.target.value)} placeholder="Để trống nếu lỗi của cả lớp" />
+          <label className="lbl" htmlFor="r-stu">Học sinh vi phạm (nếu là lỗi cá nhân)</label>
+          <select id="r-stu" className="input" value={rStudentId} onChange={(e) => setRStudentId(e.target.value)}>
+            <option value="">Cả lớp (không chọn học sinh)</option>
+            {roster.map((s2) => <option key={s2.student_id} value={s2.student_id}>{s2.full_name}</option>)}
+          </select>
+          {roster.length === 0 && (
+            <p className="hint" style={{ margin: '4px 0 0' }}>Lớp chưa có tài khoản học sinh nào — nhờ cô quản trị cấp tài khoản trước.</p>
+          )}
           <label className="lbl" htmlFor="r-note">Ghi chú (không bắt buộc)</label>
           <input id="r-note" className="input" value={rNote} onChange={(e) => setRNote(e.target.value)} placeholder="VD: tiết mấy, hoàn cảnh cụ thể…" />
           <div className="modal-f">
@@ -561,8 +613,11 @@ export default function SaoDoPage() {
           <select id="e-r" className="input" value={editing.reason_code} onChange={(e) => setEditing({ ...editing, reason_code: e.target.value })}>
             {editableReasons.map((r) => <option key={r.code} value={r.code}>{r.label} ({r.points} đ)</option>)}
           </select>
-          <label className="lbl" htmlFor="e-s">Tên học sinh</label>
-          <input id="e-s" className="input" value={editing.student_name} onChange={(e) => setEditing({ ...editing, student_name: e.target.value })} />
+          <label className="lbl" htmlFor="e-s">Học sinh</label>
+          <select id="e-s" className="input" value={editing.student_id} onChange={(e) => setEditing({ ...editing, student_id: e.target.value })}>
+            <option value="">Cả lớp (không chọn học sinh)</option>
+            {roster.map((s2) => <option key={s2.student_id} value={s2.student_id}>{s2.full_name}</option>)}
+          </select>
           <label className="lbl" htmlFor="e-n">Ghi chú</label>
           <input id="e-n" className="input" value={editing.note} onChange={(e) => setEditing({ ...editing, note: e.target.value })} />
           <div className="modal-f">
