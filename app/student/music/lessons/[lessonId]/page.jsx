@@ -1,18 +1,12 @@
 'use client';
 // Đặt tại: app/student/music/lessons/[lessonId]/page.jsx
-// BẢN THIẾT KẾ LẠI v4 (giao diện game toàn màn hình, gọn và đẹp hơn):
-//  - Màn chơi luôn phủ kín khung nhìn (100dvh + vùng an toàn của iPhone), bàn phím
-//    piano luôn nằm sát đáy — không còn bị tràn / mất phím khi phóng to trên điện thoại.
-//  - Khung nốt chạy tự co giãn theo kích thước thật của màn hình (đo bằng
-//    ResizeObserver), tốc độ nốt chạy tỉ lệ theo bề ngang nên máy nào cũng
-//    thấy trước nốt ~3 giây.
-//  - ĐÈ GIỮ phím = âm thanh piano vang tiếp (nhấn → attack, nhả → release),
-//    phím sáng lên khi đang đè, làn nốt tương ứng cũng sáng theo.
-//  - Thanh nốt hiện tên nốt gọn (Sol♯), độ dài thanh = độ dài nốt; vạch chờ
-//    có ô mục tiêu từng làn; chữ "Hoàn hảo / Tuyệt / Hơi trễ" bay lên khi bấm.
-//  - Có đếm ngược 3-2-1, thanh tiến độ, nút thoát có hỏi lại, nút toàn màn
-//    hình (chỉ hiện ở trình duyệt hỗ trợ — iPhone Safari không hỗ trợ).
-//  - Bàn phím dùng 1 loại sự kiện chung (pointer) nên không còn bị bấm 2 lần.
+// BẢN THIẾT KẾ LẠI v5 — nốt RƠI TỪ TRÊN XUỐNG đúng vào phím đàn bên dưới
+// (kiểu Piano Tiles / Synthesia), thay cho kiểu "làn chạy ngang" trước đây.
+// Mỗi nốt rơi thẳng xuống ĐÚNG vị trí phím của nó — canh phím dễ hơn nhiều
+// trên điện thoại vì mắt chỉ cần nhìn 1 trục dọc.
+//
+// Đồng thời chặn "Copy" khi đè lâu bằng CẢ CSS lẫn trình lắng nghe sự kiện
+// gốc (không qua React) — cách chắc chắn nhất trên Safari iOS.
 //
 // npm install tone   (nếu repo chưa có)
 
@@ -22,11 +16,10 @@ import { supabase } from '@/lib/supabaseClient';
 import { finishMusicLessonAttempt } from '@/lib/musicXp';
 import { VN_NAME, NOTE_COLOR, pitchToMidi, durationBeats, buildPianoKeys, starsForScore, LEVELS } from '@/lib/musicNotes';
 
-const LABEL_W = 58;          // cột tên nốt bên trái khung nốt chạy
-const HIT_FRAC = 0.2;        // vạch chờ nằm ở 20% bề ngang vùng nốt chạy
-const LEAD_IN = 3;           // giây đếm ngược trước khi nốt đầu tiên tới vạch
+const LEAD_IN = 3;                  // giây đếm ngược trước khi nốt đầu tới phím
+const LOOKAHEAD_SEC = 2.6;          // số giây nhìn thấy trước khi nốt rơi tới nơi
 const PERFECT_T = 0.12, GREAT_T = 0.25, LATE_T = 0.42; // ngưỡng chấm (giây)
-const KEY_GAP = 3;           // px giữa các phím trắng
+const KEY_GAP = 3;
 
 const LEVEL_HINT = {
   practice: 'Không tính giờ — bấm đúng nốt thì nhạc mới chạy tiếp',
@@ -50,12 +43,12 @@ function judgeLabel(err) {
 function block(e) { e.preventDefault(); }
 
 const CSS = `
-.mp-root { position: fixed; inset: 0; z-index: 9999; height: 100vh; height: 100dvh; display: flex; flex-direction: column;
+.mp-root { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column;
   background: radial-gradient(1100px 560px at 50% -10%, #1d2f55 0%, #0e1729 58%, #080d18 100%); color: #fff;
   font-family: 'Be Vietnam Pro', system-ui, sans-serif; box-sizing: border-box; overscroll-behavior: none;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-.mp-root, .mp-root * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  -webkit-tap-highlight-color: transparent; touch-action: none; }
+.mp-root, .mp-root * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; -webkit-user-drag: none !important; }
 .mp-top { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px; flex: 0 0 auto; }
 .mp-iconbtn { width: 38px; height: 38px; border-radius: 12px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.08);
   color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; font-size: 15px; }
@@ -69,16 +62,16 @@ const CSS = `
   background: rgba(56,139,253,.12); border: 1px solid rgba(56,139,253,.3); color: #cfe3ff; font-size: 12.5px; line-height: 1.35; }
 .mp-hint span { flex: 1; }
 .mp-hint button { background: none; border: none; color: inherit; opacity: .7; font-size: 14px; padding: 2px 8px; cursor: pointer; }
-.mp-stage { position: relative; flex: 1 1 0; min-height: 0; margin: 0 10px; border-radius: 16px; overflow: hidden;
-  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)); border: 1px solid rgba(255,255,255,.09); }
-.mp-popup { position: absolute; font-weight: 900; font-size: 16px; text-shadow: 0 2px 8px rgba(0,0,0,.65); pointer-events: none;
-  white-space: nowrap; z-index: 6; animation: mpFloat .75s ease-out forwards; }
+.mp-stage { position: relative; flex: 1 1 0; min-height: 0; margin: 0 10px; border-radius: 16px 16px 0 0; overflow: hidden;
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015)); border: 1px solid rgba(255,255,255,.09); border-bottom: none; }
+.mp-popup { position: absolute; font-weight: 900; font-size: 15px; text-shadow: 0 2px 8px rgba(0,0,0,.65); pointer-events: none;
+  white-space: nowrap; z-index: 6; animation: mpFloat .75s ease-out forwards; transform: translateX(-50%); }
 .mp-count { position: absolute; font-weight: 900; font-size: 64px; color: rgba(255,255,255,.92); text-shadow: 0 4px 24px rgba(0,0,0,.5);
-  pointer-events: none; z-index: 6; animation: mpCount 1s ease-out; }
-.mp-piano { position: relative; flex: 0 0 auto; height: 30vh; height: clamp(104px, 30dvh, 210px); margin: 10px 10px 12px; }
-.mp-white-row { display: flex; gap: ${KEY_GAP}px; height: 100%; }
+  pointer-events: none; z-index: 6; animation: mpCount 1s ease-out; transform: translateX(-50%); }
+.mp-piano { position: relative; flex: 0 0 auto; height: 26vh; height: clamp(96px, 26dvh, 190px); margin: 0 10px 10px; border-radius: 0 0 16px 16px; overflow: hidden; }
+.mp-white-row { display: flex; gap: ${KEY_GAP}px; height: 100%; background: #050810; padding: 0 0 0 0; }
 .mp-white { position: relative; flex: 1; min-width: 0; border: none; padding: 0 0 9px; display: flex; align-items: flex-end; justify-content: center;
-  border-radius: 0 0 12px 12px; background: linear-gradient(180deg, #ffffff 0%, #eef1f6 100%); border-bottom: 5px solid var(--c);
+  border-radius: 0 0 10px 10px; background: linear-gradient(180deg, #ffffff 0%, #eef1f6 100%); border-bottom: 5px solid var(--c);
   box-shadow: 0 6px 12px rgba(0,0,0,.35); cursor: pointer; touch-action: none; transition: transform .06s;
   font-family: inherit; font-weight: 800; font-size: clamp(10px, 1.6vw, 14px); color: var(--c); }
 .mp-white span { pointer-events: none; }
@@ -108,9 +101,8 @@ const CSS = `
 .mp-stat b { display: block; font-size: 22px; }
 .mp-stat span { font-size: 11.5px; color: rgba(255,255,255,.6); }
 .mp-err { margin-top: 10px; font-size: 12.5px; color: #ffb4b4; text-align: center; }
-@keyframes mpPulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
-@keyframes mpFloat { 0% { opacity: 0; transform: translate(-50%, 8px) scale(.85); } 20% { opacity: 1; transform: translate(-50%, 0) scale(1.06); } 100% { opacity: 0; transform: translate(-50%, -28px) scale(1); } }
-@keyframes mpCount { 0% { opacity: 0; transform: scale(1.5); } 25% { opacity: 1; transform: scale(1); } 100% { opacity: .15; transform: scale(.9); } }
+@keyframes mpFloat { 0% { opacity: 0; transform: translateX(-50%) translateY(8px) scale(.85); } 20% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.06); } 100% { opacity: 0; transform: translateX(-50%) translateY(-28px) scale(1); } }
+@keyframes mpCount { 0% { opacity: 0; transform: translateX(-50%) scale(1.5); } 25% { opacity: 1; transform: translateX(-50%) scale(1); } 100% { opacity: .15; transform: translateX(-50%) scale(.9); } }
 `;
 
 function Stars({ n, size = 22 }) {
@@ -131,10 +123,12 @@ export default function MusicLessonPlayPage() {
   const startTimeRef = useRef(0);
   const pauseOffsetRef = useRef(0);
   const elapsedRef = useRef(-LEAD_IN);
+  const rootRef = useRef(null);
   const stageRef = useRef(null);
+  const pianoRowRef = useRef(null);
   const timelineRef = useRef([]);
   const answerLogsRef = useRef([]);
-  const activeRef = useRef(new Map());   // pointerId -> pitch đang đè
+  const activeRef = useRef(new Map());
   const finishedRef = useRef(false);
   const practiceRef = useRef(false);
 
@@ -143,18 +137,18 @@ export default function MusicLessonPlayPage() {
   const [loading, setLoading] = useState(true);
   const [levelProgress, setLevelProgress] = useState(Object.fromEntries(LEVELS.map((l, i) => [l.key, { unlocked: i === 0, stars: 0 }])));
   const [level, setLevel] = useState(null);
-  const [phase, setPhase] = useState('select'); // select | ready | playing | result
+  const [phase, setPhase] = useState('select');
   const [samplerReady, setSamplerReady] = useState(false);
   const [result, setResult] = useState(null);
   const [popups, setPopups] = useState([]);
   const [pressed, setPressed] = useState(() => new Set());
-  const [stage, setStage] = useState({ w: 360, h: 200 });
+  const [stageH, setStageH] = useState(240);
+  const [pianoW, setPianoW] = useState(360);
   const [fullscreen, setFullscreen] = useState(false);
   const [hintDismissed, setHintDismissed] = useState(false);
   const [isPortrait, setIsPortrait] = useState(false);
   const [, forceRender] = useState(0);
 
-  // ---------- Tải dữ liệu ----------
   useEffect(() => { if (lessonId) load(); }, [lessonId]);
 
   async function loadProgress() {
@@ -170,8 +164,7 @@ export default function MusicLessonPlayPage() {
   async function load() {
     if (!lessonId) return;
     setLoading(true);
-    const { data: l } = await supabase
-      .from('music_lessons').select('*, music_units(id, order_index)').eq('id', lessonId).single();
+    const { data: l } = await supabase.from('music_lessons').select('*, music_units(id, order_index)').eq('id', lessonId).single();
     setLesson(l);
     const { data: siblings } = await supabase
       .from('music_lessons').select('id, order_index').eq('unit_id', l.music_units.id).order('order_index', { ascending: true });
@@ -197,7 +190,24 @@ export default function MusicLessonPlayPage() {
   const whiteKeys = useMemo(() => pianoKeys.filter((k) => !k.isBlack), [pianoKeys]);
   const blackKeys = useMemo(() => pianoKeys.filter((k) => k.isBlack), [pianoKeys]);
 
-  // ---------- Hệ thống: toàn màn hình, xoay máy, kích thước khung ----------
+  // Toạ độ X / bề rộng của TỪNG phím theo bề ngang bàn phím đo được — nốt rơi
+  // dùng đúng toạ độ này để rơi THẲNG xuống đúng phím của nó.
+  const keyLayout = useMemo(() => {
+    const map = new Map();
+    if (whiteKeys.length === 0 || pianoW <= 0) return map;
+    const wW = (pianoW - (whiteKeys.length - 1) * KEY_GAP) / whiteKeys.length;
+    whiteKeys.forEach((k, i) => map.set(k.pitch, { x: i * (wW + KEY_GAP), w: wW, isBlack: false }));
+    const bW = wW * 0.56;
+    blackKeys.forEach((k) => {
+      const idx = whiteKeys.findIndex((w) => w.midi === k.midi - 1);
+      if (idx === -1) return;
+      const x = (idx + 1) * (wW + KEY_GAP) - KEY_GAP / 2 - bW / 2;
+      map.set(k.pitch, { x, w: bW, isBlack: true });
+    });
+    return map;
+  }, [whiteKeys, blackKeys, pianoW]);
+
+  // ---------- Toàn màn hình / xoay máy / đo kích thước ----------
   useEffect(() => {
     function onFs() { setFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement)); }
     function onSize() { setIsPortrait(window.innerHeight > window.innerWidth && window.innerWidth < 820); }
@@ -215,14 +225,37 @@ export default function MusicLessonPlayPage() {
   }, []);
 
   useEffect(() => {
-    if (phase !== 'playing' || !stageRef.current) return undefined;
-    const el = stageRef.current;
-    const measure = () => setStage({ w: el.clientWidth, h: el.clientHeight });
+    if (phase !== 'playing') return undefined;
+    function measure() {
+      if (stageRef.current) setStageH(stageRef.current.clientHeight);
+      if (pianoRowRef.current) setPianoW(pianoRowRef.current.clientWidth);
+    }
     measure();
-    let ro;
-    if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(measure); ro.observe(el); }
+    let ro1, ro2;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro1 = new ResizeObserver(measure); ro1.observe(stageRef.current);
+      ro2 = new ResizeObserver(measure); ro2.observe(pianoRowRef.current);
+    }
     window.addEventListener('resize', measure);
-    return () => { if (ro) ro.disconnect(); window.removeEventListener('resize', measure); };
+    return () => { ro1 && ro1.disconnect(); ro2 && ro2.disconnect(); window.removeEventListener('resize', measure); };
+  }, [phase]);
+
+  // Chặn "đè lâu -> Copy" một cách CHẮC CHẮN trên Safari iOS: gắn thẳng vào
+  // DOM (không qua React) với { passive:false } để preventDefault() có hiệu lực.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return undefined;
+    const stop = (e) => e.preventDefault();
+    el.addEventListener('touchstart', stop, { passive: false });
+    el.addEventListener('contextmenu', stop, { passive: false });
+    el.addEventListener('selectstart', stop, { passive: false });
+    el.addEventListener('gesturestart', stop, { passive: false });
+    return () => {
+      el.removeEventListener('touchstart', stop);
+      el.removeEventListener('contextmenu', stop);
+      el.removeEventListener('selectstart', stop);
+      el.removeEventListener('gesturestart', stop);
+    };
   }, [phase]);
 
   useEffect(() => () => {
@@ -233,7 +266,6 @@ export default function MusicLessonPlayPage() {
   }, []);
 
   const canFullscreen = typeof document !== 'undefined' && !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
-
   function enterFullscreen() {
     if (!canFullscreen) return;
     const el = document.documentElement;
@@ -264,23 +296,14 @@ export default function MusicLessonPlayPage() {
       }).toDestination();
       await Promise.race([Tone.loaded(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 9000))]);
     } catch (e) {
-      // Không tải được mẫu piano (mạng chặn/chậm) -> dùng âm tổng hợp dự phòng để vẫn chơi được.
       sampler = new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'triangle' }, envelope: { attack: 0.01, decay: 0.4, sustain: 0.25, release: 1 } }).toDestination();
     }
     samplerRef.current = { Tone, sampler };
     setSamplerReady(true);
     return samplerRef.current;
   }
-  function noteOn(pitch) {
-    const s = samplerRef.current;
-    if (!s) return;
-    try { s.sampler.triggerAttack(pitch, s.Tone.now(), 0.9); } catch (e) { /* nốt ngoài dải mẫu */ }
-  }
-  function noteOff(pitch) {
-    const s = samplerRef.current;
-    if (!s) return;
-    try { s.sampler.triggerRelease(pitch, s.Tone.now()); } catch (e) { /* bỏ qua */ }
-  }
+  function noteOn(pitch) { const s = samplerRef.current; if (!s) return; try { s.sampler.triggerAttack(pitch, s.Tone.now(), 0.9); } catch (e) { /* ngoài dải mẫu */ } }
+  function noteOff(pitch) { const s = samplerRef.current; if (!s) return; try { s.sampler.triggerRelease(pitch, s.Tone.now()); } catch (e) { /* bỏ qua */ } }
   function releaseAll() {
     activeRef.current.clear();
     try { samplerRef.current && samplerRef.current.sampler.releaseAll && samplerRef.current.sampler.releaseAll(); } catch (e) { /* bỏ qua */ }
@@ -288,11 +311,7 @@ export default function MusicLessonPlayPage() {
   }
 
   // ---------- Luồng chơi ----------
-  function chooseLevel(lvKey) {
-    setLevel(lvKey);
-    setPhase('ready');
-    ensureSampler();
-  }
+  function chooseLevel(lvKey) { setLevel(lvKey); setPhase('ready'); ensureSampler(); }
 
   function startGame() {
     if (!samplerRef.current || notesForPlay.length === 0) return;
@@ -302,11 +321,7 @@ export default function MusicLessonPlayPage() {
     practiceRef.current = !!lv.selfPaced;
     const bpm = (lesson.tempo_bpm || 90) * (lv.mult ?? 1);
     timelineRef.current = notesForPlay.map((n) => ({
-      pitch: n.pitch,
-      time: (n.startBeat || 0) * 60 / bpm,
-      duration: durationBeats(n.duration) * 60 / bpm,
-      judged: null,
-      timingError: null,
+      pitch: n.pitch, time: (n.startBeat || 0) * 60 / bpm, duration: durationBeats(n.duration) * 60 / bpm, judged: null, timingError: null,
     }));
     answerLogsRef.current = [];
     pauseOffsetRef.current = 0;
@@ -328,7 +343,7 @@ export default function MusicLessonPlayPage() {
     if (practiceRef.current) {
       const first = timeline.find((n) => !n.judged);
       if (!first) { elapsedRef.current = elapsed; finishGame(); return; }
-      if (elapsed >= first.time) { pauseOffsetRef.current = raw - first.time; elapsed = first.time; } // khựng lại chờ bấm đúng
+      if (elapsed >= first.time) { pauseOffsetRef.current = raw - first.time; elapsed = first.time; }
     } else {
       let allDone = true;
       timeline.forEach((n) => {
@@ -345,9 +360,9 @@ export default function MusicLessonPlayPage() {
     rafRef.current = requestAnimationFrame(tick);
   }
 
-  function addPopup(text, color, lane) {
+  function addPopup(text, color, pitch) {
     const id = Math.random().toString(36).slice(2);
-    setPopups((p) => [...p, { id, text, color, lane }]);
+    setPopups((p) => [...p, { id, text, color, pitch }]);
     setTimeout(() => setPopups((p) => p.filter((x) => x.id !== id)), 800);
   }
 
@@ -355,7 +370,6 @@ export default function MusicLessonPlayPage() {
     if (finishedRef.current) return;
     const raw = (performance.now() - startTimeRef.current) / 1000;
     const elapsed = raw - pauseOffsetRef.current;
-    const lane = lanePitches.indexOf(pitch);
     const timeline = timelineRef.current;
 
     if (practiceRef.current) {
@@ -363,23 +377,21 @@ export default function MusicLessonPlayPage() {
       if (first && first.pitch === pitch) {
         first.judged = 'hit'; first.timingError = 0;
         answerLogsRef.current.push({ exercise_type: 'play_note', question_content: pitch, correct_answer: pitch, student_answer: pitch, is_correct: true, time_taken_seconds: 0 });
-        addPopup('Tuyệt', '#4CC2FF', lane);
+        addPopup('Tuyệt', '#4CC2FF', pitch);
         pauseOffsetRef.current = raw - first.time;
       }
       return;
     }
-
     const candidates = timeline.filter((n) => n.pitch === pitch && !n.judged && Math.abs(n.time - elapsed) <= LATE_T);
-    if (candidates.length === 0) return; // bấm chơi tự do — không tính điểm, không phạt
+    if (candidates.length === 0) return;
     const note = candidates.sort((a, b) => Math.abs(a.time - elapsed) - Math.abs(b.time - elapsed))[0];
     note.judged = 'hit';
     note.timingError = Math.abs(note.time - elapsed);
     answerLogsRef.current.push({ exercise_type: 'play_note', question_content: note.pitch, correct_answer: note.pitch, student_answer: pitch, is_correct: true, time_taken_seconds: Math.round(note.timingError * 100) / 100 });
     const j = judgeLabel(note.timingError);
-    addPopup(j.text, j.color, lane);
+    addPopup(j.text, j.color, pitch);
   }
 
-  // Đè phím: âm thanh vang tiếp cho tới khi nhả tay.
   function pressKey(e, pitch) {
     e.preventDefault();
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* bỏ qua */ }
@@ -410,14 +422,10 @@ export default function MusicLessonPlayPage() {
     const rhythmAccuracy = practiceRef.current ? 100 : Math.round(rhythmSum / total);
     const score = Math.round((pitchAccuracy + rhythmAccuracy) / 2);
     const stars = starsForScore(score);
-
     let res;
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      res = await finishMusicLessonAttempt({
-        studentId: user.id, lesson, nextLessonId, level,
-        pitchAccuracy, rhythmAccuracy, stars, heartsLeft: lesson.max_hearts || 5, answerLogs: answerLogsRef.current,
-      });
+      res = await finishMusicLessonAttempt({ studentId: user.id, lesson, nextLessonId, level, pitchAccuracy, rhythmAccuracy, stars, heartsLeft: lesson.max_hearts || 5, answerLogs: answerLogsRef.current });
     } catch (e) {
       res = { xpEarned: 0, completed: score >= (lesson.pass_score ?? 80), score, stars, saveError: e.message };
     }
@@ -427,40 +435,23 @@ export default function MusicLessonPlayPage() {
   }
 
   function backToUnit() { router.push(`/student/music/units/${lesson.music_units.id}`); }
-
   function exitGame() {
     if (phase === 'playing' && !window.confirm('Thoát bài? Kết quả lần chơi này sẽ không được lưu.')) return;
-    finishedRef.current = true;
-    cancelAnimationFrame(rafRef.current);
-    releaseAll();
-    leaveFullscreen();
-    backToUnit();
+    finishedRef.current = true; cancelAnimationFrame(rafRef.current); releaseAll(); leaveFullscreen(); backToUnit();
   }
-
-  async function backToSelect() {
-    finishedRef.current = true;
-    await loadProgress();
-    setPhase('select');
-  }
+  async function backToSelect() { finishedRef.current = true; await loadProgress(); setPhase('select'); }
 
   // ================= Giao diện =================
   const styleTag = <style dangerouslySetInnerHTML={{ __html: CSS }} />;
-
-  if (loading || !lesson) {
-    return <div className="mp-root">{styleTag}<div className="mp-scroll"><p className="mp-sub">Đang tải…</p></div></div>;
-  }
+  if (loading || !lesson) return <div className="mp-root" ref={rootRef}>{styleTag}<div className="mp-scroll"><p className="mp-sub">Đang tải…</p></div></div>;
 
   const levelObj = level ? LEVELS.find((l) => l.key === level) : null;
 
   if (phase === 'select') {
     return (
-      <div className="mp-root">
+      <div className="mp-root" ref={rootRef}>
         {styleTag}
-        <div className="mp-top">
-          <button className="mp-iconbtn" onClick={backToUnit} aria-label="Quay lại">←</button>
-          <div className="mp-title">Chọn cấp độ</div>
-          <span style={{ width: 38 }} />
-        </div>
+        <div className="mp-top"><button className="mp-iconbtn" onClick={backToUnit}>←</button><div className="mp-title">Chọn cấp độ</div><span style={{ width: 38 }} /></div>
         <div className="mp-scroll">
           <div className="mp-card">
             <div style={{ fontSize: 40, textAlign: 'center' }}>🎵</div>
@@ -470,10 +461,7 @@ export default function MusicLessonPlayPage() {
               const p = levelProgress[lv.key];
               return (
                 <button key={lv.key} className="mp-level" disabled={!p.unlocked} onClick={() => chooseLevel(lv.key)}>
-                  <span>
-                    {p.unlocked ? '▶' : '🔒'} {lv.label}
-                    <small>{LEVEL_HINT[lv.key]}</small>
-                  </span>
+                  <span>{p.unlocked ? '▶' : '🔒'} {lv.label}<small>{LEVEL_HINT[lv.key]}</small></span>
                   {lv.key !== 'practice' && <Stars n={p.stars} size={18} />}
                 </button>
               );
@@ -486,23 +474,15 @@ export default function MusicLessonPlayPage() {
 
   if (phase === 'ready') {
     return (
-      <div className="mp-root">
+      <div className="mp-root" ref={rootRef}>
         {styleTag}
-        <div className="mp-top">
-          <button className="mp-iconbtn" onClick={backToSelect} aria-label="Quay lại">←</button>
-          <div className="mp-title">{lesson.title}<span className="mp-chip">{levelObj.label}</span></div>
-          <span style={{ width: 38 }} />
-        </div>
+        <div className="mp-top"><button className="mp-iconbtn" onClick={backToSelect}>←</button><div className="mp-title">{lesson.title}<span className="mp-chip">{levelObj.label}</span></div><span style={{ width: 38 }} /></div>
         <div className="mp-scroll">
           <div className="mp-card">
             <div style={{ fontSize: 40, textAlign: 'center' }}>🎹</div>
             <h1 className="mp-h1">Sẵn sàng chưa?</h1>
             <p className="mp-sub">{LEVEL_HINT[level]}</p>
-            {notesForPlay.length === 0 ? (
-              <p className="mp-err">Bài này chưa có nốt nhạc. Nhờ giáo viên soạn thêm nhé.</p>
-            ) : (
-              <p className="mp-sub">{samplerReady ? '✓ Đàn piano đã sẵn sàng' : 'Đang tải âm thanh đàn piano…'}</p>
-            )}
+            {notesForPlay.length === 0 ? <p className="mp-err">Bài này chưa có nốt nhạc. Nhờ giáo viên soạn thêm nhé.</p> : <p className="mp-sub">{samplerReady ? '✓ Đàn piano đã sẵn sàng' : 'Đang tải âm thanh đàn piano…'}</p>}
             {isPortrait && <p className="mp-sub">Nên xoay ngang thiết bị để có trải nghiệm tốt nhất.</p>}
             <button className="mp-btn" disabled={!samplerReady || notesForPlay.length === 0} onClick={startGame}>▶ Bắt đầu</button>
           </div>
@@ -513,7 +493,7 @@ export default function MusicLessonPlayPage() {
 
   if (phase === 'result' && result) {
     return (
-      <div className="mp-root">
+      <div className="mp-root" ref={rootRef}>
         {styleTag}
         <div className="mp-scroll">
           <div className="mp-card" style={{ textAlign: 'center' }}>
@@ -535,113 +515,76 @@ export default function MusicLessonPlayPage() {
     );
   }
 
-  // ---------- Màn chơi ----------
+  // ---------- Màn chơi: nốt rơi từ trên xuống ----------
   const timeline = timelineRef.current;
   const elapsed = elapsedRef.current;
-  const layerW = Math.max(120, stage.w - LABEL_W - 2);
-  const hitX = layerW * HIT_FRAC;
-  const pps = clamp(layerW * 0.27, 110, 230);
-  const count = Math.max(1, lanePitches.length);
-  const laneH = clamp((stage.h - 16) / count, 28, 64);
-  const groupH = laneH * count;
-  const innerH = Math.max(stage.h, groupH + 16);
-  const groupTop = Math.max(8, (innerH - groupH) / 2);
-  const laneTop = (idx) => groupTop + (count - 1 - idx) * laneH;
+  const pps = stageH > 0 ? stageH / LOOKAHEAD_SEC : 90;
   const judgedCount = timeline.filter((n) => n.judged).length;
   const pct = timeline.length ? Math.round((judgedCount / timeline.length) * 100) : 0;
-
   const nW = Math.max(1, whiteKeys.length);
   const wCalc = `((100% - ${(nW - 1) * KEY_GAP}px) / ${nW})`;
 
   return (
-    <div className="mp-root" onContextMenu={block}>
+    <div className="mp-root" ref={rootRef} onContextMenu={block}>
       {styleTag}
       <div className="mp-top">
-        <button className="mp-iconbtn" onClick={exitGame} aria-label="Thoát bài học">✕</button>
+        <button className="mp-iconbtn" onClick={exitGame}>✕</button>
         <div className="mp-title">{lesson.title}<span className="mp-chip">{levelObj.label}</span></div>
         {canFullscreen ? (
-          <button className="mp-iconbtn" onClick={toggleFullscreen} aria-label="Toàn màn hình">
+          <button className="mp-iconbtn" onClick={toggleFullscreen}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              {fullscreen
-                ? <path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" />
-                : <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />}
+              {fullscreen ? <path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3" /> : <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />}
             </svg>
           </button>
         ) : <span style={{ width: 38 }} />}
       </div>
       <div className="mp-progress"><div style={{ width: `${pct}%` }} /></div>
-
       {isPortrait && !hintDismissed && (
         <div className="mp-hint">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2" width="12" height="20" rx="3" /><path d="M11 18h2" /></svg>
           <span>Xoay ngang thiết bị để có trải nghiệm tốt nhất</span>
-          <button onClick={() => setHintDismissed(true)} aria-label="Đóng gợi ý">✕</button>
+          <button onClick={() => setHintDismissed(true)}>✕</button>
         </div>
       )}
 
-      <div ref={stageRef} className="mp-stage" style={{ overflowY: groupH + 16 > stage.h + 1 ? 'auto' : 'hidden' }}>
-        <div style={{ position: 'relative', width: '100%', height: innerH }}>
-          {lanePitches.map((p, i) => {
-            const c = noteColor(p);
-            return (
-              <div key={p} style={{ position: 'absolute', left: 0, right: 0, top: laneTop(i), height: laneH, borderTop: '1px solid rgba(255,255,255,.06)',
-                background: pressed.has(p) ? `${c}2b` : (i % 2 ? 'rgba(255,255,255,.025)' : 'transparent'), transition: 'background .08s' }} />
-            );
-          })}
-
-          <div style={{ position: 'absolute', left: LABEL_W, right: 0, top: 0, height: innerH, overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', left: hitX - 5, top: 0, bottom: 0, width: 10, animation: 'mpPulse 1.2s ease-in-out infinite',
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent)' }} />
-            {lanePitches.map((p, i) => {
-              const c = noteColor(p);
-              const on = pressed.has(p);
-              return (
-                <div key={p} style={{ position: 'absolute', left: hitX - 15, top: laneTop(i) + laneH / 2 - 15, width: 30, height: 30, borderRadius: '50%',
-                  border: `2px solid ${c}`, background: on ? `${c}88` : `${c}1f`, boxShadow: on ? `0 0 16px ${c}` : 'none', transition: 'all .08s' }} />
-              );
-            })}
-            {timeline.map((n, idx) => {
-              if (n.judged === 'hit' && elapsed - n.time > 0.35) return null;
-              const li = lanePitches.indexOf(n.pitch);
-              const w = Math.max(30, n.duration * pps - 4);
-              const x = hitX + (n.time - elapsed) * pps - 0;
-              if (x > layerW + 10 || x + w < -10) return null;
-              const c = noteColor(n.pitch);
-              const h = Math.max(20, laneH - 12);
-              const hit = n.judged === 'hit';
-              const miss = n.judged === 'miss';
-              return (
-                <div key={idx} style={{
-                  position: 'absolute', left: 0, top: laneTop(li) + (laneH - h) / 2, width: w, height: h, transform: `translate3d(${x}px,0,0)`, willChange: 'transform',
-                  borderRadius: Math.min(14, h / 2), background: hit ? '#58CC02' : miss ? 'rgba(148,163,184,.35)' : c,
-                  boxShadow: hit ? '0 0 18px rgba(88,204,2,.8)' : miss ? 'none' : `0 4px 14px ${c}55, inset 0 -3px 0 rgba(0,0,0,.22)`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, whiteSpace: 'nowrap',
-                  fontSize: Math.min(15, h * 0.42), opacity: miss ? 0.6 : 1,
-                }}>{w >= 40 ? shortName(n.pitch) : ''}</div>
-              );
-            })}
-          </div>
-
-          {lanePitches.map((p, i) => (
-            <div key={p} style={{ position: 'absolute', left: 8, top: laneTop(i) + laneH / 2 - 12, minWidth: LABEL_W - 16, height: 24, padding: '0 8px', borderRadius: 999,
-              background: `${noteColor(p)}26`, border: `1px solid ${noteColor(p)}66`, color: noteColor(p), fontWeight: 800, fontSize: 12,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4 }}>{shortName(p)}</div>
-          ))}
-
-          {popups.map((pu) => (
-            <div key={pu.id} className="mp-popup" style={{ left: LABEL_W + hitX, top: laneTop(pu.lane) + laneH / 2 - 36, color: pu.color }}>{pu.text}</div>
-          ))}
-
-          {elapsed < -0.05 && (
-            <div key={Math.ceil(-elapsed)} className="mp-count" style={{ left: LABEL_W + layerW / 2, top: Math.max(0, stage.h / 2 - 40), transform: 'translateX(-50%)' }}>
-              {Math.ceil(-elapsed)}
-            </div>
-          )}
-        </div>
+      <div ref={stageRef} className="mp-stage">
+        {/* Vạch tới hạn ngay sát mép trên bàn phím */}
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 4, background: 'rgba(255,255,255,.35)' }} />
+        {keyLayout && Array.from(keyLayout.entries()).map(([pitch, k]) => {
+          if (k.isBlack) return null;
+          const c = noteColor(pitch);
+          const on = pressed.has(pitch);
+          return <div key={pitch} style={{ position: 'absolute', left: k.x, bottom: 0, width: k.w, top: 0, borderLeft: '1px solid rgba(255,255,255,.04)', background: on ? `${c}22` : 'transparent', transition: 'background .08s' }} />;
+        })}
+        {timeline.map((n, idx) => {
+          if (n.judged === 'hit' && elapsed - n.time > 0.3) return null;
+          const k = keyLayout.get(n.pitch);
+          if (!k) return null;
+          const h = Math.max(22, n.duration * pps - 4);
+          const bottomY = (n.time - elapsed) * pps; // khoảng cách từ đáy (vạch tới hạn) lên đáy thanh nốt
+          if (bottomY > stageH + h + 20 || bottomY < -h - 20) return null;
+          const c = noteColor(n.pitch);
+          const hit = n.judged === 'hit', miss = n.judged === 'miss';
+          return (
+            <div key={idx} style={{
+              position: 'absolute', left: k.x + 2, width: Math.max(20, k.w - 4), height: h,
+              bottom: bottomY, willChange: 'bottom',
+              borderRadius: Math.min(12, k.w / 3), background: hit ? '#58CC02' : miss ? 'rgba(148,163,184,.35)' : c,
+              boxShadow: hit ? '0 0 16px rgba(88,204,2,.8)' : miss ? 'none' : `0 4px 14px ${c}55, inset 0 3px 0 rgba(255,255,255,.25)`,
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 4, color: '#fff', fontWeight: 800,
+              fontSize: Math.min(13, k.w * 0.34), opacity: miss ? 0.55 : 1,
+            }}>{h >= 34 ? shortName(n.pitch) : ''}</div>
+          );
+        })}
+        {popups.map((pu) => {
+          const k = keyLayout.get(pu.pitch);
+          return <div key={pu.id} className="mp-popup" style={{ left: k ? k.x + k.w / 2 : '50%', bottom: 46, color: pu.color }}>{pu.text}</div>;
+        })}
+        {elapsed < -0.05 && <div key={Math.ceil(-elapsed)} className="mp-count" style={{ left: '50%', top: '38%' }}>{Math.ceil(-elapsed)}</div>}
       </div>
 
       <div className="mp-piano">
-        <div className="mp-white-row">
+        <div ref={pianoRowRef} className="mp-white-row">
           {whiteKeys.map((k) => (
             <button key={k.midi} className={`mp-white${pressed.has(k.pitch) ? ' on' : ''}`} style={{ '--c': NOTE_COLOR[k.letter] }}
               onPointerDown={(e) => pressKey(e, k.pitch)} onPointerUp={releaseKey} onPointerCancel={releaseKey} onLostPointerCapture={releaseKey} onContextMenu={block}>
