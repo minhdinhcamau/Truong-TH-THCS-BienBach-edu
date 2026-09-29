@@ -246,12 +246,13 @@ export default function MusicLessonPlayPage() {
     const el = rootRef.current;
     if (!el) return undefined;
     const stop = (e) => e.preventDefault();
-    el.addEventListener('touchstart', stop, { passive: false });
+    const stopUnlessButton = (e) => { if (!e.target.closest('button, a, input, select, textarea')) e.preventDefault(); };
+    el.addEventListener('touchstart', stopUnlessButton, { passive: false });
     el.addEventListener('contextmenu', stop, { passive: false });
     el.addEventListener('selectstart', stop, { passive: false });
     el.addEventListener('gesturestart', stop, { passive: false });
     return () => {
-      el.removeEventListener('touchstart', stop);
+      el.removeEventListener('touchstart', stopUnlessButton);
       el.removeEventListener('contextmenu', stop);
       el.removeEventListener('selectstart', stop);
       el.removeEventListener('gesturestart', stop);
