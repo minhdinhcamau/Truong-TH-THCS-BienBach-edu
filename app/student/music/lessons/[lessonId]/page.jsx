@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { finishMusicLessonAttempt } from '@/lib/musicXp';
-import { VN_NAME, NOTE_COLOR, pitchToMidi, durationBeats, buildPianoKeys, starsForScore, LEVELS } from '@/lib/musicNotes';
+import { VN_NAME, NOTE_COLOR, pitchToMidi, durationBeats, buildPianoKeys, starsForScore, LEVELS, levelBpm } from '@/lib/musicNotes';
 
 const LEAD_IN = 3;                  // giây đếm ngược trước khi nốt đầu tới phím
 const LOOKAHEAD_SEC = 2.6;          // số giây nhìn thấy trước khi nốt rơi tới nơi
@@ -320,7 +320,7 @@ export default function MusicLessonPlayPage() {
     enterFullscreen();
     const lv = LEVELS.find((l) => l.key === level);
     practiceRef.current = !!lv.selfPaced;
-    const bpm = (lesson.tempo_bpm || 90) * (lv.mult ?? 1);
+    const bpm = levelBpm(lesson, level);
     timelineRef.current = notesForPlay.map((n) => ({
       pitch: n.pitch, time: (n.startBeat || 0) * 60 / bpm, duration: durationBeats(n.duration) * 60 / bpm, judged: null, timingError: null,
     }));
@@ -558,7 +558,6 @@ export default function MusicLessonPlayPage() {
           return <div key={pitch} style={{ position: 'absolute', left: k.x, bottom: 0, width: k.w, top: 0, borderLeft: '1px solid rgba(255,255,255,.04)', background: on ? `${c}22` : 'transparent', transition: 'background .08s' }} />;
         })}
         {timeline.map((n, idx) => {
-          if (n.judged === 'hit' && elapsed - n.time > 0.3) return null;
           const k = keyLayout.get(n.pitch);
           if (!k) return null;
           const h = Math.max(22, n.duration * pps - 4);
