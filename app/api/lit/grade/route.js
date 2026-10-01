@@ -28,13 +28,14 @@ export async function POST(request) {
     const result = await gradeAndSave(submissionId);
     return NextResponse.json({ ok: true, result });
   } catch (e) {
+    console.error('lit/grade lỗi:', e?.message, e?.attempts || e?.errors || '');
     if (e.code === 'not_configured') {
       return NextResponse.json({ error: 'Chưa cấu hình khóa AI (GEMINI_API_KEY hoặc ANTHROPIC_API_KEY) trên Vercel.' }, { status: 501 });
     }
     // Lỗi nghiệp vụ (đã công bố, chưa có barem...) giữ nguyên nội dung; lỗi AI thì báo chung
     const business = /công bố|barem|Không tìm thấy/.test(e.message || '');
     return NextResponse.json(
-      { error: business ? e.message : 'AI đang bận hoặc trả kết quả sai định dạng. Thử lại sau ít phút.' },
+      { error: business ? e.message : 'AI đang bận hoặc trả kết quả sai định dạng. Thử lại sau ít phút.', detail: business ? undefined : String(e?.message || '').slice(0, 300) },
       { status: business ? 400 : 502 }
     );
   }

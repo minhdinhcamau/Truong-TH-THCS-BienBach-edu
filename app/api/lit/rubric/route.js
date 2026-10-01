@@ -24,9 +24,10 @@ export async function POST(request) {
     });
     return NextResponse.json({ criteria });
   } catch (e) {
+    console.error('lit/rubric lỗi:', e?.message, e?.attempts || e?.errors || '');
     if (e.code === 'not_configured') {
       return NextResponse.json({ error: 'Chưa cấu hình khóa AI (GEMINI_API_KEY hoặc ANTHROPIC_API_KEY) trên Vercel.' }, { status: 501 });
     }
-    return NextResponse.json({ error: 'AI đang bận hoặc trả kết quả sai định dạng. Thầy/cô thử lại sau ít phút.' }, { status: 502 });
+    return NextResponse.json({ error: 'AI đang bận hoặc trả kết quả sai định dạng. Thầy/cô thử lại sau ít phút.', detail: String(e?.message || '').slice(0, 300) }, { status: 502 });
   }
 }
