@@ -40,6 +40,9 @@ export default function StudentLitHome() {
     <div className="wrap">
       <style jsx>{`
         .wrap { max-width: 820px; margin: 0 auto; padding: 8px 0 40px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
+        .subjects { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+        .subj { padding: 8px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600; background: #F3F4F6; color: #374151; text-decoration: none; display: inline-block; }
+        .subj.on { background: #2563eb; color: #fff; }
         h1 { margin: 6px 0 4px; font-size: 24px; color: #17302d; }
         .sub { margin: 0 0 20px; color: #6b7f7a; font-size: 14px; }
         .list { display: grid; gap: 12px; }
@@ -54,6 +57,12 @@ export default function StudentLitHome() {
         .cta { font-weight: 700; font-size: 13.5px; color: #225da3; white-space: nowrap; }
         .empty { text-align: center; padding: 48px 20px; color: #9ca3af; background: #fff; border-radius: 16px; border: 1px dashed #cfe2f7; }
       `}</style>
+
+      <div className="subjects">
+        <Link href="/student/english" className="subj">📘 Tiếng Anh</Link>
+        <Link href="/student/music" className="subj">🎵 Âm nhạc</Link>
+        <span className="subj on">✍️ Ngữ văn</span>
+      </div>
 
       <h1>Bài văn của em</h1>
       <p className="sub">Viết bài trực tiếp trên web. Sau khi nộp, AI sẽ đọc bài và thầy cô duyệt điểm cùng nhận xét.</p>

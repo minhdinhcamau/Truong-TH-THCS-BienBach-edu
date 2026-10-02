@@ -90,6 +90,12 @@ export default function StudentEnglishHome() {
 
   return (
     <div style={{ padding: 24, maxWidth: 640, margin: '0 auto' }}>
+      <div style={subjectTabs}>
+        <span style={{ ...subjectTab, ...subjectTabActive }}>📘 Tiếng Anh</span>
+        <Link href="/student/music" style={subjectTab}>🎵 Âm nhạc</Link>
+        <Link href="/student/ngu-van" style={subjectTab}>✍️ Ngữ văn</Link>
+      </div>
+
       <div style={statsBar}>
         <div>
           <strong>{profile.full_name}</strong>
@@ -135,7 +141,7 @@ function LessonNode({ lesson }) {
   return (
     <div style={{ textAlign: 'center', width: 72 }}>
       {lesson.unlocked ? (
-        <Link href={`/student/english/lessons/${lesson.id}`} style={{ textDecoration: 'none', display: 'block' }}>{content}</Link>
+        <Link href={`/student/english/lessons/${lesson.id}`}>{content}</Link>
       ) : (
         content
       )}
@@ -143,6 +149,17 @@ function LessonNode({ lesson }) {
     </div>
   );
 }
+
+const subjectTabs = {
+  display: 'flex', gap: 8, marginBottom: 14,
+};
+const subjectTab = {
+  padding: '8px 16px', borderRadius: 999, fontSize: 13.5, fontWeight: 600,
+  background: '#F3F4F6', color: '#374151', textDecoration: 'none', display: 'inline-block',
+};
+const subjectTabActive = {
+  background: '#2563eb', color: '#fff',
+};
 
 const statsBar = {
   display: 'flex',

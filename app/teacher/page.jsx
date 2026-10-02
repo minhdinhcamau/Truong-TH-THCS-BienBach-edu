@@ -354,6 +354,14 @@ export default function TeacherDashboard() {
                     </Link>
                   );
                 }
+                if (/(^|\s)ngu van(\s|$)/.test(norm(s.name))) {
+                  return (
+                    <Link key={s.id} href="/teacher/ngu-van" className="tp-subj on">
+                      <div className="tp-subj-ic" aria-hidden="true">{iconOf(s.name)}</div>
+                      <div><b>{s.name}</b><span className="ready">Giao đề văn, soạn barem & AI chấm bài</span></div>
+                    </Link>
+                  );
+                }
                 return (
                   <div key={s.id} className="tp-subj off">
                     <div className="tp-subj-ic" aria-hidden="true">{iconOf(s.name)}</div>
