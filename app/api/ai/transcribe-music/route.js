@@ -13,7 +13,7 @@
 //
 // BẢN DÙNG GEMINI: đọc khóa từ GEMINI_API_KEYS (nhiều khóa, cách nhau dấu phẩy) hoặc GEMINI_API_KEY —
 // đúng 2 biến đang có trên Vercel của dự án, không cần khóa mới.
-// Tuỳ chọn: GEMINI_MUSIC_MODEL (mặc định gemini-2.5-pro, tự lùi về gemini-2.5-flash nếu lỗi/không có).
+// Tuỳ chọn: GEMINI_MUSIC_MODEL (mặc định gemini-3.8-flash, tự lùi về gemini-3.7-flash nếu lỗi/không có; thử gemini-3.1-pro-preview nếu muốn đọc kỹ hơn).
 
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
@@ -22,7 +22,7 @@ import { durationBeats, beatsPerMeasure, normalizePitch, DURATIONS, TIME_SIGNATU
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const MODELS = [process.env.GEMINI_MUSIC_MODEL || 'gemini-2.5-pro', 'gemini-2.5-flash'].filter((m, i, a) => a.indexOf(m) === i);
+const MODELS = [process.env.GEMINI_MUSIC_MODEL, 'gemini-3.8-flash', 'gemini-3.7-flash'].filter((m, i, a) => m && a.indexOf(m) === i);
 const DURATION_LIST = DURATIONS.filter((d) => d.key !== 'grace');
 const DURATION_KEYS = DURATION_LIST.map((d) => d.key);
 const DURATION_HELP = DURATION_LIST.map((d) => `${d.key} (${d.beats} phách)`).join(', ');
