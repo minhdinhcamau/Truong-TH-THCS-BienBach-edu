@@ -20,6 +20,9 @@ const LEAD_IN = 3;                  // giây đếm ngược trước khi nốt 
 const LOOKAHEAD_SEC = 1.9;          // số giây nhìn thấy trước khi nốt rơi tới nơi (nhỏ hơn = rơi nhanh/sinh động hơn)
 const PERFECT_T = 0.12, GREAT_T = 0.25, LATE_T = 0.42; // ngưỡng chấm (giây)
 const KEY_GAP = 3;
+// Qua màn khi đàn ĐÚNG ít nhất PASS_PERCENT % số nốt của bài (đổi con số này nếu muốn dễ/khó hơn).
+// Qua màn = được ít nhất 1 sao + mở khóa cấp độ / bài tiếp theo.
+const PASS_PERCENT = 60;
 
 const LEVEL_HINT = {
   practice: 'Không tính giờ — bấm đúng nốt thì nhạc mới chạy tiếp',
@@ -47,7 +50,9 @@ const CSS = `
   background: radial-gradient(1100px 560px at 50% -10%, #1d2f55 0%, #0e1729 58%, #080d18 100%); color: #fff;
   font-family: 'Be Vietnam Pro', system-ui, sans-serif; box-sizing: border-box; overscroll-behavior: none;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  -webkit-tap-highlight-color: transparent; touch-action: none; }
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.mp-root.mp-playing { touch-action: none; }
+html.mp-lock, html.mp-lock body { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; overscroll-behavior: none; }
 .mp-root, .mp-root * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; -webkit-user-drag: none !important; }
 .mp-top { display: flex; align-items: center; gap: 10px; padding: 8px 12px 6px; flex: 0 0 auto; }
 .mp-iconbtn { width: 38px; height: 38px; border-radius: 12px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.08);
@@ -62,6 +67,14 @@ const CSS = `
   background: rgba(56,139,253,.12); border: 1px solid rgba(56,139,253,.3); color: #cfe3ff; font-size: 12.5px; line-height: 1.35; }
 .mp-hint span { flex: 1; }
 .mp-hint button { background: none; border: none; color: inherit; opacity: .7; font-size: 14px; padding: 2px 8px; cursor: pointer; }
+.mp-meter { margin: 0 14px 10px; flex: 0 0 auto; }
+.mp-meter-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 5px; }
+.mp-meter-pct { font-weight: 900; font-size: 22px; min-width: 56px; line-height: 1; transition: color .2s; }
+.mp-meter-goal { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: rgba(255,255,255,.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-meter-prog { font-size: 11.5px; color: rgba(255,255,255,.5); white-space: nowrap; }
+.mp-meter-bar { position: relative; height: 10px; border-radius: 999px; background: rgba(255,255,255,.12); }
+.mp-meter-bar .fill { height: 100%; border-radius: 999px; transition: width .2s, background .2s; }
+.mp-meter-bar .goal { position: absolute; top: -3px; bottom: -3px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: #fff; opacity: .9; }
 .mp-stage { position: relative; flex: 1 1 0; min-height: 0; margin: 0 10px; border-radius: 16px 16px 0 0; overflow: hidden;
   background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015)); border: 1px solid rgba(255,255,255,.09); border-bottom: none; }
 .mp-popup { position: absolute; font-weight: 900; font-size: 15px; text-shadow: 0 2px 8px rgba(0,0,0,.65); pointer-events: none;
@@ -81,7 +94,7 @@ const CSS = `
   background: linear-gradient(180deg, #3b3f47 0%, #15171b 70%, #0a0b0e 100%); box-shadow: 0 6px 10px rgba(0,0,0,.5), inset 0 -3px 0 rgba(255,255,255,.08);
   transition: transform .06s, filter .06s; }
 .mp-black.on { transform: translateY(2px); filter: brightness(1.7); }
-.mp-scroll { flex: 1; overflow-y: auto; display: flex; align-items: center; justify-content: center; padding: 8px 16px 24px; }
+.mp-scroll { touch-action: pan-y; flex: 1; overflow-y: auto; display: flex; align-items: center; justify-content: center; padding: 8px 16px 24px; }
 .mp-card { width: 100%; max-width: 440px; border-radius: 22px; padding: 26px 22px; background: rgba(255,255,255,.06);
   border: 1px solid rgba(255,255,255,.12); box-shadow: 0 20px 50px rgba(0,0,0,.35); }
 .mp-h1 { margin: 0 0 4px; font-size: 22px; font-weight: 800; text-align: center; }
@@ -159,6 +172,7 @@ export default function MusicLessonPlayPage() {
     const map = Object.fromEntries(LEVELS.map((lv, i) => [lv.key, { unlocked: i === 0, stars: 0 }]));
     (prog || []).forEach((p) => { if (map[p.level]) map[p.level] = { unlocked: map[p.level].unlocked || !!p.is_unlocked, stars: p.stars || 0 }; });
     setLevelProgress(map);
+    return map;
   }
 
   async function load() {
@@ -240,22 +254,41 @@ export default function MusicLessonPlayPage() {
     return () => { ro1 && ro1.disconnect(); ro2 && ro2.disconnect(); window.removeEventListener('resize', measure); };
   }, [phase]);
 
-  // Chặn "đè lâu -> Copy" một cách CHẮC CHẮN trên Safari iOS: gắn thẳng vào
-  // DOM (không qua React) với { passive:false } để preventDefault() có hiệu lực.
+  // Chặn "đè lâu -> Copy / chọn chữ / menu" trên cả iOS lẫn Android.
+  // Nguyên nhân cũ: phím đàn là <button> nên bị bỏ qua khi chặn touchstart → đè lâu vào phím vẫn hiện menu.
+  // Cách xử lý (nhiều lớp, gắn thẳng vào document, passive:false):
+  //  1) khi ĐANG CHƠI: chặn touchstart trong vùng nốt rơi + phím đàn (kể cả <button>) → trình duyệt không bắt đầu "đè lâu";
+  //  2) luôn chặn contextmenu / selectstart / dragstart / gesture;
+  //  3) lớp chót: nếu vẫn có vùng chọn nào xuất hiện thì xoá ngay (selectionchange) nên không có nút Copy.
   useEffect(() => {
-    const el = rootRef.current;
-    if (!el) return undefined;
-    const stop = (e) => e.preventDefault();
-    const stopUnlessButton = (e) => { if (!e.target.closest('button, a, input, select, textarea')) e.preventDefault(); };
-    el.addEventListener('touchstart', stopUnlessButton, { passive: false });
-    el.addEventListener('contextmenu', stop, { passive: false });
-    el.addEventListener('selectstart', stop, { passive: false });
-    el.addEventListener('gesturestart', stop, { passive: false });
+    const playing = phase === 'playing';
+    const stop = (e) => { if (e.cancelable) e.preventDefault(); };
+    const stopInPlayArea = (e) => {
+      const t = e.target;
+      if (t && t.closest && t.closest('.mp-piano, .mp-stage')) stop(e);
+    };
+    const stopOutsideButtons = (e) => {
+      const t = e.target;
+      if (t && t.closest && !t.closest('button, a, input, select, textarea')) stop(e);
+    };
+    const clearSelection = () => {
+      try { const sel = window.getSelection(); if (sel && sel.rangeCount > 0 && !sel.isCollapsed) sel.removeAllRanges(); } catch (err) { /* bỏ qua */ }
+    };
+    const opts = { passive: false, capture: true };
+    const always = ['contextmenu', 'selectstart', 'dragstart', 'gesturestart', 'gesturechange'];
+    document.documentElement.classList.add('mp-lock');
+    always.forEach((t) => document.addEventListener(t, stop, opts));
+    document.addEventListener('selectionchange', clearSelection);
+    if (playing) {
+      document.addEventListener('touchstart', stopInPlayArea, opts);
+      document.addEventListener('touchstart', stopOutsideButtons, opts);
+    }
     return () => {
-      el.removeEventListener('touchstart', stopUnlessButton);
-      el.removeEventListener('contextmenu', stop);
-      el.removeEventListener('selectstart', stop);
-      el.removeEventListener('gesturestart', stop);
+      document.documentElement.classList.remove('mp-lock');
+      always.forEach((t) => document.removeEventListener(t, stop, opts));
+      document.removeEventListener('selectionchange', clearSelection);
+      document.removeEventListener('touchstart', stopInPlayArea, opts);
+      document.removeEventListener('touchstart', stopOutsideButtons, opts);
     };
   }, [phase]);
 
@@ -422,13 +455,17 @@ export default function MusicLessonPlayPage() {
     const rhythmSum = timeline.reduce((s, n) => (n.judged === 'hit' ? s + Math.max(0, 100 - (n.timingError / LATE_T) * 100) : s), 0);
     const rhythmAccuracy = practiceRef.current ? 100 : Math.round(rhythmSum / total);
     const score = Math.round((pitchAccuracy + rhythmAccuracy) / 2);
-    const stars = starsForScore(score);
+    // Đạt khi số nốt đúng ≥ PASS_PERCENT %. Đạt → ít nhất 1 sao và ép ngưỡng điểm của hệ thống = 0 để chắc chắn mở khóa;
+    // chưa đạt → 0 sao và ngưỡng điểm không thể đạt, để không bị "lọt" qua ngưỡng cũ của bài.
+    const played = pitchAccuracy >= PASS_PERCENT;
+    const stars = played ? Math.max(1, starsForScore(score)) : 0;
+    const lessonForSave = { ...lesson, pass_score: played ? 0 : 101 };
     let res;
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      res = await finishMusicLessonAttempt({ studentId: user.id, lesson, nextLessonId, level, pitchAccuracy, rhythmAccuracy, stars, heartsLeft: lesson.max_hearts || 5, answerLogs: answerLogsRef.current });
+      res = await finishMusicLessonAttempt({ studentId: user.id, lesson: lessonForSave, nextLessonId, level, pitchAccuracy, rhythmAccuracy, stars, heartsLeft: lesson.max_hearts || 5, answerLogs: answerLogsRef.current });
     } catch (e) {
-      res = { xpEarned: 0, completed: score >= (lesson.pass_score ?? 80), score, stars, saveError: e.message };
+      res = { xpEarned: 0, completed: played, score, stars, saveError: e.message };
     }
     leaveFullscreen();
     setResult({ ...res, pitchAccuracy, rhythmAccuracy, stars });
@@ -439,6 +476,14 @@ export default function MusicLessonPlayPage() {
   function exitGame() {
     if (phase === 'playing' && !window.confirm('Thoát bài? Kết quả lần chơi này sẽ không được lưu.')) return;
     finishedRef.current = true; cancelAnimationFrame(rafRef.current); releaseAll(); leaveFullscreen(); backToUnit();
+  }
+  async function playNext() {
+    const map = await loadProgress();
+    const i = LEVELS.findIndex((l) => l.key === level);
+    const nxt = LEVELS[i + 1];
+    if (nxt && map[nxt.key]?.unlocked) { chooseLevel(nxt.key); return; }
+    if (!nxt && nextLessonId) { router.push(`/student/music/lessons/${nextLessonId}`); return; }
+    setPhase('select');
   }
   async function backToSelect() { finishedRef.current = true; await loadProgress(); setPhase('select'); }
 
@@ -457,7 +502,7 @@ export default function MusicLessonPlayPage() {
           <div className="mp-card">
             <div style={{ fontSize: 40, textAlign: 'center' }}>🎵</div>
             <h1 className="mp-h1">{lesson.title}</h1>
-            <p className="mp-sub">Hoàn thành từng cấp độ để mở cấp tiếp theo</p>
+            <p className="mp-sub">Đàn đúng từ {PASS_PERCENT}% số nốt để qua màn và mở cấp tiếp theo</p>
             {LEVELS.map((lv) => {
               const p = levelProgress[lv.key];
               return (
@@ -500,6 +545,7 @@ export default function MusicLessonPlayPage() {
           <div className="mp-card" style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 52 }}>{result.completed ? '🎉' : '💪'}</div>
             <h1 className="mp-h1">{result.completed ? 'Hoàn thành bản nhạc!' : 'Chưa đạt, thử lại nhé!'}</h1>
+            <p className="mp-sub" style={{ margin: '0 0 6px' }}>Bạn đàn đúng {result.pitchAccuracy}% số nốt · cần {PASS_PERCENT}% để qua màn</p>
             <div style={{ margin: '6px 0' }}><Stars n={result.stars} size={34} /></div>
             <div className="mp-stats">
               <div className="mp-stat"><b>{result.pitchAccuracy}%</b><span>Cao độ</span></div>
@@ -507,7 +553,10 @@ export default function MusicLessonPlayPage() {
               <div className="mp-stat"><b>+{result.xpEarned}</b><span>Điểm KN</span></div>
             </div>
             {result.saveError && <p className="mp-err">Chưa lưu được kết quả lên hệ thống ({result.saveError}).</p>}
-            <button className="mp-btn" onClick={() => setPhase('ready')}>Chơi lại</button>
+            {result.completed && (LEVELS.findIndex((l) => l.key === level) < LEVELS.length - 1 || nextLessonId) && (
+              <button className="mp-btn" onClick={playNext}>{LEVELS.findIndex((l) => l.key === level) < LEVELS.length - 1 ? 'Chơi cấp độ tiếp theo ▶' : 'Sang bài tiếp theo ▶'}</button>
+            )}
+            <button className={result.completed ? 'mp-btn ghost' : 'mp-btn'} onClick={() => setPhase('ready')}>Chơi lại</button>
             <button className="mp-btn ghost" onClick={backToSelect}>Chọn cấp độ khác</button>
             <button className="mp-btn ghost" onClick={backToUnit}>Về lộ trình học</button>
           </div>
@@ -522,11 +571,17 @@ export default function MusicLessonPlayPage() {
   const pps = stageH > 0 ? stageH / LOOKAHEAD_SEC : 90;
   const judgedCount = timeline.filter((n) => n.judged).length;
   const pct = timeline.length ? Math.round((judgedCount / timeline.length) * 100) : 0;
+  const hitCount = timeline.filter((n) => n.judged === 'hit').length;
+  const hitPct = timeline.length ? Math.round((hitCount / timeline.length) * 100) : 0;           // % nốt đã đàn đúng (tính trên cả bài)
+  const maxPct = timeline.length ? Math.round(((timeline.length - judgedCount + hitCount) / timeline.length) * 100) : 0; // tối đa còn đạt được
+  const reached = hitPct >= PASS_PERCENT;
+  const impossible = !reached && maxPct < PASS_PERCENT;
+  const meterColor = reached ? '#58CC02' : impossible ? '#FFB84D' : '#4CC2FF';
   const nW = Math.max(1, whiteKeys.length);
   const wCalc = `((100% - ${(nW - 1) * KEY_GAP}px) / ${nW})`;
 
   return (
-    <div className="mp-root" ref={rootRef} onContextMenu={block}>
+    <div className="mp-root mp-playing" ref={rootRef} onContextMenu={block}>
       {styleTag}
       <div className="mp-top">
         <button className="mp-iconbtn" onClick={exitGame}>✕</button>
@@ -539,7 +594,17 @@ export default function MusicLessonPlayPage() {
           </button>
         ) : <span style={{ width: 38 }} />}
       </div>
-      <div className="mp-progress"><div style={{ width: `${pct}%` }} /></div>
+      <div className="mp-meter">
+        <div className="mp-meter-row">
+          <span className="mp-meter-pct" style={{ color: meterColor }}>{hitPct}%</span>
+          <span className="mp-meter-goal">{reached ? '✓ Đủ điểm qua màn — cứ chơi tiếp nhé!' : impossible ? `Không kịp đạt ${PASS_PERCENT}% — chơi hết rồi thử lại nhé` : `Cần ${PASS_PERCENT}% nốt đúng để qua màn`}</span>
+          <span className="mp-meter-prog">Bài {pct}%</span>
+        </div>
+        <div className="mp-meter-bar">
+          <div className="fill" style={{ width: `${hitPct}%`, background: meterColor }} />
+          <i className="goal" style={{ left: `${PASS_PERCENT}%` }} />
+        </div>
+      </div>
       {isPortrait && !hintDismissed && (
         <div className="mp-hint">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2" width="12" height="20" rx="3" /><path d="M11 18h2" /></svg>
@@ -587,7 +652,7 @@ export default function MusicLessonPlayPage() {
         <div ref={pianoRowRef} className="mp-white-row">
           {whiteKeys.map((k) => (
             <button key={k.midi} className={`mp-white${pressed.has(k.pitch) ? ' on' : ''}`} style={{ '--c': NOTE_COLOR[k.letter] }}
-              onPointerDown={(e) => pressKey(e, k.pitch)} onPointerUp={releaseKey} onPointerCancel={releaseKey} onLostPointerCapture={releaseKey} onContextMenu={block}>
+              onPointerDown={(e) => pressKey(e, k.pitch)} onPointerUp={releaseKey} onPointerCancel={releaseKey} onLostPointerCapture={releaseKey} onContextMenu={block} draggable={false}>
               <span>{VN_NAME[k.letter]}</span>
             </button>
           ))}
