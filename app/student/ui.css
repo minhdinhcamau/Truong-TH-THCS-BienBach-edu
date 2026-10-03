@@ -1,0 +1,87 @@
+/* Giao diện khung trang học sinh (đầu trang, thanh chuyển mục, chân trang).
+   Dùng tiền tố sx- để không đụng vào student.css của các trang con. */
+
+.student-shell.sx-shell {
+  --sx-navy: #0b2a66;
+  --sx-blue: #0a52c7;
+  --sx-sky: #e8f0fc;
+  --sx-gold: #f5b800;
+  --sx-red: #d92d3a;
+  --sx-ink: #12263f;
+  --sx-line: #dbe5f3;
+  min-height: 100vh;
+  background: #f2f6fc;
+  font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+}
+
+/* ---------- Đầu trang ---------- */
+.sx-top {
+  background: linear-gradient(135deg, #0b2a66 0%, #0a52c7 100%);
+  color: #fff;
+  position: relative;
+}
+.sx-top::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: 0; height: 4px;
+  background: linear-gradient(90deg, var(--sx-gold) 0 34%, var(--sx-red) 34% 67%, #fff 67% 100%);
+  opacity: 0.95;
+}
+.sx-top-in {
+  max-width: 1120px; margin: 0 auto; padding: 16px 24px 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+}
+.sx-brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.sx-logo {
+  width: 62px; height: 62px; border-radius: 50%; background: #fff; padding: 4px; flex: none;
+  box-shadow: 0 6px 18px -6px rgba(0,0,0,0.45); object-fit: contain; display: block;
+}
+.sx-school { font-weight: 800; font-size: 20px; line-height: 1.15; letter-spacing: 0.1px; }
+.sx-place { font-size: 12.5px; color: #bcd3f6; margin-top: 3px; }
+
+.sx-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sx-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 9px 15px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.42); background: rgba(255,255,255,0.12); color: #fff;
+  font-weight: 700; font-size: 12.5px; text-decoration: none; white-space: nowrap; cursor: pointer; font-family: inherit;
+}
+.sx-pill:hover { background: rgba(255,255,255,0.22); }
+.sx-pill.solid { background: #fff; color: var(--sx-navy); border-color: #fff; }
+.sx-pill.solid:hover { background: #eef4ff; }
+.sx-pill.back { background: #fff; color: var(--sx-navy); }
+
+.sx-chip {
+  display: flex; align-items: center; gap: 12px; padding: 6px 18px 6px 6px; border-radius: 999px;
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.28);
+}
+.sx-chip .sx-name { font-weight: 800; font-size: 14px; line-height: 1.2; }
+.sx-chip .sx-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: #cfe0fa; margin-top: 3px; }
+.sx-chip .sx-tag { background: rgba(255,255,255,0.16); border-radius: 999px; padding: 2px 9px; font-weight: 700; color: #fff; }
+
+/* ---------- Thanh chuyển mục ---------- */
+.sx-wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px 56px; }
+.sx-tabs {
+  display: flex; gap: 4px; overflow-x: auto; background: #fff; border: 1px solid var(--sx-line); border-radius: 16px;
+  padding: 6px; margin: -20px auto 26px; position: relative; z-index: 2;
+  box-shadow: 0 14px 30px -20px rgba(11,42,102,0.5); scrollbar-width: none;
+}
+.sx-tabs::-webkit-scrollbar { display: none; }
+.sx-tab {
+  display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border-radius: 11px; text-decoration: none;
+  color: #3a4f6e; font-weight: 700; font-size: 13.5px; white-space: nowrap; flex: none;
+}
+.sx-tab svg { width: 18px; height: 18px; }
+.sx-tab:hover { background: var(--sx-sky); }
+.sx-tab.active { background: var(--sx-blue); color: #fff; }
+.sx-tab:focus-visible, .sx-pill:focus-visible { outline: 3px solid var(--sx-gold); outline-offset: 2px; }
+
+.sx-footer { text-align: center; color: #6b7f99; font-size: 12.5px; padding: 8px 0 0; }
+
+.sx-loading { display: grid; place-items: center; min-height: 60vh; color: #5c6f86; font-weight: 600; }
+
+@media (max-width: 720px) {
+  .sx-top-in { padding: 14px 16px 20px; }
+  .sx-wrap { padding: 0 14px 48px; }
+  .sx-school { font-size: 17px; }
+  .sx-logo { width: 52px; height: 52px; }
+  .sx-chip .sx-sub { display: none; }
+}

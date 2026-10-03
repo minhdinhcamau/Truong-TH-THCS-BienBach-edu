@@ -6,17 +6,19 @@ import { supabase } from '../../lib/supabaseClient';
 import { getRankTier, getInitials } from '../../lib/rankTiers';
 import NotificationBell from '../../components/NotificationBell';
 import './student.css';
+import './ui.css';
 
 export const StudentContext = createContext(null);
 export function useStudent() {
   return useContext(StudentContext);
 }
 
+// Thanh chuyển mục. "Học tập" là trang tổng hợp các môn (Ngữ văn, Tiếng Anh, Âm nhạc...)
 const TABS = [
   {
     href: '/student',
     label: 'Học tập',
-    match: (p) => p === '/student',
+    match: (p) => p === '/student' || p.startsWith('/student/english') || p.startsWith('/student/music') || p.startsWith('/student/ngu-van'),
     icon: <path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" />,
   },
   {
@@ -111,7 +113,7 @@ export default function StudentLayout({ children }) {
   }
 
   if (state.loading) {
-    return <div className="student-shell"><div className="center-loading">Đang tải…</div></div>;
+    return <div className="student-shell sx-shell"><div className="sx-loading">Đang tải…</div></div>;
   }
   if (!state.profile) {
     return null;
@@ -119,115 +121,73 @@ export default function StudentLayout({ children }) {
 
   const { profile, stats, classRole } = state;
   const tabs = classRole && profile.role !== 'admin' ? [...TABS, BCS_TAB] : TABS;
-  // Tai khoan dang xem trang nay la QUAN TRI VIEN (admin bam nut "Xem trang
-  // Hoc sinh" tu trang admin, khong phai hoc sinh that) -> hien nut quay ve
-  // thay vi bat cac tinh nang chi danh cho hoc sinh.
+  // Quản trị viên bấm "Xem trang Học sinh" từ trang admin -> hiện nút quay về thay vì các tính năng của học sinh
   const isAdminViewing = profile.role === 'admin';
   const tier = getRankTier(stats.total_xp);
   const initials = getInitials(profile.full_name);
 
   return (
     <StudentContext.Provider value={{ profile, stats, classRole, refresh: loadAll }}>
-      <div className="student-shell">
-        <div className="hero">
-          <div className="masthead">
-            <div className="brand">
-              <div className="emblem">BB</div>
-              <div className="brand-text">
-                <div className="school">Trường TH - THCS Biển Bạch</div>
-                <div className="loc">Xã Biển Bạch, tỉnh Cà Mau</div>
+      <div className="student-shell sx-shell">
+        <header className="sx-top">
+          <div className="sx-top-in">
+            <div className="sx-brand">
+              <img src="/logo-truong.png" alt="Logo Trường TH - THCS Biển Bạch" className="sx-logo" width="62" height="62" />
+              <div>
+                <div className="sx-school">Trường TH - THCS Biển Bạch</div>
+                <div className="sx-place">Xã Biển Bạch, tỉnh Cà Mau</div>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+
+            <div className="sx-actions">
               {!isAdminViewing && (
-                <div className="student-chip">
+                <div className="sx-chip">
                   <div className={`avatar-frame ${tier.className}`} style={{ width: 46, height: 46 }}>
                     <div className="core" style={{ width: 38, height: 38, fontSize: 14 }}>
                       {profile.photo_url ? <img src={profile.photo_url} alt="" /> : initials}
                     </div>
                     {tier.badge && <div className="rank-badge">{tier.badge}</div>}
                   </div>
-                  <div className="student-info">
-                    <div className="name-row">
-                      {profile.full_name} · Lớp {profile.classes?.name || '—'}
-                    </div>
-                    <div className="sub-row">
+                  <div>
+                    <div className="sx-name">{profile.full_name} · Lớp {profile.classes?.name || '—'}</div>
+                    <div className="sx-sub">
                       <span>{tier.name}</span>
-                      <span className="streak-pill">🔥 {stats.current_streak} ngày</span>
-                      <span className="xp-pill">⭐ {stats.total_xp.toLocaleString('vi-VN')} KN</span>
+                      <span className="sx-tag">{stats.current_streak} ngày liên tiếp</span>
+                      <span className="sx-tag">{stats.total_xp.toLocaleString('vi-VN')} KN</span>
                     </div>
                   </div>
                 </div>
               )}
               {isAdminViewing && (
-                <Link
-                  href="/admin"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    padding: '8px 14px',
-                    borderRadius: 999,
-                    border: '1px solid #cfe2f7',
-                    background: '#fff',
-                    color: '#1b3a63',
-                    fontWeight: 600,
-                    fontSize: 12.5,
-                    whiteSpace: 'nowrap',
-                    textDecoration: 'none',
-                  }}
-                >
-                  ← Quay về trang quản trị
-                </Link>
+                <Link href="/admin" className="sx-pill back">← Quay về trang quản trị</Link>
               )}
               {!isAdminViewing && profile.is_saodo && (
-                <Link
-                  href="/saodo"
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '8px 14px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.5)',
-                    background: 'rgba(255,255,255,0.14)', color: '#fff', fontWeight: 700, fontSize: 12.5,
-                    textDecoration: 'none', whiteSpace: 'nowrap',
-                  }}
-                >
-                  ⭐ Sao đỏ
-                </Link>
+                <Link href="/saodo" className="sx-pill">Sao đỏ</Link>
               )}
               {!isAdminViewing && <NotificationBell studentId={profile.id} />}
               {!isAdminViewing && (
-                <Link
-                  href="/student/doi-mat-khau"
-                  title="Đổi mật khẩu"
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '8px 14px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.5)',
-                    background: 'rgba(255,255,255,0.14)', color: '#fff', fontWeight: 600, fontSize: 12.5,
-                    textDecoration: 'none', whiteSpace: 'nowrap',
-                  }}
-                >
-                  🔑 Đổi mật khẩu
-                </Link>
+                <Link href="/student/doi-mat-khau" title="Đổi mật khẩu" className="sx-pill">Đổi mật khẩu</Link>
               )}
-              <button className="logout-btn" onClick={handleLogout}>Đăng xuất</button>
+              <button className="sx-pill solid" onClick={handleLogout}>Đăng xuất</button>
             </div>
           </div>
-        </div>
+        </header>
 
-        <div className="student-wrap">
-          <div className="tabbar">
+        <div className="sx-wrap student-wrap">
+          <nav className="sx-tabs" aria-label="Chuyển mục">
             {tabs.map((t) => (
-              <Link key={t.href} href={t.href} className={`tab-btn ${t.match(pathname) ? 'active' : ''}`}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Link key={t.href} href={t.href} className={`sx-tab ${t.match(pathname) ? 'active' : ''}`}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   {t.icon}
                 </svg>
                 {t.label}
               </Link>
             ))}
-          </div>
+          </nav>
 
           {children}
 
-          <footer className="student-footer">Không gian học tập · Trường TH-THCS Biển Bạch</footer>
+          <footer className="sx-footer">Không gian học tập · Trường TH-THCS Biển Bạch</footer>
         </div>
       </div>
     </StudentContext.Provider>

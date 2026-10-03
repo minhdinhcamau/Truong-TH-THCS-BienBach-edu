@@ -1,18 +1,9 @@
 'use client';
-// Đặt tại: app/student/music/page.jsx
-// Trang gốc "Âm nhạc" bên học sinh — liệt kê các chủ đề áp dụng cho khối
-// của học sinh (hoặc chủ đề không giới hạn khối). Đây là trang còn THIẾU
-// khiến học sinh không có nút nào để vào làm bài Âm nhạc.
-
+// Trang gốc "Âm nhạc" bên học sinh: các chủ đề áp dụng cho khối của học sinh (hoặc không giới hạn khối)
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
-
-const backLinkStyle = {
-  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999,
-  border: '1.5px solid #dbe7f3', background: '#fff', color: '#225da3', fontWeight: 600, fontSize: 13.5,
-  textDecoration: 'none', boxShadow: '0 1px 3px rgba(23,48,45,0.04)',
-};
+import SubjectHeader from '@/components/SubjectHeader';
 
 export default function StudentMusicHome() {
   const [units, setUnits] = useState([]);
@@ -41,40 +32,42 @@ export default function StudentMusicHome() {
   }
 
   return (
-    <div className="wrap">
+    <div className="mus">
       <style jsx>{`
-        .wrap { max-width: 900px; margin: 0 auto; padding: 28px 24px 64px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
-        .head { margin: 18px 0 28px; }
-        .head h1 { margin: 0; font-size: 26px; color: #17302d; }
-        .unit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-        .unit-card { display: block; background: #fff; border-radius: 18px; padding: 22px; text-decoration: none; color: inherit; border: 1px solid #e5eeec; box-shadow: 0 2px 8px rgba(23,48,45,0.05); }
-        .unit-card:hover { box-shadow: 0 8px 20px rgba(34,93,163,0.12); border-color: #b9d4ee; transform: translateY(-2px); }
-        .unit-title { font-weight: 700; font-size: 16px; color: #17302d; margin-bottom: 6px; }
-        .unit-meta { display: flex; gap: 6px; flex-wrap: wrap; }
-        .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
-        .badge.song { color: #58A700; background: #EAFBEA; }
-        .badge.reading { color: #b45309; background: #FEF3E2; }
-        .empty { text-align: center; color: #9ca3af; padding: 40px; background: #fff; border-radius: 14px; border: 1px dashed #cfe2f7; }
+        .mus { font-family: 'Be Vietnam Pro', system-ui, sans-serif; color: #12263f; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+        .unit { display: flex; flex-direction: column; gap: 14px; background: #fff; border: 1px solid #dbe5f3; border-radius: 20px; padding: 20px 22px;
+          text-decoration: none; color: inherit; transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s; }
+        .unit:hover { transform: translateY(-3px); border-color: #9bbcf0; box-shadow: 0 20px 34px -24px rgba(10,82,199,0.6); }
+        .unit:focus-visible { outline: 3px solid #f5b800; outline-offset: 3px; }
+        .idx { width: 34px; height: 34px; border-radius: 11px; background: #0a52c7; color: #fff; font-weight: 800; display: grid; place-items: center; }
+        .title { font-weight: 800; font-size: 17px; line-height: 1.3; flex: 1; }
+        .tags { display: flex; gap: 8px; flex-wrap: wrap; }
+        .tag { font-size: 12px; font-weight: 700; padding: 4px 11px; border-radius: 999px; }
+        .tag.song { color: #11743f; background: #e3f6ea; }
+        .tag.reading { color: #9a5b00; background: #fff1d6; }
+        .empty { text-align: center; padding: 44px 20px; background: #fff; border: 1px dashed #b9d0f0; border-radius: 18px; color: #5c6f86; }
+        @media (prefers-reduced-motion: reduce) { .unit { transition: none; } .unit:hover { transform: none; } }
       `}</style>
 
-      <Link href="/student" style={backLinkStyle}>← Trang học sinh</Link>
-      <div className="head"><h1>🎵 Âm nhạc</h1></div>
+      <SubjectHeader slug="am-nhac" title="Âm nhạc" subtitle="Luyện hát và đọc nhạc theo từng chủ đề của thầy cô." />
 
       {loading ? (
         <div className="empty">Đang tải...</div>
       ) : units.length === 0 ? (
-        <div className="empty">Chưa có chủ đề Âm nhạc nào cho lớp bạn — hỏi giáo viên nhé.</div>
+        <div className="empty">Chưa có chủ đề Âm nhạc nào cho lớp em. Em hỏi thầy cô nhé.</div>
       ) : (
-        <div className="unit-grid">
-          {units.map((u) => {
+        <div className="grid">
+          {units.map((u, i) => {
             const nSong = (u.music_lessons || []).filter((l) => l.kind === 'song').length;
             const nReading = (u.music_lessons || []).filter((l) => l.kind === 'sight_reading').length;
             return (
-              <Link key={u.id} href={`/student/music/units/${u.id}`} className="unit-card">
-                <div className="unit-title">{u.title}</div>
-                <div className="unit-meta">
-                  {nSong > 0 && <span className="badge song">🎤 {nSong} bài hát</span>}
-                  {nReading > 0 && <span className="badge reading">🎼 {nReading} đọc nhạc</span>}
+              <Link key={u.id} href={`/student/music/units/${u.id}`} className="unit">
+                <div className="idx">{i + 1}</div>
+                <div className="title">{u.title}</div>
+                <div className="tags">
+                  {nSong > 0 && <span className="tag song">{nSong} bài hát</span>}
+                  {nReading > 0 && <span className="tag reading">{nReading} bài đọc nhạc</span>}
                 </div>
               </Link>
             );

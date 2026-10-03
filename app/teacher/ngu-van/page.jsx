@@ -36,6 +36,8 @@ export default function TeacherLitHome() {
       <style jsx>{`
         .wrap { max-width: 900px; margin: 0 auto; padding: 28px 24px 64px; font-family: 'Be Vietnam Pro', system-ui, sans-serif; }
         .head { display: flex; justify-content: space-between; align-items: flex-end; margin: 18px 0 26px; flex-wrap: wrap; gap: 14px; }
+        .head-l { display: flex; align-items: center; gap: 16px; }
+        .head-img { width: 84px; height: 84px; object-fit: contain; flex: none; background: radial-gradient(circle at 30% 25%, #fff, #e8f0fc 72%); border-radius: 22px; padding: 6px; }
         .head h1 { margin: 0; font-size: 26px; color: #17302d; }
         .head p { margin: 6px 0 0; color: #6b7f7a; font-size: 14px; max-width: 520px; }
         .list { display: grid; gap: 12px; }
@@ -55,9 +57,12 @@ export default function TeacherLitHome() {
       <Link href="/teacher" style={backBtnStyle}>← Trang giáo viên</Link>
 
       <div className="head">
-        <div>
-          <h1>Bài văn chấm bằng AI</h1>
-          <p>Giao đề, soạn barem cùng AI. Học sinh viết trên web, AI chấm theo barem, thầy cô duyệt rồi công bố điểm.</p>
+        <div className="head-l">
+          <img src="/mon-hoc/ngu-van.png" alt="" className="head-img" width="84" height="84" />
+          <div>
+            <h1>Bài văn chấm bằng AI</h1>
+            <p>Giao đề, soạn barem cùng AI. Học sinh viết trên web, AI chấm theo barem, thầy cô duyệt rồi công bố điểm.</p>
+          </div>
         </div>
         <Link href="/teacher/ngu-van/new" style={newBtnStyle}>＋ Giao đề mới</Link>
       </div>

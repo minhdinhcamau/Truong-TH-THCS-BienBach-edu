@@ -16,13 +16,32 @@ function initialsOf(name) {
   return parts.slice(-2).map((w) => w[0]).join('').toUpperCase();
 }
 
-// Biểu tượng theo tên môn (nhận diện không dấu)
-const SUBJECT_ICONS = [
-  [/toan/, '📐'], [/ngu van/, '📖'], [/tieng anh|anh van/, '🌍'], [/lich su/, '🏛️'], [/dia li|dia ly/, '🗺️'],
-  [/vat li|vat ly/, '⚛️'], [/hoa hoc/, '🧪'], [/sinh hoc/, '🌱'], [/tin hoc/, '💻'], [/giao duc cong dan|gdcd/, '⚖️'],
-  [/cong nghe/, '🔧'], [/am nhac/, '🎵'], [/mi thuat|my thuat/, '🎨'], [/the duc/, '🏃'],
+// Ảnh huy hiệu môn học (nhận diện theo tên môn không dấu); môn chưa có ảnh dùng chữ cái đầu
+const SUBJECT_IMG = [
+  [/ngu van/, 'ngu-van'], [/tieng anh|anh van/, 'tieng-anh'], [/lich su/, 'lich-su'],
+  [/dia li|dia ly/, 'dia-li'], [/am nhac/, 'am-nhac'],
 ];
-const iconOf = (name) => (SUBJECT_ICONS.find(([re]) => re.test(norm(name))) || [null, '📚'])[1];
+const imgOf = (name) => (SUBJECT_IMG.find(([re]) => re.test(norm(name))) || [null, null])[1];
+function SubjIcon({ name }) {
+  const slug = imgOf(name);
+  if (slug) return <img src={`/mon-hoc/${slug}.png`} alt="" className="tp-badge-img" loading="lazy" />;
+  return <span className="tp-letter">{(name || '?').trim().charAt(0).toUpperCase()}</span>;
+}
+
+// Biểu tượng nét đơn giản cho các lối tắt (thay emoji)
+const ICON_PATHS = {
+  tasks: 'M9 5h6M9 3h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2V4a1 1 0 0 1 1-1zM9 13l2 2 4-4',
+  class: 'M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 20v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1M15 15h3a4 4 0 0 1 4 4v1',
+  cup: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a2 2 0 0 0 2 4M17 6h3a2 2 0 0 1-2 4',
+  star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',
+};
+function Ico({ k }) {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={ICON_PATHS[k] || ICON_PATHS.star} />
+    </svg>
+  );
+}
 
 function greeting() {
   const h = Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date()));
@@ -136,8 +155,7 @@ export default function TeacherDashboard() {
         .tp-top { position: sticky; top: 0; z-index: 30; background: rgba(255,255,255,0.94); backdrop-filter: blur(6px); border-bottom: 1px solid var(--tp-line); }
         .tp-top-in { max-width: 1120px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
         .tp-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-        .tp-emblem { width: 44px; height: 44px; border-radius: 12px; background: #fff; border: 1.5px solid var(--tp-blue); color: var(--tp-navy);
-          display: grid; place-items: center; font-weight: 800; font-size: 16px; flex: none; }
+        .tp-logo { width: 52px; height: 52px; object-fit: contain; flex: none; display: block; }
         .tp-school { font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 18px; line-height: 1.15; color: var(--tp-navy); }
         .tp-place { font-size: 12px; color: var(--tp-muted); }
         .tp-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -174,7 +192,7 @@ export default function TeacherDashboard() {
           transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; position: relative; overflow: hidden; }
         .tp-q::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--acc, var(--tp-blue)); }
         .tp-q:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -14px rgba(18,48,90,0.45); border-color: var(--acc, var(--tp-blue)); }
-        .tp-q-ic { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 22px; background: var(--acc-bg, var(--tp-sky)); flex: none; }
+        .tp-q-ic { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--acc-bg, var(--tp-sky)); color: var(--acc, var(--tp-blue)); flex: none; }
         .tp-q b { display: block; font-size: 15px; color: var(--tp-navy); }
         .tp-q span { font-size: 12.5px; color: var(--tp-muted); }
         .tp-q-go { margin-left: auto; color: var(--acc, var(--tp-blue)); font-weight: 800; font-size: 18px; }
@@ -192,12 +210,14 @@ export default function TeacherDashboard() {
         .tp-btn.main { background: var(--tp-green); color: #fff; }
         .tp-btn:hover { filter: brightness(0.96); }
 
-        .tp-subjects { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
-        .tp-subj { display: flex; gap: 14px; align-items: center; background: #fff; border: 1px solid var(--tp-line); border-radius: 16px; padding: 16px 18px; text-decoration: none; color: inherit; }
+        .tp-subjects { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 16px; }
+        .tp-subj { display: flex; gap: 16px; align-items: center; background: #fff; border: 1px solid var(--tp-line); border-radius: 18px; padding: 16px 18px; text-decoration: none; color: inherit; }
         .tp-subj.on:hover { border-color: var(--tp-blue); transform: translateY(-2px); box-shadow: 0 10px 24px -14px rgba(18,48,90,0.45); }
         .tp-subj { transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease; }
         .tp-subj.off { opacity: 0.72; }
-        .tp-subj-ic { width: 44px; height: 44px; border-radius: 14px; background: var(--tp-sky); display: grid; place-items: center; font-size: 22px; flex: none; }
+        .tp-subj-ic { width: 76px; height: 76px; border-radius: 20px; background: radial-gradient(circle at 30% 25%, #ffffff, var(--tp-sky) 70%); display: grid; place-items: center; flex: none; padding: 6px; }
+        .tp-badge-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+        .tp-letter { font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 30px; color: var(--tp-blue); }
         .tp-subj b { display: block; font-size: 15.5px; }
         .tp-subj span { font-size: 12.5px; color: var(--tp-muted); }
         .tp-subj span.ready { color: #1a7f4e; font-weight: 700; }
@@ -209,7 +229,8 @@ export default function TeacherDashboard() {
 
         .tp-list { display: grid; gap: 10px; }
         .tp-row { display: flex; align-items: center; gap: 14px; background: #fff; border: 1px solid var(--tp-line); border-radius: 14px; padding: 14px 18px; }
-        .tp-row-ic { width: 40px; height: 40px; border-radius: 12px; background: var(--tp-sky); display: grid; place-items: center; font-size: 18px; flex: none; }
+        .tp-row-ic { width: 52px; height: 52px; border-radius: 14px; background: var(--tp-sky); display: grid; place-items: center; flex: none; padding: 4px; }
+        .tp-row-ic .tp-letter { font-size: 22px; }
         .tp-row-t { font-weight: 700; font-size: 15px; color: var(--tp-navy); min-width: 0; }
         .tp-row-m { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
         .tp-tag { background: #eef3f9; color: #35506f; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; }
@@ -234,7 +255,7 @@ export default function TeacherDashboard() {
       <header className="tp-top">
         <div className="tp-top-in">
           <div className="tp-brand">
-            <div className="tp-emblem" aria-hidden="true">BB</div>
+            <img src="/logo-truong.png" alt="Logo Trường TH - THCS Biển Bạch" className="tp-logo" width="52" height="52" />
             <div>
               <div className="tp-school">Trường TH - THCS Biển Bạch</div>
               <div className="tp-place">Xã Biển Bạch, tỉnh Cà Mau</div>
@@ -278,25 +299,25 @@ export default function TeacherDashboard() {
           <div className="tp-sec-h"><div><h2>Bắt đầu nhanh</h2></div></div>
           <div className="tp-quick">
             <Link href="/teacher/assignments/new" className="tp-q" style={{ '--acc': '#225da3', '--acc-bg': '#e9f2fc' }}>
-              <div className="tp-q-ic" aria-hidden="true">📝</div>
+              <div className="tp-q-ic" aria-hidden="true"><Ico k="tasks" /></div>
               <div><b>Tạo bài tập mới</b><span>Soạn và giao bài trắc nghiệm cho lớp</span></div>
               <div className="tp-q-go" aria-hidden="true">›</div>
             </Link>
             {canHomeroom && (
               <Link href="/teacher/chu-nhiem" className="tp-q" style={{ '--acc': '#2f6f5e', '--acc-bg': '#e6f2ed' }}>
-                <div className="tp-q-ic" aria-hidden="true">🏫</div>
+                <div className="tp-q-ic" aria-hidden="true"><Ico k="class" /></div>
                 <div><b>Chủ nhiệm lớp</b><span>{homeroom.length > 0 ? `Lớp ${homeroom.map((c) => c.class_name).join(', ')} · ban cán sự, sơ đồ, báo cáo tuần` : 'Quản lý lớp, ban cán sự và báo cáo tuần'}</span></div>
                 <div className="tp-q-go" aria-hidden="true">›</div>
               </Link>
             )}
             <Link href="/teacher/thi-dua" className="tp-q" style={{ '--acc': '#c98a10', '--acc-bg': '#fff4dc' }}>
-              <div className="tp-q-ic" aria-hidden="true">🏆</div>
+              <div className="tp-q-ic" aria-hidden="true"><Ico k="cup" /></div>
               <div><b>Thi đua lớp</b><span>Xếp hạng các lớp, cập nhật trực tiếp</span></div>
               <div className="tp-q-go" aria-hidden="true">›</div>
             </Link>
             {!isAdminViewing && profile?.is_tpt && (
               <Link href="/tpt" className="tp-q" style={{ '--acc': '#c4262e', '--acc-bg': '#fdeceb' }}>
-                <div className="tp-q-ic" aria-hidden="true">🎖️</div>
+                <div className="tp-q-ic" aria-hidden="true"><Ico k="star" /></div>
                 <div><b>Trang Tổng phụ trách Đội</b><span>Sao đỏ, thời khóa biểu, thông báo, trực nhật</span></div>
                 <div className="tp-q-go" aria-hidden="true">›</div>
               </Link>
@@ -341,7 +362,7 @@ export default function TeacherDashboard() {
                 if (s.id === ENGLISH_SUBJECT_ID) {
                   return (
                     <Link key={s.id} href="/teacher/english" className="tp-subj on">
-                      <div className="tp-subj-ic" aria-hidden="true">{iconOf(s.name)}</div>
+                      <div className="tp-subj-ic" aria-hidden="true"><SubjIcon name={s.name} /></div>
                       <div><b>{s.name}</b><span className="ready">Soạn lộ trình & bài học</span></div>
                     </Link>
                   );
@@ -349,7 +370,7 @@ export default function TeacherDashboard() {
                 if (s.id === MUSIC_SUBJECT_ID) {
                   return (
                     <Link key={s.id} href="/teacher/music" className="tp-subj on">
-                      <div className="tp-subj-ic" aria-hidden="true">{iconOf(s.name)}</div>
+                      <div className="tp-subj-ic" aria-hidden="true"><SubjIcon name={s.name} /></div>
                       <div><b>{s.name}</b><span className="ready">Soạn chủ đề, bài hát & bài đọc nhạc</span></div>
                     </Link>
                   );
@@ -357,14 +378,14 @@ export default function TeacherDashboard() {
                 if (/(^|\s)ngu van(\s|$)/.test(norm(s.name))) {
                   return (
                     <Link key={s.id} href="/teacher/ngu-van" className="tp-subj on">
-                      <div className="tp-subj-ic" aria-hidden="true">{iconOf(s.name)}</div>
+                      <div className="tp-subj-ic" aria-hidden="true"><SubjIcon name={s.name} /></div>
                       <div><b>{s.name}</b><span className="ready">Giao đề văn, soạn barem & AI chấm bài</span></div>
                     </Link>
                   );
                 }
                 return (
                   <div key={s.id} className="tp-subj off">
-                    <div className="tp-subj-ic" aria-hidden="true">{iconOf(s.name)}</div>
+                    <div className="tp-subj-ic" aria-hidden="true"><SubjIcon name={s.name} /></div>
                     <div><b>{s.name}</b><span>Chưa có công cụ soạn lộ trình riêng — dùng tạm mục Bài tập bên dưới</span></div>
                   </div>
                 );
@@ -393,7 +414,7 @@ export default function TeacherDashboard() {
               const d = dueInfo(a.due_date, today);
               return (
                 <div key={a.id} className="tp-row">
-                  <div className="tp-row-ic" aria-hidden="true">{iconOf(a.subjects?.name || '')}</div>
+                  <div className="tp-row-ic" aria-hidden="true"><SubjIcon name={a.subjects?.name || ''} /></div>
                   <div style={{ minWidth: 0 }}>
                     <div className="tp-row-t">{a.title}</div>
                     <div className="tp-row-m">
