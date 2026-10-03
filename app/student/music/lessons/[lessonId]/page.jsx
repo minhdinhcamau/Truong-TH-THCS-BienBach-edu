@@ -13,16 +13,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import { finishMusicLessonAttempt } from '@/lib/musicXp';
+import { finishMusicLessonAttempt, PASS_PERCENT } from '@/lib/musicXp';
 import { VN_NAME, NOTE_COLOR, pitchToMidi, durationBeats, buildPianoKeys, starsForScore, LEVELS, levelBpm } from '@/lib/musicNotes';
 
 const LEAD_IN = 3;                  // giây đếm ngược trước khi nốt đầu tới phím
 const LOOKAHEAD_SEC = 1.9;          // số giây nhìn thấy trước khi nốt rơi tới nơi (nhỏ hơn = rơi nhanh/sinh động hơn)
 const PERFECT_T = 0.12, GREAT_T = 0.25, LATE_T = 0.42; // ngưỡng chấm (giây)
 const KEY_GAP = 3;
-// Qua màn khi đàn ĐÚNG ít nhất PASS_PERCENT % số nốt của bài (đổi con số này nếu muốn dễ/khó hơn).
-// Qua màn = được ít nhất 1 sao + mở khóa cấp độ / bài tiếp theo.
-const PASS_PERCENT = 60;
+// Ngưỡng qua màn (PASS_PERCENT) và cách tính XP nằm trong lib/musicXp.js — chỉnh ở đó.
 
 const LEVEL_HINT = {
   practice: 'Không tính giờ — bấm đúng nốt thì nhạc mới chạy tiếp',
@@ -455,15 +453,13 @@ export default function MusicLessonPlayPage() {
     const rhythmSum = timeline.reduce((s, n) => (n.judged === 'hit' ? s + Math.max(0, 100 - (n.timingError / LATE_T) * 100) : s), 0);
     const rhythmAccuracy = practiceRef.current ? 100 : Math.round(rhythmSum / total);
     const score = Math.round((pitchAccuracy + rhythmAccuracy) / 2);
-    // Đạt khi số nốt đúng ≥ PASS_PERCENT %. Đạt → ít nhất 1 sao và ép ngưỡng điểm của hệ thống = 0 để chắc chắn mở khóa;
-    // chưa đạt → 0 sao và ngưỡng điểm không thể đạt, để không bị "lọt" qua ngưỡng cũ của bài.
+    // Đạt khi số nốt đúng ≥ PASS_PERCENT % (xem lib/musicXp.js): qua màn = ít nhất 1 sao + mở khóa cấp tiếp theo.
     const played = pitchAccuracy >= PASS_PERCENT;
     const stars = played ? Math.max(1, starsForScore(score)) : 0;
-    const lessonForSave = { ...lesson, pass_score: played ? 0 : 101 };
     let res;
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      res = await finishMusicLessonAttempt({ studentId: user.id, lesson: lessonForSave, nextLessonId, level, pitchAccuracy, rhythmAccuracy, stars, heartsLeft: lesson.max_hearts || 5, answerLogs: answerLogsRef.current });
+      res = await finishMusicLessonAttempt({ studentId: user.id, lesson, nextLessonId, level, pitchAccuracy, rhythmAccuracy, stars, heartsLeft: lesson.max_hearts || 5, answerLogs: answerLogsRef.current });
     } catch (e) {
       res = { xpEarned: 0, completed: played, score, stars, saveError: e.message };
     }
@@ -552,6 +548,7 @@ export default function MusicLessonPlayPage() {
               <div className="mp-stat"><b>{result.rhythmAccuracy}%</b><span>Tiết tấu</span></div>
               <div className="mp-stat"><b>+{result.xpEarned}</b><span>Điểm KN</span></div>
             </div>
+            {result.xpNote && <p className="mp-sub" style={{ margin: '8px 0 0', fontSize: 12.5 }}>{result.xpNote}</p>}
             {result.saveError && <p className="mp-err">Chưa lưu được kết quả lên hệ thống ({result.saveError}).</p>}
             {result.completed && (LEVELS.findIndex((l) => l.key === level) < LEVELS.length - 1 || nextLessonId) && (
               <button className="mp-btn" onClick={playNext}>{LEVELS.findIndex((l) => l.key === level) < LEVELS.length - 1 ? 'Chơi cấp độ tiếp theo ▶' : 'Sang bài tiếp theo ▶'}</button>
