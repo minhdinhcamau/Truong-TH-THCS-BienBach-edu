@@ -18,7 +18,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import {
-  DURATIONS, TIME_SIGNATURES, NOTE_COLOR,
+  DURATIONS, TIME_SIGNATURES, NOTE_COLOR, normalizePitch,
   pitchToVietnamese, pitchOctave, pitchToMidi, buildPianoKeys,
   durationBeats, beatsPerMeasure,
 } from '@/lib/musicNotes';
@@ -68,11 +68,18 @@ export default function MusicLessonComposerPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPreview, setAiPreview] = useState(null);
   const [isDraft, setIsDraft] = useState(false);
+  const [aiInfo, setAiInfo] = useState(null); // { warnings: [], meta: {} } do AI trả về
+  const [playing, setPlaying] = useState(false);
 
   const isSong = lesson?.kind === 'song';
 
   useEffect(() => { if (lessonId) load(); }, [lessonId]);
-  useEffect(() => { ensureSampler(); }, []);
+  useEffect(() => {
+    ensureSampler();
+    return () => {
+      try { samplerRef.current?.Tone.Transport.stop(); samplerRef.current?.Tone.Transport.cancel(); } catch (e) { /* bỏ qua */ }
+    };
+  }, []);
 
   async function load() {
     if (!lessonId) return;
@@ -120,8 +127,32 @@ export default function MusicLessonComposerPage() {
   }
   async function testSound() { await playNote('C4', '4n'); }
 
+  // Nghe cả bài (dùng cấp Vừa) để giáo viên đối chiếu bản nháp AI với bản nhạc gốc.
+  async function playDraft() {
+    if (notes.length === 0) return;
+    const s = await ensureSampler();
+    try { await s.Tone.start(); } catch (e) { /* bỏ qua */ }
+    const T = s.Tone.Transport;
+    T.stop(); T.cancel(); T.position = 0;
+    const bpm = Number(tempoMedium) || Number(tempoBpm) || 90;
+    let end = 0;
+    notes.forEach((n) => {
+      const startSec = (n.startBeat * 60) / bpm;
+      const durSec = Math.max(0.1, ((durationBeats(n.duration) * 60) / bpm) * 0.95);
+      T.schedule((time) => { try { s.sampler.triggerAttackRelease(n.pitch, durSec, time); } catch (e) { /* ngoài dải mẫu */ } }, startSec);
+      end = Math.max(end, startSec + durSec);
+    });
+    T.schedule(() => setPlaying(false), end + 0.3);
+    setPlaying(true);
+    T.start('+0.1');
+  }
+  function stopPlay() {
+    try { const s = samplerRef.current; if (s) { s.Tone.Transport.stop(); s.Tone.Transport.cancel(); s.sampler.releaseAll(); } } catch (e) { /* bỏ qua */ }
+    setPlaying(false);
+  }
+
   // Nén/giảm kích thước ảnh trước khi gửi AI (đỡ tốn thời gian tải lên + chi phí).
-  function compressImage(file, maxDim = 1500, quality = 0.85) {
+  function compressImage(file, maxDim = 1568, quality = 0.9) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
@@ -142,7 +173,8 @@ export default function MusicLessonComposerPage() {
   async function handleImageFile(file) {
     if (!file || !file.type.startsWith('image/')) return;
     setErrorMsg('');
-    const { dataUrl } = await compressImage(file);
+    let dataUrl;
+    try { ({ dataUrl } = await compressImage(file)); } catch (e) { setErrorMsg('Không mở được file ảnh này (thử PNG/JPG).'); return; }
     setAiPreview(dataUrl);
     runAiExtract(dataUrl);
   }
@@ -152,10 +184,13 @@ export default function MusicLessonComposerPage() {
     setErrorMsg('');
     try {
       const base64 = dataUrl.split(',')[1];
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) { setErrorMsg('Phiên đăng nhập đã hết hạn, hãy đăng nhập lại.'); return; }
       const res = await fetch('/api/ai/transcribe-music', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64, mediaType: 'image/jpeg' }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ imageBase64: base64, mediaType: 'image/jpeg', timeSignature }),
       });
       const data = await res.json();
       if (!res.ok) { setErrorMsg('AI trích xuất lỗi: ' + (data.error || res.statusText)); return; }
@@ -164,6 +199,8 @@ export default function MusicLessonComposerPage() {
       pushHistory();
       setNotes(data.notes);
       setIsDraft(true);
+      setAiInfo({ warnings: data.warnings || [], meta: data.meta || {} });
+      if (data.meta?.timeSignature && TIME_SIGNATURES.includes(data.meta.timeSignature)) setTimeSignature(data.meta.timeSignature);
       if (data.notes.length > 0) {
         const midis = data.notes.map((n) => pitchToMidi(n.pitch));
         setRangeMin(Math.min(...midis) - 2);
@@ -224,7 +261,7 @@ export default function MusicLessonComposerPage() {
     const rect = gridScrollRef.current.getBoundingClientRect();
     return Math.max(0, (clientX - rect.left + gridScrollRef.current.scrollLeft) / BEAT_PX);
   }
-  function computePitch(letter, octave) { return `${letter}${accidentalOverride || ''}${octave}`; }
+  function computePitch(letter, octave) { return normalizePitch(`${letter}${accidentalOverride || ''}${octave}`); }
 
   function placeNote(rowKey, startBeat, durKey) {
     pushHistory();
@@ -358,6 +395,22 @@ export default function MusicLessonComposerPage() {
         </div>
       )}
 
+      {aiInfo && (aiInfo.warnings.length > 0 || aiInfo.meta?.keySignature || aiInfo.meta?.tempoBpm) && (
+        <div className="card" style={{ background: '#EEF5FD', borderColor: '#bcd5f1' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+            <strong style={{ color: '#184270', fontSize: 13.5 }}>
+              AI nhận thấy: {[aiInfo.meta?.keySignature && `giọng ${aiInfo.meta.keySignature}`, aiInfo.meta?.timeSignature && `nhịp ${aiInfo.meta.timeSignature}`, aiInfo.meta?.tempoBpm && `♩ = ${aiInfo.meta.tempoBpm}`].filter(Boolean).join(' · ') || 'không có thông tin đầu khuông'}
+            </strong>
+            <button className="chip" onClick={() => setAiInfo(null)}>Ẩn</button>
+          </div>
+          {aiInfo.warnings.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 20, fontSize: 13, color: '#184270' }}>
+              {aiInfo.warnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+
       <div className="card">
         <h2>🤖 Trích xuất nốt từ ảnh bản nhạc (AI — chỉ ra bản nháp)</h2>
         <p className="sub-note" style={{ margin: '0 0 10px' }}>Dán ảnh (Ctrl+V sau khi chụp màn hình/copy ảnh) hoặc chọn file ảnh chụp bản nhạc. AI chỉ đọc ra bản nháp — bạn vẫn cần tự nghe/sửa lại cho đúng trước khi lưu, vì AI đọc bản nhạc phức tạp có thể sai.</p>
@@ -410,6 +463,7 @@ export default function MusicLessonComposerPage() {
           <button onClick={undo} disabled={historyRef.current.length === 0}>↩ Hoàn tác</button>
           <button onClick={clearAll} disabled={notes.length === 0}>🗑 Xoá hết</button>
           <button onClick={testSound} disabled={!samplerReady}>🔈 Thử âm thanh</button>
+          <button className="primary" onClick={playing ? stopPlay : playDraft} disabled={!samplerReady || notes.length === 0}>{playing ? '⏹ Dừng' : '▶ Nghe cả bài'}</button>
           <button onClick={addOctaveLow}>⬇ Thêm quãng thấp</button>
           <button onClick={removeOctaveLow}>✕ Bớt quãng thấp</button>
           <button onClick={addOctaveHigh}>⬆ Thêm quãng cao</button>
