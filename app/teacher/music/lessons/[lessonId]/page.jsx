@@ -192,7 +192,9 @@ export default function MusicLessonComposerPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ imageBase64: base64, mediaType: 'image/jpeg', timeSignature }),
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data;
+      try { data = JSON.parse(raw); } catch (e) { setErrorMsg(`AI trích xuất lỗi (máy chủ trả về không phải JSON, mã ${res.status}) — thường do quá thời gian chờ hoặc ảnh quá lớn. Thử cắt ảnh còn vài dòng nhạc. Chi tiết: ${raw.slice(0, 120)}`); return; }
       if (!res.ok) { setErrorMsg('AI trích xuất lỗi: ' + (data.error || res.statusText)); return; }
       if (!data.notes || data.notes.length === 0) { setErrorMsg('AI không đọc được nốt nào trong ảnh này — thử ảnh rõ hơn hoặc chụp thẳng góc hơn.'); return; }
       if (notes.length > 0 && !window.confirm(`AI đọc được ${data.notes.length} nốt từ ảnh. Thay thế ${notes.length} nốt đang có trong bài bằng bản nháp này? (Vẫn có thể bấm Hoàn tác nếu đổi ý)`)) return;

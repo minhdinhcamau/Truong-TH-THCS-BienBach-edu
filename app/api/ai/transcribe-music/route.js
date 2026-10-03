@@ -88,7 +88,7 @@ const SCHEMA = {
   required: ['events'],
 };
 
-async function callGemini(apiKey, model, imageBase64, mediaType, hint) {
+async function callGemini(apiKey, model, imageBase64, mediaType, hint, timeoutMs) {
   return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -104,11 +104,12 @@ async function callGemini(apiKey, model, imageBase64, mediaType, hint) {
       generationConfig: {
         responseMimeType: 'application/json',
         responseSchema: SCHEMA,
-        temperature: 0,
-        maxOutputTokens: 16000, // model "suy nghĩ" cũng tính vào hạn mức này nên để rộng
+        // Gemini 3.x không dùng temperature; giảm mức "suy nghĩ" để trả lời nhanh, kịp giới hạn 60 giây của Vercel
+        thinkingConfig: { thinkingLevel: process.env.GEMINI_MUSIC_THINKING || 'low' },
+        maxOutputTokens: 16000,
       },
     }),
-    signal: AbortSignal.timeout(55000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 }
 
@@ -143,10 +144,13 @@ export async function POST(request) {
     // 3) Gọi Gemini (thử lần lượt khóa, rồi model dự phòng)
     let result = null;
     let lastErr = null;
+    const deadline = Date.now() + 52000; // tổng thời gian tối đa, để luôn trả JSON trước khi Vercel cắt ở 60 giây
     outer: for (const apiKey of keys) {
       for (const model of MODELS) {
         try {
-          const res = await callGemini(apiKey, model, imageBase64, mt, timeSignature);
+          const remaining = deadline - Date.now();
+          if (remaining < 6000) { lastErr = lastErr || new Error('AI phản hồi quá lâu, hãy thử lại với ảnh nhỏ hơn (cắt còn vài ô nhịp)'); break outer; }
+          const res = await callGemini(apiKey, model, imageBase64, mt, timeSignature, remaining - 1000);
           if (!res.ok) {
             const detail = await res.text();
             lastErr = new Error(`HTTP ${res.status}: ${detail.slice(0, 300)}`);
