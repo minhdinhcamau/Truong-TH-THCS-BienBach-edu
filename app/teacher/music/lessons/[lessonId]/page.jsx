@@ -22,6 +22,7 @@ import {
   pitchToVietnamese, pitchOctave, pitchToMidi, buildPianoKeys,
   durationBeats, beatsPerMeasure,
 } from '@/lib/musicNotes';
+import { loadScoreFile } from '@/lib/scoreImport';
 
 const backLinkStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999,
@@ -70,6 +71,9 @@ export default function MusicLessonComposerPage() {
   const [isDraft, setIsDraft] = useState(false);
   const [aiInfo, setAiInfo] = useState(null); // { warnings: [], meta: {} } do AI trả về
   const [playing, setPlaying] = useState(false);
+  const [scoreSrc, setScoreSrc] = useState(null); // file nhạc (MusicXML/MIDI) đang nhập
+  const [scorePart, setScorePart] = useState(0);
+  const [scoreStaff, setScoreStaff] = useState(1);
 
   const isSong = lesson?.kind === 'song';
 
@@ -168,6 +172,46 @@ export default function MusicLessonComposerPage() {
       img.onerror = reject;
       img.src = url;
     });
+  }
+
+  // ===== Nhập từ file MusicXML / MIDI (chính xác, không dùng AI) =====
+  async function handleScoreFile(file) {
+    if (!file) return;
+    setErrorMsg('');
+    try {
+      const src = await loadScoreFile(file);
+      if (!src.parts.length) { setErrorMsg('Không tìm thấy nốt nhạc nào trong file này.'); return; }
+      setScoreSrc({ ...src, fileName: file.name });
+      setScorePart(src.defaultPart);
+      setScoreStaff(1);
+      applyScore(src, src.defaultPart, 1, true);
+    } catch (e) {
+      setErrorMsg('Không đọc được file nhạc: ' + e.message);
+    }
+  }
+
+  function applyScore(src, partIdx, staff, askConfirm) {
+    let r;
+    try { r = src.parse(partIdx, staff); } catch (e) { setErrorMsg('Không đọc được file nhạc: ' + e.message); return; }
+    if (!r.notes.length) { setErrorMsg('Không có nốt nào trong phần/khuông đã chọn — thử chọn phần hoặc khuông khác.'); return; }
+    if (askConfirm && notes.length > 0 && !window.confirm(`File có ${r.notes.length} nốt. Thay thế ${notes.length} nốt đang có trong bài? (Vẫn có thể bấm Hoàn tác nếu đổi ý)`)) return;
+    setErrorMsg('');
+    pushHistory();
+    setNotes(r.notes);
+    const m = r.meta || {};
+    if (m.timeSignature && TIME_SIGNATURES.includes(m.timeSignature)) setTimeSignature(m.timeSignature);
+    if (m.tempoBpm) {
+      const b = Math.round(m.tempoBpm);
+      setTempoBpm(b); setTempoSlow(Math.round(b * 0.6)); setTempoMedium(b); setTempoFast(Math.round(b * 1.3));
+    }
+    if (isSong) {
+      if (m.composer && !composer) setComposer(m.composer);
+      if (m.lyricist && !lyricist) setLyricist(m.lyricist);
+    }
+    const midis = r.notes.map((n) => pitchToMidi(n.pitch));
+    setRangeMin(Math.min(...midis) - 2);
+    setRangeMax(Math.max(...midis) + 2);
+    setAiInfo({ source: 'file', warnings: r.warnings || [], meta: { timeSignature: m.timeSignature, keySignature: m.keySignature, tempoBpm: m.tempoBpm ? Math.round(m.tempoBpm) : null } });
   }
 
   async function handleImageFile(file) {
@@ -401,7 +445,7 @@ export default function MusicLessonComposerPage() {
         <div className="card" style={{ background: '#EEF5FD', borderColor: '#bcd5f1' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
             <strong style={{ color: '#184270', fontSize: 13.5 }}>
-              AI nhận thấy: {[aiInfo.meta?.keySignature && `giọng ${aiInfo.meta.keySignature}`, aiInfo.meta?.timeSignature && `nhịp ${aiInfo.meta.timeSignature}`, aiInfo.meta?.tempoBpm && `♩ = ${aiInfo.meta.tempoBpm}`].filter(Boolean).join(' · ') || 'không có thông tin đầu khuông'}
+              {aiInfo.source === 'file' ? 'Từ file nhạc' : 'AI nhận thấy'}: {[aiInfo.meta?.keySignature && `giọng ${aiInfo.meta.keySignature}`, aiInfo.meta?.timeSignature && `nhịp ${aiInfo.meta.timeSignature}`, aiInfo.meta?.tempoBpm && `♩ = ${aiInfo.meta.tempoBpm}`].filter(Boolean).join(' · ') || 'không có thông tin đầu khuông'}
             </strong>
             <button className="chip" onClick={() => setAiInfo(null)}>Ẩn</button>
           </div>
@@ -414,7 +458,29 @@ export default function MusicLessonComposerPage() {
       )}
 
       <div className="card">
-        <h2>🤖 Trích xuất nốt từ ảnh bản nhạc (AI — chỉ ra bản nháp)</h2>
+        <h2>📂 Nhập từ file nhạc (MusicXML / MIDI) — chính xác nhất, không dùng AI</h2>
+        <p className="sub-note" style={{ margin: '0 0 10px' }}>Chọn file <b>.musicxml / .mxl</b> (khuyên dùng — có đủ nốt, nhịp, giọng, lời hát) hoặc <b>.mid</b> tải từ MuseScore hay phần mềm soạn nhạc. Nốt được đọc thẳng từ file nên không bị đọc sai như ảnh. Bản piano 2 khuông: mặc định lấy khuông 1 (tay phải = giai điệu).</p>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label className="chip" style={{ cursor: 'pointer' }}>
+            📁 Chọn file nhạc
+            <input type="file" accept=".musicxml,.xml,.mxl,.mid,.midi" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files[0]; e.target.value = ''; handleScoreFile(f); }} />
+          </label>
+          {scoreSrc && <span style={{ fontSize: 12.5, color: '#6b7f7a' }}>{scoreSrc.fileName}</span>}
+          {scoreSrc && scoreSrc.parts.length > 1 && (
+            <select className="f" style={{ width: 'auto' }} value={scorePart} onChange={(e) => { const i = Number(e.target.value); setScorePart(i); setScoreStaff(1); applyScore(scoreSrc, i, 1, false); }}>
+              {scoreSrc.parts.map((pt) => <option key={pt.index} value={pt.index}>{pt.name}{pt.hasLyrics ? ' (có lời)' : ''}</option>)}
+            </select>
+          )}
+          {scoreSrc && (scoreSrc.parts[scorePart]?.staves || 1) > 1 && (
+            <select className="f" style={{ width: 'auto' }} value={scoreStaff} onChange={(e) => { const st = Number(e.target.value); setScoreStaff(st); applyScore(scoreSrc, scorePart, st, false); }}>
+              {Array.from({ length: scoreSrc.parts[scorePart].staves }).map((_, i) => <option key={i} value={i + 1}>Khuông {i + 1}</option>)}
+            </select>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>🤖 Không có file? Trích xuất nốt từ ảnh bản nhạc (AI — hay đọc sai, chỉ ra bản nháp)</h2>
         <p className="sub-note" style={{ margin: '0 0 10px' }}>Dán ảnh (Ctrl+V sau khi chụp màn hình/copy ảnh) hoặc chọn file ảnh chụp bản nhạc. AI chỉ đọc ra bản nháp — bạn vẫn cần tự nghe/sửa lại cho đúng trước khi lưu, vì AI đọc bản nhạc phức tạp có thể sai.</p>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <label className="chip" style={{ cursor: 'pointer' }}>
