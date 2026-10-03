@@ -73,7 +73,7 @@ export default function TptViolationCatalogPage() {
   function openNew() {
     setForm({
       code: null, category: 'ne_nep', group: PRESET_GROUPS.includes(tab) ? tab : 'Nề nếp',
-      label: '', kind: 'tru', amount: '', locked: false,
+      label: '', kind: 'tru', amount: '', locked: false, individual: false,
     });
   }
 
@@ -81,7 +81,7 @@ export default function TptViolationCatalogPage() {
     const pts = Number(r.points);
     setForm({
       code: r.code, category: r.category, group: groupOf(r), label: r.label, kind: pts > 0 ? 'cong' : 'tru',
-      amount: String(Math.abs(pts)), locked: isProtected(r),
+      amount: String(Math.abs(pts)), locked: isProtected(r), individual: !!r.is_individual,
     });
   }
 
@@ -96,18 +96,29 @@ export default function TptViolationCatalogPage() {
       return;
     }
     setBusy(true);
-    const { error } = await supabase.rpc('tpt_upsert_reason_type', {
+    const { data: savedCode, error } = await supabase.rpc('tpt_upsert_reason_type', {
       p_code: form.code,
       p_category: form.category,
       p_label: form.label,
       p_points: form.kind === 'tru' ? -amount : amount,
       p_group_label: form.category === 'hoc_tap' ? 'Học tập (xếp loại giờ)' : form.group,
     });
-    setBusy(false);
     if (error) {
+      setBusy(false);
       setMsg({ type: 'error', text: error.message });
       return;
     }
+    // Đánh dấu "lỗi cá nhân" (Sao đỏ bắt buộc chọn học sinh) — chỉ áp dụng cho nhóm Nề nếp
+    if (form.category === 'ne_nep') {
+      const { error: e2 } = await supabase.rpc('tpt_set_reason_individual', { p_code: form.code || savedCode, p_individual: !!form.individual });
+      if (e2) {
+        setBusy(false);
+        setMsg({ type: 'error', text: `Đã lưu nội dung nhưng chưa lưu được "lỗi cá nhân": ${e2.message}` });
+        load();
+        return;
+      }
+    }
+    setBusy(false);
     setMsg({ type: 'ok', text: form.code ? 'Đã lưu thay đổi.' : 'Đã thêm nội dung mới.' });
     setForm(null);
     load();
@@ -240,6 +251,7 @@ export default function TptViolationCatalogPage() {
                       <tr key={r.code}>
                         <td>
                           <strong>{r.label}</strong>
+                          {r.is_individual && <span className="chip" style={{ marginLeft: 8 }} title="Lỗi cá nhân: Sao đỏ bắt buộc chọn học sinh">👤 Cá nhân</span>}
                           {locked && <span className="chip" style={{ marginLeft: 8 }} title="Mục hệ thống: chỉ đổi được số điểm">🔒 Hệ thống</span>}
                         </td>
                         {tab === ARCHIVED_TAB && <td>{groupOf(r)} · {CAT_LABEL[r.category] || r.category}</td>}
@@ -308,6 +320,16 @@ export default function TptViolationCatalogPage() {
                 onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="VD: 2" />
             </div>
           </div>
+
+          {form.category === 'ne_nep' && (
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 14, fontSize: 13.5, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!form.individual} onChange={(e) => setForm({ ...form, individual: e.target.checked })} style={{ marginTop: 3 }} />
+              <span>
+                <b>Lỗi cá nhân</b> — Sao đỏ bắt buộc chọn học sinh vi phạm (VD: đi trễ, vắng, không mang giấy kiểm tra).
+                Bỏ chọn nếu là lỗi cả lớp (VD: vệ sinh không sạch).
+              </span>
+            </label>
+          )}
 
           <div className="modal-f">
             <button className="btn" onClick={() => setForm(null)}>Huỷ</button>

@@ -120,6 +120,7 @@ export default function SaoDoPage() {
 
   const neNepReasons = useMemo(() => reasons.filter((r) => r.category === 'ne_nep'), [reasons]);
   const editableReasons = useMemo(() => reasons.filter((r) => r.category !== 'hoc_tap'), [reasons]);
+  const editIndividual = !!(editing && editableReasons.find((r) => r.code === editing.reason_code)?.is_individual);
 
   const PRESET_GROUPS = ['Sĩ số', 'Vệ sinh', 'Nề nếp', 'Đạo đức, tác phong', 'Khác'];
   const GROUP_ICON = { 'Sĩ số': '🧑‍🎓', 'Vệ sinh': '🧹', 'Nề nếp': '📋', 'Đạo đức, tác phong': '🎯', 'Khác': '🔹' };
@@ -189,6 +190,10 @@ export default function SaoDoPage() {
 
   async function submitReport() {
     if (!reporting || !openId) return;
+    if (reporting.is_individual && !rStudentId) {
+      setMsg({ type: 'error', text: 'Đây là lỗi cá nhân — hãy chọn học sinh vi phạm.' });
+      return;
+    }
     setBusy(true);
     const { error } = await supabase.rpc('saodo_report_deduction', {
       p_class_id: openId,
@@ -542,7 +547,7 @@ export default function SaoDoPage() {
                       disabled={busy}
                       onClick={() => { setReporting(r); setRStudentId(''); setRNote(''); }}
                     >
-                      <span>{r.label}</span>
+                      <span>{r.label}{r.is_individual ? ' 👤' : ''}</span>
                       <span className="rb-p">{r.points} đ</span>
                     </button>
                   ))}
@@ -590,11 +595,17 @@ export default function SaoDoPage() {
           <div className="hint" style={{ margin: 0 }}>Lớp {openClass?.class_name} · {isBackfill ? `bổ sung cho ${dayText}` : `hôm nay ${dayText}`}</div>
           <div style={{ fontWeight: 700, marginTop: 8 }}>{reporting.label}</div>
           <div className="pts-big">{reporting.points} điểm</div>
-          <label className="lbl" htmlFor="r-stu">Học sinh vi phạm (nếu là lỗi cá nhân)</label>
-          <select id="r-stu" className="input" value={rStudentId} onChange={(e) => setRStudentId(e.target.value)}>
-            <option value="">Cả lớp (không chọn học sinh)</option>
+          <label className="lbl" htmlFor="r-stu">
+            {reporting.is_individual ? 'Học sinh vi phạm (bắt buộc)' : 'Học sinh vi phạm (chỉ chọn nếu biết rõ ai vi phạm)'}
+          </label>
+          <select id="r-stu" className="input" value={rStudentId} onChange={(e) => setRStudentId(e.target.value)}
+            style={reporting.is_individual && !rStudentId ? { borderColor: 'var(--red)' } : undefined}>
+            <option value="">{reporting.is_individual ? '— Chọn học sinh —' : 'Cả lớp (không chọn học sinh)'}</option>
             {roster.map((s2) => <option key={s2.student_id} value={s2.student_id}>{s2.full_name}</option>)}
           </select>
+          {reporting.is_individual && (
+            <p className="hint" style={{ margin: '4px 0 0' }}>Đây là lỗi cá nhân nên phải chọn đúng học sinh vi phạm.</p>
+          )}
           {roster.length === 0 && (
             <p className="hint" style={{ margin: '4px 0 0' }}>Lớp chưa có tài khoản học sinh nào — nhờ cô quản trị cấp tài khoản trước.</p>
           )}
@@ -602,7 +613,7 @@ export default function SaoDoPage() {
           <input id="r-note" className="input" value={rNote} onChange={(e) => setRNote(e.target.value)} placeholder="VD: tiết mấy, hoàn cảnh cụ thể…" />
           <div className="modal-f">
             <button className="btn" onClick={() => setReporting(null)}>Huỷ</button>
-            <button className="btn btn-red" disabled={busy} onClick={submitReport}>{busy ? 'Đang gửi…' : 'Ghi nhận'}</button>
+            <button className="btn btn-red" disabled={busy || (reporting.is_individual && !rStudentId)} onClick={submitReport}>{busy ? 'Đang gửi…' : 'Ghi nhận'}</button>
           </div>
         </Modal>
       )}
@@ -613,16 +624,17 @@ export default function SaoDoPage() {
           <select id="e-r" className="input" value={editing.reason_code} onChange={(e) => setEditing({ ...editing, reason_code: e.target.value })}>
             {editableReasons.map((r) => <option key={r.code} value={r.code}>{r.label} ({r.points} đ)</option>)}
           </select>
-          <label className="lbl" htmlFor="e-s">Học sinh</label>
-          <select id="e-s" className="input" value={editing.student_id} onChange={(e) => setEditing({ ...editing, student_id: e.target.value })}>
-            <option value="">Cả lớp (không chọn học sinh)</option>
+          <label className="lbl" htmlFor="e-s">{editIndividual ? 'Học sinh (bắt buộc vì là lỗi cá nhân)' : 'Học sinh'}</label>
+          <select id="e-s" className="input" value={editing.student_id} onChange={(e) => setEditing({ ...editing, student_id: e.target.value })}
+            style={editIndividual && !editing.student_id ? { borderColor: 'var(--red)' } : undefined}>
+            <option value="">{editIndividual ? '— Chọn học sinh —' : 'Cả lớp (không chọn học sinh)'}</option>
             {roster.map((s2) => <option key={s2.student_id} value={s2.student_id}>{s2.full_name}</option>)}
           </select>
           <label className="lbl" htmlFor="e-n">Ghi chú</label>
           <input id="e-n" className="input" value={editing.note} onChange={(e) => setEditing({ ...editing, note: e.target.value })} />
           <div className="modal-f">
             <button className="btn" onClick={() => setEditing(null)}>Huỷ</button>
-            <button className="btn btn-red" disabled={busy} onClick={saveEdit}>{busy ? 'Đang lưu…' : 'Lưu thay đổi'}</button>
+            <button className="btn btn-red" disabled={busy || (editIndividual && !editing.student_id)} onClick={saveEdit}>{busy ? 'Đang lưu…' : 'Lưu thay đổi'}</button>
           </div>
         </Modal>
       )}
