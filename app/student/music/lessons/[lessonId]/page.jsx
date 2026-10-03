@@ -17,7 +17,7 @@ import { finishMusicLessonAttempt } from '@/lib/musicXp';
 import { VN_NAME, NOTE_COLOR, pitchToMidi, durationBeats, buildPianoKeys, starsForScore, LEVELS, levelBpm } from '@/lib/musicNotes';
 
 const LEAD_IN = 3;                  // giây đếm ngược trước khi nốt đầu tới phím
-const LOOKAHEAD_SEC = 2.6;          // số giây nhìn thấy trước khi nốt rơi tới nơi
+const LOOKAHEAD_SEC = 1.9;          // số giây nhìn thấy trước khi nốt rơi tới nơi (nhỏ hơn = rơi nhanh/sinh động hơn)
 const PERFECT_T = 0.12, GREAT_T = 0.25, LATE_T = 0.42; // ngưỡng chấm (giây)
 const KEY_GAP = 3;
 

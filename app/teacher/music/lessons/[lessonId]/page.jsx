@@ -20,7 +20,7 @@ import { supabase } from '@/lib/supabaseClient';
 import {
   DURATIONS, TIME_SIGNATURES, NOTE_COLOR,
   pitchToVietnamese, pitchOctave, pitchToMidi, buildPianoKeys,
-  durationBeats, durationToToneKey, beatsPerMeasure,
+  durationBeats, beatsPerMeasure,
 } from '@/lib/musicNotes';
 
 const backLinkStyle = {
@@ -63,9 +63,11 @@ export default function MusicLessonComposerPage() {
   const [rangeMax, setRangeMax] = useState(72);
   const [, force] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [playing, setPlaying] = useState(false);
   const [samplerReady, setSamplerReady] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiPreview, setAiPreview] = useState(null);
+  const [isDraft, setIsDraft] = useState(false);
 
   const isSong = lesson?.kind === 'song';
 
@@ -118,13 +120,81 @@ export default function MusicLessonComposerPage() {
   }
   async function testSound() { await playNote('C4', '4n'); }
 
+  // Nén/giảm kích thước ảnh trước khi gửi AI (đỡ tốn thời gian tải lên + chi phí).
+  function compressImage(file, maxDim = 1500, quality = 0.85) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const ratio = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve({ dataUrl: canvas.toDataURL('image/jpeg', quality), width: canvas.width, height: canvas.height });
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  async function handleImageFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    setErrorMsg('');
+    const { dataUrl } = await compressImage(file);
+    setAiPreview(dataUrl);
+    runAiExtract(dataUrl);
+  }
+
+  async function runAiExtract(dataUrl) {
+    setAiLoading(true);
+    setErrorMsg('');
+    try {
+      const base64 = dataUrl.split(',')[1];
+      const res = await fetch('/api/ai/transcribe-music', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, mediaType: 'image/jpeg' }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErrorMsg('AI trích xuất lỗi: ' + (data.error || res.statusText)); return; }
+      if (!data.notes || data.notes.length === 0) { setErrorMsg('AI không đọc được nốt nào trong ảnh này — thử ảnh rõ hơn hoặc chụp thẳng góc hơn.'); return; }
+      if (notes.length > 0 && !window.confirm(`AI đọc được ${data.notes.length} nốt từ ảnh. Thay thế ${notes.length} nốt đang có trong bài bằng bản nháp này? (Vẫn có thể bấm Hoàn tác nếu đổi ý)`)) return;
+      pushHistory();
+      setNotes(data.notes);
+      setIsDraft(true);
+      if (data.notes.length > 0) {
+        const midis = data.notes.map((n) => pitchToMidi(n.pitch));
+        setRangeMin(Math.min(...midis) - 2);
+        setRangeMax(Math.max(...midis) + 2);
+      }
+    } catch (e) {
+      setErrorMsg('Không gọi được AI: ' + e.message);
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    function onPaste(e) {
+      const item = Array.from(e.clipboardData?.items || []).find((it) => it.type.startsWith('image/'));
+      if (!item) return;
+      e.preventDefault();
+      handleImageFile(item.getAsFile());
+    }
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes]);
+
   const pitchRows = useMemo(() => buildPianoKeys(rangeMin, rangeMax).reverse(), [rangeMin, rangeMax]);
   const gridBeats = useMemo(() => {
     const last = notes.reduce((m, n) => Math.max(m, n.startBeat + durationBeats(n.duration)), 0);
     return Math.max(32, Math.ceil((last + 8) / 4) * 4);
   }, [notes]);
 
-  function pushHistory() { historyRef.current.push({ notes, rangeMin, rangeMax }); if (historyRef.current.length > 30) historyRef.current.shift(); }
+  function pushHistory() { historyRef.current.push({ notes, rangeMin, rangeMax }); if (historyRef.current.length > 30) historyRef.current.shift(); setIsDraft(false); }
   function undo() {
     const prev = historyRef.current.pop();
     if (!prev) return;
@@ -230,23 +300,6 @@ export default function MusicLessonComposerPage() {
 
   function clearAll() { if (notes.length === 0) return; if (confirm('Xoá hết nốt trong bài này?')) { pushHistory(); setNotes([]); } }
 
-  async function playPreview() {
-    if (notes.length === 0 || playing) return;
-    setPlaying(true);
-    try {
-      const s = await ensureSampler();
-      await s.Tone.start();
-      const spb = 60 / (Number(tempoMedium) || tempoBpm || 90);
-      const base = s.Tone.now() + 0.1;
-      let maxEnd = 0;
-      notes.forEach((n) => {
-        s.sampler.triggerAttackRelease(n.pitch, durationToToneKey(n.duration), base + n.startBeat * spb);
-        maxEnd = Math.max(maxEnd, n.startBeat + durationBeats(n.duration));
-      });
-      setTimeout(() => setPlaying(false), maxEnd * spb * 1000 + 300);
-    } catch (e) { setErrorMsg('Không phát được: ' + e.message); setPlaying(false); }
-  }
-
   async function handleSave() {
     setSaving(true); setErrorMsg('');
     const payload = {
@@ -298,6 +351,27 @@ export default function MusicLessonComposerPage() {
       <h1>{lesson.title} {isSong ? '🎤' : '🎼'}</h1>
       <p className="sub-note">Bấm vào ô trên lưới để đặt nốt (đúng cao độ theo hàng, đúng thời điểm theo cột) — kéo ngang lúc bấm để tự chọn độ dài. Bấm vào 1 nốt đã có để xoá; bấm giữ rồi kéo để di chuyển sang thời điểm/cao độ khác.</p>
 
+      {isDraft && (
+        <div className="card" style={{ background: '#FEF3E2', borderColor: '#f3cf8f' }}>
+          <strong style={{ color: '#92400e' }}>⚠️ Đây là bản nháp do AI đọc từ ảnh — chưa chắc đúng 100%.</strong>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: '#92400e' }}>Hãy rà lại từng nốt trên lưới (so với bản nhạc gốc), bấm giữ-kéo để sửa nốt sai trước khi bấm Lưu bài học. Dòng cảnh báo này tự biến mất khi bạn sửa bất kỳ nốt nào.</p>
+        </div>
+      )}
+
+      <div className="card">
+        <h2>🤖 Trích xuất nốt từ ảnh bản nhạc (AI — chỉ ra bản nháp)</h2>
+        <p className="sub-note" style={{ margin: '0 0 10px' }}>Dán ảnh (Ctrl+V sau khi chụp màn hình/copy ảnh) hoặc chọn file ảnh chụp bản nhạc. AI chỉ đọc ra bản nháp — bạn vẫn cần tự nghe/sửa lại cho đúng trước khi lưu, vì AI đọc bản nhạc phức tạp có thể sai.</p>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label className="chip" style={{ cursor: 'pointer' }}>
+            📁 Chọn ảnh
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => e.target.files[0] && handleImageFile(e.target.files[0])} />
+          </label>
+          <span style={{ fontSize: 12.5, color: '#9ca3af' }}>hoặc dán ảnh trực tiếp vào trang (Ctrl+V)</span>
+          {aiLoading && <span style={{ fontSize: 12.5, color: '#225da3', fontWeight: 700 }}>⏳ AI đang đọc bản nhạc… (có thể mất 10-30 giây)</span>}
+        </div>
+        {aiPreview && <img src={aiPreview} alt="Ảnh bản nhạc vừa gửi AI" style={{ maxWidth: 220, maxHeight: 140, marginTop: 10, borderRadius: 8, border: '1px solid #e5eeec' }} />}
+      </div>
+
       {isSong && (
         <div className="card">
           <div className="meta-row">
@@ -335,7 +409,6 @@ export default function MusicLessonComposerPage() {
         <div className="toolbar" style={{ marginBottom: 10 }}>
           <button onClick={undo} disabled={historyRef.current.length === 0}>↩ Hoàn tác</button>
           <button onClick={clearAll} disabled={notes.length === 0}>🗑 Xoá hết</button>
-          <button className="primary" onClick={playPreview} disabled={notes.length === 0 || playing || !samplerReady}>{playing ? '🔊 Đang phát…' : samplerReady ? '▶ Nghe thử cả bài' : 'Đang tải piano…'}</button>
           <button onClick={testSound} disabled={!samplerReady}>🔈 Thử âm thanh</button>
           <button onClick={addOctaveLow}>⬇ Thêm quãng thấp</button>
           <button onClick={removeOctaveLow}>✕ Bớt quãng thấp</button>
