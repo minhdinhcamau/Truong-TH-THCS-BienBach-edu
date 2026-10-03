@@ -51,6 +51,12 @@ const TABS = [
     match: (p) => p.startsWith('/student/bang-tin'),
     icon: <path d="M4 5h13v14H6a2 2 0 0 1-2-2V5zM17 9h3v8a2 2 0 0 1-2 2M8 9h6M8 13h6" />,
   },
+  {
+    href: '/student/bao-cao-vi-pham',
+    label: 'Báo cáo vi phạm',
+    match: (p) => p.startsWith('/student/bao-cao-vi-pham'),
+    icon: <path d="M4 4h16v12H8l-4 4V4zM9 9h6M9 12h4" />,
+  },
 ];
 
 const BCS_TAB = {

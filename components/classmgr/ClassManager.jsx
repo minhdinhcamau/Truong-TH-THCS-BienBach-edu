@@ -8,6 +8,7 @@ import SeatDesigner from './SeatDesigner';
 import RecordPanel from './RecordPanel';
 import DutyPanel from './DutyPanel';
 import ReportPanel from './ReportPanel';
+import ReportInbox from './ReportInbox';
 
 // Bộ công cụ quản lý lớp. Dùng ở:
 //   - trang giáo viên chủ nhiệm (isStaff = true): đủ mọi tab
@@ -19,6 +20,7 @@ export default function ClassManager({ classId, className, isStaff, role, roleGr
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
   const [tab, setTab] = useState('');
+  const [pendingReports, setPendingReports] = useState(0); // số báo cáo của học sinh chưa xem (chỉ giáo viên)
 
   const reload = useCallback(async () => {
     const [s, l] = await Promise.all([
@@ -31,17 +33,25 @@ export default function ClassManager({ classId, className, isStaff, role, roleGr
     setLoading(false);
   }, [classId]);
 
+  const loadPending = useCallback(async () => {
+    if (!perms.staff) return;
+    const { data } = await supabase.rpc('class_list_member_reports', { p_class_id: classId });
+    setPendingReports((data || []).filter((r) => r.status === 'pending').length);
+  }, [classId, perms.staff]);
+
   useEffect(() => { setLoading(true); reload(); }, [reload]);
+  useEffect(() => { loadPending(); }, [loadPending]);
 
   const tabs = useMemo(() => {
     const t = [];
     if (perms.report) t.push({ key: 'bao-cao', label: 'Báo cáo tuần' });
+    if (perms.staff) t.push({ key: 'bao-cao-hs', label: pendingReports > 0 ? `Báo cáo từ học sinh (${pendingReports})` : 'Báo cáo từ học sinh' });
     if (perms.violation || perms.singing || perms.academic || perms.cadre) t.push({ key: 'ghi-nhan', label: 'Ghi nhận' });
     if (perms.duty || perms.dutyLog) t.push({ key: 'truc-nhat', label: 'Trực nhật' });
     if (perms.seat) t.push({ key: 'so-do', label: 'Sơ đồ lớp & tổ' });
     if (perms.staff) t.push({ key: 'hoc-sinh', label: 'Học sinh & ban cán sự' });
     return t;
-  }, [perms]);
+  }, [perms, pendingReports]);
 
   const current = tabs.some((t) => t.key === tab) ? tab : tabs[0]?.key;
 
@@ -68,6 +78,7 @@ export default function ClassManager({ classId, className, isStaff, role, roleGr
           {current === 'so-do' && <SeatDesigner classId={classId} students={students} reload={reload} toast={setMsg} />}
           {current === 'hoc-sinh' && <MembersPanel classId={classId} students={students} groupCount={groupCount} reload={reload} toast={setMsg} />}
           {current === 'bao-cao' && <ReportPanel classId={classId} className={className} toast={setMsg} />}
+          {current === 'bao-cao-hs' && <ReportInbox classId={classId} toast={setMsg} onChanged={loadPending} />}
         </>
       )}
       <CmToast msg={msg} onDone={() => setMsg(null)} />
