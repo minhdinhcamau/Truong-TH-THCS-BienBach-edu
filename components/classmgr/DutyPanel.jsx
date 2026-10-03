@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { addDays, fmtDate, fmtIso, mondayOf, vnTodayIso } from '@/lib/dates';
 import { MODES, missingReasons, planDuty } from '@/lib/dutyPlanner';
 
-const WEEKDAYS = [2, 3, 4, 5, 6, 7];
+const WEEKDAYS = [2, 3, 4, 5, 6]; // không có Thứ 7, Chủ nhật
 const STATUS = { tot: ['Trực tốt', 'ok'], chua_tot: ['Chưa tốt', 'warn'], khong_truc: ['Không trực', 'bad'] };
 const SOURCE = { manual: 'Tự chọn', ai_group: 'Trợ lý: theo điểm tổ', ai_violators: 'Trợ lý: người vi phạm', rotation: 'Trợ lý: xoay vòng tổ' };
 

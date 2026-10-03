@@ -9,6 +9,8 @@ import RecordPanel from './RecordPanel';
 import DutyPanel from './DutyPanel';
 import ReportPanel from './ReportPanel';
 import ReportInbox from './ReportInbox';
+import LaborPanel from './LaborPanel';
+import GroupJournal from './GroupJournal';
 
 // Bộ công cụ quản lý lớp. Dùng ở:
 //   - trang giáo viên chủ nhiệm (isStaff = true): đủ mọi tab
@@ -48,6 +50,8 @@ export default function ClassManager({ classId, className, isStaff, role, roleGr
     if (perms.staff) t.push({ key: 'bao-cao-hs', label: pendingReports > 0 ? `Báo cáo từ học sinh (${pendingReports})` : 'Báo cáo từ học sinh' });
     if (perms.violation || perms.singing || perms.academic || perms.cadre) t.push({ key: 'ghi-nhan', label: 'Ghi nhận' });
     if (perms.duty || perms.dutyLog) t.push({ key: 'truc-nhat', label: 'Trực nhật' });
+    if (perms.dutyLog) t.push({ key: 'lao-dong', label: 'Kiểm tra lao động' });
+    if (perms.staff) t.push({ key: 'nhat-ky', label: 'Nhật ký theo tổ' });
     if (perms.seat) t.push({ key: 'so-do', label: 'Sơ đồ lớp & tổ' });
     if (perms.staff) t.push({ key: 'hoc-sinh', label: 'Học sinh & ban cán sự' });
     return t;
@@ -75,6 +79,8 @@ export default function ClassManager({ classId, className, isStaff, role, roleGr
         <>
           {current === 'ghi-nhan' && <RecordPanel classId={classId} students={students} perms={perms} role={role} roleGroup={roleGroup} profileId={profileId} toast={setMsg} />}
           {current === 'truc-nhat' && <DutyPanel classId={classId} students={students} perms={perms} role={role} roleGroup={roleGroup} toast={setMsg} />}
+          {current === 'lao-dong' && <LaborPanel classId={classId} students={students} perms={perms} role={role} roleGroup={roleGroup} toast={setMsg} />}
+          {current === 'nhat-ky' && <GroupJournal classId={classId} toast={setMsg} />}
           {current === 'so-do' && <SeatDesigner classId={classId} students={students} reload={reload} toast={setMsg} />}
           {current === 'hoc-sinh' && <MembersPanel classId={classId} students={students} groupCount={groupCount} reload={reload} toast={setMsg} />}
           {current === 'bao-cao' && <ReportPanel classId={classId} className={className} toast={setMsg} />}
