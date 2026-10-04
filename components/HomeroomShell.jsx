@@ -72,6 +72,7 @@ export default function HomeroomShell({ profile, roleLabel, active, showHomeroom
           <nav className="hr-nav" aria-label="Điều hướng giáo viên">
             <Link href="/teacher/thi-dua" className={active === 'thi-dua' ? 'on' : ''}>Thi đua lớp</Link>
             <Link href="/teacher/tkb" className={active === 'tkb' ? 'on' : ''}>Thời khóa biểu</Link>
+            <Link href="/teacher/truc-nhat" className={active === 'truc-nhat' ? 'on' : ''}>Trực nhật</Link>
             {showHomeroom && <Link href="/teacher/chu-nhiem" className={active === 'chu-nhiem' ? 'on' : ''}>Chủ nhiệm lớp</Link>}
           </nav>
           <div className="hr-who">

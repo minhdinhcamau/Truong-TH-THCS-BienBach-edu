@@ -47,6 +47,12 @@ const TABS = [
     icon: <path d="M4 5h13v14H6a2 2 0 0 1-2-2V5zM17 9h3v8a2 2 0 0 1-2 2M8 9h6M8 13h6" />,
   },
   {
+    href: '/student/truc-nhat',
+    label: 'Trực nhật',
+    match: (p) => p.startsWith('/student/truc-nhat'),
+    icon: <path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" />,
+  },
+  {
     href: '/student/leaderboard',
     label: 'Xếp hạng',
     match: (p) => p.startsWith('/student/leaderboard'),
