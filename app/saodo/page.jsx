@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { useGuard } from '@/lib/useGuard';
 import { useRankingPing } from '@/lib/useRankingPing';
@@ -268,9 +269,42 @@ export default function SaoDoPage() {
 
   if (!ready) return <div className="app"><div className="center-loading">Đang tải…</div></div>;
 
+  // Nút quay về: học sinh về trang học sinh, giáo viên về trang giáo viên, admin về trang quản trị
+  const backHref = profile?.role === 'admin' ? '/admin' : profile?.role === 'teacher' ? '/teacher' : '/student';
+  const backText = profile?.role === 'admin' ? '← Về trang quản trị' : profile?.role === 'teacher' ? '← Về trang giáo viên' : '← Về trang học sinh';
+
   return (
     <AppShell profile={profile} roleLabel="Đội Sao đỏ" nav={SAODO_NAV} activeHref="/saodo" onLogout={logout}>
+      <style jsx global>{`
+        /* Tối ưu điện thoại cho trang Sao đỏ (chỉ áp dụng khi trang này đang mở) */
+        @media (max-width: 640px) {
+          div.app .mast-in { padding: 10px 12px; gap: 8px; }
+          div.app .brand-s { display: none; }
+          div.app .brand-t { font-size: 15px; }
+          div.app .who { gap: 8px; }
+          div.app .who-n, div.app .who-r { display: none; }
+          div.app .out-btn { padding: 8px 12px; font-size: 12px; }
+          div.app .nav a { padding: 13px 14px; }
+          div.app .main { padding: 14px 12px 130px; }
+          div.app .pg-title { font-size: 20px; }
+          div.app .pg-sub { font-size: 13px; margin-bottom: 12px; }
+          div.app .card { padding: 14px; border-radius: 12px; margin-bottom: 12px; }
+          div.app .input { font-size: 16px; min-height: 46px; }
+          div.app .btn { min-height: 44px; }
+          div.app .btn-sm { min-height: 38px; min-width: 42px; }
+          div.app .backdrop { align-items: flex-end; padding: 0; }
+          div.app .bb-modal { max-width: 100%; border-radius: 18px 18px 0 0; max-height: 92vh; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+          div.app .modal-f { flex-direction: column-reverse; }
+          div.app .modal-f .btn { width: 100%; min-height: 48px; }
+          div.app .bb-toast { bottom: 92px; border-radius: 14px; }
+        }
+      `}</style>
       <style jsx>{`
+        .back-row { margin: 0 0 10px; }
+        .back-row :global(a) { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 16px; border-radius: 999px;
+          border: 1.5px solid var(--line); background: #fff; color: var(--ink); font-weight: 700; font-size: 13.5px; text-decoration: none; }
+        .back-row :global(a:hover) { border-color: var(--red); color: var(--red); }
+
         .alert-box { background: #fdeceb; border: 2px solid var(--red); border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; }
         .alert-title { font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 16px; color: var(--red-d); }
         .alert-cls { margin-top: 8px; font-weight: 700; font-size: 13.5px; }
@@ -304,7 +338,7 @@ export default function SaoDoPage() {
 
         .panel-h { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
         .panel-h h2 { font-size: 20px; }
-        .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0; }
+        .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0; background: #fff; }
         .tab { border: none; background: none; padding: 9px 14px; font-weight: 700; font-size: 13.5px; color: var(--muted);
           cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; }
         .tab.on { color: var(--red); border-bottom-color: var(--red); }
@@ -342,7 +376,50 @@ export default function SaoDoPage() {
         .log-p.neg { color: var(--red); }
         .log-p.zero { color: var(--ok); }
         .pts-big { font-family: 'Baloo 2', sans-serif; font-size: 30px; font-weight: 700; color: var(--red); text-align: center; margin: 4px 0 10px; }
+
+        /* Thanh "Hoàn tất kiểm tra" dính đáy màn hình: chỉ hiện trên điện thoại */
+        .mob-bar { display: none; }
+
+        @media (max-width: 640px) {
+          .back-row :global(a) { width: 100%; justify-content: center; min-height: 46px; }
+
+          .wk-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+          .wk { flex: none; min-height: 42px; }
+
+          .days { gap: 4px; }
+          .day { padding: 10px 2px; min-height: 58px; border-radius: 10px; }
+          .day b { font-size: 13px; }
+          .day small { font-size: 11px; }
+
+          .cls-grid { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 6px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+          .cls { flex: none; min-width: 150px; scroll-snap-align: start; }
+
+          .panel-h h2 { font-size: 19px; }
+          .desk-complete { display: none; }
+          .tabs { position: sticky; top: 0; z-index: 20; margin: 12px -14px; padding: 0 14px; }
+          .tab { flex: 1; min-height: 48px; padding: 8px 4px; font-size: 14px; }
+
+          .legend { gap: 8px 14px; }
+          .per { padding: 11px 0; align-items: center; }
+          .per-n { width: 42px; }
+          .per-s { font-size: 14.5px; }
+          .seg button { width: 50px; height: 46px; font-size: 16px; }
+
+          .ne-grp-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+          .ne-grp { flex: none; min-height: 44px; }
+          .rg { grid-template-columns: 1fr; }
+          .rb { min-height: 56px; font-size: 15px; padding: 12px 14px; }
+
+          .log { padding: 12px 0; }
+          .log-t { font-size: 14px; }
+
+          .mob-bar { display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: #fff; border-top: 1px solid var(--line);
+            padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 18px -10px rgba(0,0,0,0.25); }
+          .mob-bar button { width: 100%; min-height: 50px; font-size: 15px; }
+        }
       `}</style>
+
+      <div className="back-row"><Link href={backHref}>{backText}</Link></div>
 
       <h1 className="pg-title">Kiểm tra lớp</h1>
       <p className="pg-sub">Các lớp bên dưới do cô Tổng phụ trách phân công cho bạn. Chọn ngày, chọn lớp rồi ghi nhận.</p>
@@ -456,7 +533,7 @@ export default function SaoDoPage() {
             {completedRow ? (
               <span className="pill ok">✓ Đã hoàn tất lúc {timeVN(completedRow.created_at)}</span>
             ) : (
-              <button className="btn btn-ok" disabled={busy} onClick={complete}>✓ Hoàn tất kiểm tra</button>
+              <button className="btn btn-ok desk-complete" disabled={busy} onClick={complete}>✓ Hoàn tất kiểm tra</button>
             )}
           </div>
           {!completedRow && (
@@ -587,6 +664,12 @@ export default function SaoDoPage() {
               </div>
             )
           )}
+        </div>
+      )}
+
+      {openClass && !completedRow && (
+        <div className="mob-bar">
+          <button className="btn btn-ok" disabled={busy} onClick={complete}>✓ Hoàn tất kiểm tra lớp {openClass.class_name}</button>
         </div>
       )}
 
