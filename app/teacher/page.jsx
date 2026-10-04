@@ -315,6 +315,11 @@ export default function TeacherDashboard() {
               <div><b>Thi đua lớp</b><span>Xếp hạng các lớp, cập nhật trực tiếp</span></div>
               <div className="tp-q-go" aria-hidden="true">›</div>
             </Link>
+            <Link href="/teacher/tkb" className="tp-q" style={{ '--acc': '#225da3', '--acc-bg': '#e9f2fc' }}>
+              <div className="tp-q-ic" aria-hidden="true"><Ico k="tasks" /></div>
+              <div><b>Thời khóa biểu của tôi</b><span>Các tiết dạy theo tên thầy cô, có giờ vào ra</span></div>
+              <div className="tp-q-go" aria-hidden="true">›</div>
+            </Link>
             {!isAdminViewing && profile?.is_tpt && (
               <Link href="/tpt" className="tp-q" style={{ '--acc': '#c4262e', '--acc-bg': '#fdeceb' }}>
                 <div className="tp-q-ic" aria-hidden="true"><Ico k="star" /></div>

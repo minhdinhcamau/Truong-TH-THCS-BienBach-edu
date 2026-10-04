@@ -56,7 +56,14 @@ export default function HomeroomShell({ profile, roleLabel, active, showHomeroom
         .hr-stat b { font-family: 'Baloo 2', sans-serif; font-size: 26px; line-height: 1.15; }
         .hr-pick { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.3); border-radius: 10px; padding: 7px 10px; font-size: 13.5px; font-weight: 600; }
         .hr-pick option { color: #16231f; }
-        @media (max-width: 640px) { .hr-hero h1 { font-size: 36px; } .hr-who-n, .hr-who-r { display: none; } }
+        @media (max-width: 640px) {
+          .hr-hero h1 { font-size: 36px; }
+          .hr-who-n, .hr-who-r { display: none; }
+          .hr-nav { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+          .hr-nav::-webkit-scrollbar { display: none; }
+          .hr-main { padding: 18px 14px 90px; }
+          .hr-card { padding: 14px 14px; }
+        }
       `}</style>
 
       <header className="hr-top">
@@ -64,6 +71,7 @@ export default function HomeroomShell({ profile, roleLabel, active, showHomeroom
           <Link href="/teacher" className="hr-back">← Trang giáo viên</Link>
           <nav className="hr-nav" aria-label="Điều hướng giáo viên">
             <Link href="/teacher/thi-dua" className={active === 'thi-dua' ? 'on' : ''}>Thi đua lớp</Link>
+            <Link href="/teacher/tkb" className={active === 'tkb' ? 'on' : ''}>Thời khóa biểu</Link>
             {showHomeroom && <Link href="/teacher/chu-nhiem" className={active === 'chu-nhiem' ? 'on' : ''}>Chủ nhiệm lớp</Link>}
           </nav>
           <div className="hr-who">

@@ -1,10 +1,15 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { vnTodayIso } from '@/lib/dates';
+import { isMeetingSubject } from '@/lib/tkb';
 
-// Thời khóa biểu riêng của từng lớp: bảng đẹp (màu theo môn), xem theo ngày trên điện thoại,
-// nút In (khổ A4 ngang) và Lưu ảnh PNG. Không cần thư viện ngoài: ảnh được vẽ bằng canvas.
-//   rows: [{ weekday: 2..7, session: 'sang'|'chieu', period, subject, teacher }]
+// Thời khóa biểu đẹp dùng cho lớp (học sinh, Tổng phụ trách, admin) và cho từng giáo viên:
+// bảng màu pastel theo môn, xem theo ngày trên điện thoại, hiện giờ vào / giờ ra từng tiết,
+// nút In (khổ A4 ngang) và Lưu ảnh PNG (vẽ bằng canvas, không cần thư viện ngoài).
+//   rows : [{ weekday: 2..7, session: 'sang'|'chieu', period, subject, teacher, class_name? }]
+//          có class_name (thời khóa biểu giáo viên) thì dòng nhỏ hiện "Lớp 6A1" thay cho tên giáo viên
+//   bells: [{ session, period, label, start_time, end_time }]  (period 0 = sinh hoạt đầu giờ), có thể bỏ trống
+//   badge: chữ trong ô góc phải đầu trang (mặc định "Lớp {className}"); title: tiêu đề (mặc định THỜI KHÓA BIỂU)
 
 const SESS = [
   { key: 'sang', label: 'Buổi sáng' },
@@ -15,11 +20,18 @@ const PLACE = 'Xã Biển Bạch, tỉnh Cà Mau';
 
 const dayName = (d) => `Thứ ${d}`;
 const fmtVN = (iso) => (iso ? iso.split('-').reverse().join('/') : '');
+const hhmm = (t) => String(t || '').slice(0, 5);
 const todayWeekday = () => new Date(`${vnTodayIso()}T00:00:00Z`).getUTCDay() + 1; // 2 = Thứ 2 ... 7 = Thứ 7, 1 = Chủ nhật
+const slug = (s) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .replace(/[^\w-]+/g, '');
 
 // Màu pastel cố định cho từng môn (cùng tên môn luôn cùng màu)
 function hueOf(subject) {
-  const s = String(subject || '').trim().toLowerCase();
+  const s = String(subject || '').trim().toLowerCase().replace(/[\s.]+/g, ''); // "T. Anh" và "T.Anh" cùng màu
   let h = 7;
   for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) % 360;
   return h;
@@ -29,38 +41,76 @@ export function subjectColors(subject) {
   return { bg: `hsl(${h} 72% 93%)`, bd: `hsl(${h} 55% 82%)`, fg: `hsl(${h} 50% 22%)` };
 }
 
-export function buildModel(rows) {
+// Dòng nhỏ dưới tên môn: tên lớp (thời khóa biểu giáo viên) hoặc tên giáo viên (thời khóa biểu lớp)
+const sub2 = (r) => (r.class_name ? `Lớp ${r.class_name}` : r.teacher || '');
+
+export function buildModel(rows, bells) {
   const map = new Map();
   const maxP = { sang: 0, chieu: 0 };
   let has7 = false;
   (rows || []).forEach((r) => {
-    map.set(`${r.weekday}-${r.session}-${r.period}`, r);
+    if (isMeetingSubject(r.subject)) return; // không hiện tiết họp
+    const key = `${r.weekday}-${r.session}-${r.period}`;
+    const old = map.get(key);
+    if (old) {
+      // hai lớp cùng tiết (ví dụ dạy ghép): gộp lại thành một ô
+      const sameSubject = String(old.subject).trim() === String(r.subject).trim();
+      map.set(key, {
+        ...old,
+        subject: sameSubject ? old.subject : `${old.subject} / ${r.subject}`,
+        class_name: old.class_name && r.class_name ? `${old.class_name}, ${r.class_name}` : old.class_name || r.class_name,
+      });
+    } else {
+      map.set(key, r);
+    }
     maxP[r.session] = Math.max(maxP[r.session] || 0, Number(r.period) || 0);
     if (Number(r.weekday) === 7) has7 = true;
   });
+
+  const bellMap = new Map();
+  (bells || []).forEach((b) => bellMap.set(`${b.session}-${Number(b.period)}`, { start: hhmm(b.start_time), end: hhmm(b.end_time), label: b.label }));
+  const timeOf = (session, p) => {
+    const b = bellMap.get(`${session}-${p}`);
+    return b && b.start && b.end ? `${b.start}–${b.end}` : '';
+  };
+  const shOf = (session) => {
+    const b = bellMap.get(`${session}-0`);
+    return b && b.start && b.end ? `${b.label || 'Sinh hoạt đầu giờ'} ${b.start}–${b.end}` : '';
+  };
+
   return {
     map,
     days: has7 ? [2, 3, 4, 5, 6, 7] : [2, 3, 4, 5, 6],
-    sessions: SESS.filter((s) => maxP[s.key] > 0).map((s) => ({ ...s, periods: Array.from({ length: maxP[s.key] }, (_, i) => i + 1) })),
-    empty: !(rows || []).length,
+    sessions: SESS.filter((s) => maxP[s.key] > 0).map((s) => ({
+      ...s,
+      periods: Array.from({ length: maxP[s.key] }, (_, i) => i + 1),
+      sh: shOf(s.key),
+    })),
+    timeOf,
+    hasBells: bellMap.size > 0,
+    empty: map.size === 0,
   };
 }
 
 // ---------- In: mở cửa sổ riêng khổ A4 ngang ----------
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function printHtml(model, className, effectiveFrom, logoUrl) {
+function printHtml(model, o, logoUrl) {
   const head = `<tr><th class="t">Tiết</th>${model.days.map((d) => `<th>${dayName(d)}</th>`).join('')}</tr>`;
   const body = model.sessions.map((s) => {
-    const rows = s.periods.map((p) => `<tr><td class="t">${p}</td>${model.days.map((d) => {
-      const r = model.map.get(`${d}-${s.key}-${p}`);
-      if (!r) return '<td class="e">·</td>';
-      const c = subjectColors(r.subject);
-      return `<td style="background:${c.bg};border-color:${c.bd};color:${c.fg}"><b>${esc(r.subject)}</b>${r.teacher ? `<small>${esc(r.teacher)}</small>` : ''}</td>`;
-    }).join('')}</tr>`).join('');
-    return `<tr class="sess"><td colspan="${model.days.length + 1}">${s.label}</td></tr>${rows}`;
+    const rows = s.periods.map((p) => {
+      const tm = model.timeOf(s.key, p);
+      return `<tr><td class="t">${p}${tm ? `<small>${esc(tm)}</small>` : ''}</td>${model.days.map((d) => {
+        const r = model.map.get(`${d}-${s.key}-${p}`);
+        if (!r) return '<td class="e">·</td>';
+        const c = subjectColors(r.subject);
+        const t2 = sub2(r);
+        return `<td style="background:${c.bg};border-color:${c.bd};color:${c.fg}"><b>${esc(r.subject)}</b>${t2 ? `<small>${esc(t2)}</small>` : ''}</td>`;
+      }).join('')}</tr>`;
+    }).join('');
+    return `<tr class="sess"><td colspan="${model.days.length + 1}">${s.label}${s.sh ? `<span>${esc(s.sh)}</span>` : ''}</td></tr>${rows}`;
   }).join('');
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Thời khóa biểu lớp ${esc(className)}</title>
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${esc(o.title)} ${esc(o.badge)}</title>
 <style>
 @page{size:A4 landscape;margin:9mm}
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -74,25 +124,27 @@ body{margin:0;font-family:'Be Vietnam Pro',system-ui,Arial,sans-serif;color:#163
 .head .ap{font-size:11px;color:#2c5d93;margin-top:4px}
 table{width:100%;border-collapse:separate;border-spacing:4px}
 th{background:#e6f1fd;color:#1f5a96;font-size:12.5px;padding:7px 4px;border-radius:8px}
-th.t,td.t{width:42px;text-align:center;font-weight:800;color:#2c5d93;background:#eef5fd;border-radius:8px}
+th.t,td.t{width:${model.hasBells ? 78 : 42}px;text-align:center;font-weight:800;color:#2c5d93;background:#eef5fd;border-radius:8px}
+td.t small{display:block;font-size:9.5px;font-weight:600;opacity:.85;margin-top:2px}
 td{border:1px solid #e1ebf7;border-radius:8px;padding:6px 7px;text-align:center;vertical-align:middle;height:46px;font-size:12.5px}
 td b{display:block;font-size:13px;line-height:1.2}
 td small{display:block;font-size:10.5px;opacity:.8;margin-top:2px}
 td.e{color:#c2d0e2;background:#fafcff}
 tr.sess td{background:#4a8fd6;color:#fff;font-weight:800;text-align:left;padding:5px 12px;height:auto;border:0;font-size:12.5px}
+tr.sess td span{font-weight:600;font-size:11px;opacity:.92;margin-left:14px}
 .foot{text-align:center;font-size:10.5px;color:#6a86a6;margin-top:8px}
 </style></head><body>
 <div class="head"><img src="${esc(logoUrl)}" alt="" onerror="this.style.display='none'">
-<div><div class="s">${SCHOOL}</div><h1>THỜI KHÓA BIỂU</h1></div>
-<div class="r"><span class="cls">Lớp ${esc(className)}</span>${effectiveFrom ? `<div class="ap">Áp dụng từ ${fmtVN(effectiveFrom)}</div>` : ''}</div></div>
+<div><div class="s">${SCHOOL}</div><h1>${esc(o.title)}</h1></div>
+<div class="r"><span class="cls">${esc(o.badge)}</span>${o.effectiveFrom ? `<div class="ap">Áp dụng từ ${fmtVN(o.effectiveFrom)}</div>` : ''}</div></div>
 <table>${head}${body}</table>
 <div class="foot">${SCHOOL} · ${PLACE}</div>
 <script>window.onload=function(){setTimeout(function(){window.focus();window.print();},350)}<\/script>
 </body></html>`;
 }
 
-function doPrint(model, className, effectiveFrom) {
-  const html = printHtml(model, className, effectiveFrom, `${window.location.origin}/logo-truong.png`);
+function doPrint(model, o) {
+  const html = printHtml(model, o, `${window.location.origin}/logo-truong.png`);
   const w = window.open('', '_blank');
   if (!w) {
     alert('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi bấm In lại.');
@@ -142,12 +194,12 @@ function loadImage(src) {
   });
 }
 
-async function exportPng(model, className, effectiveFrom) {
+async function exportPng(model, o) {
   const FONT = '"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Arial, sans-serif';
   const S = 2; // độ nét
   const W = 1240;
   const PAD = 34;
-  const TCOL = 70;
+  const TCOL = model.hasBells ? 104 : 70;
   const nDays = model.days.length;
   const colW = (W - PAD * 2 - TCOL) / nDays;
   const HEAD = 130;
@@ -156,7 +208,7 @@ async function exportPng(model, className, effectiveFrom) {
   const ROW_H = 68;
   const GAP = 6;
   let H = HEAD + 18;
-  model.sessions.forEach((s) => { H += SESS_H + TH_H + s.periods.length * (ROW_H + GAP) + 16; });
+  model.sessions.forEach((s) => { H += SESS_H + 6 + TH_H + s.periods.length * (ROW_H + GAP) + 16; });
   H += 44;
 
   const canvas = document.createElement('canvas');
@@ -191,24 +243,27 @@ async function exportPng(model, className, effectiveFrom) {
   ctx.font = `700 15px ${FONT}`;
   ctx.fillText(SCHOOL, PAD + 98, cy - 24);
   ctx.fillStyle = '#173f6b';
-  ctx.font = `800 36px ${FONT}`;
-  ctx.fillText('THỜI KHÓA BIỂU', PAD + 98, cy + 10);
+  ctx.font = `800 34px ${FONT}`;
+  ctx.fillText(o.title, PAD + 98, cy + 10);
   ctx.fillStyle = '#2c5d93';
   ctx.font = `500 14px ${FONT}`;
   ctx.fillText(PLACE, PAD + 98, cy + 40);
 
-  const label = `Lớp ${className}`;
-  ctx.font = `800 32px ${FONT}`;
+  ctx.font = `800 30px ${FONT}`;
+  const maxBadge = W - PAD * 2 - 98 - 420;
+  let label = o.badge;
+  while (label.length > 4 && ctx.measureText(label).width + 44 > maxBadge) label = label.slice(0, -1);
+  if (label !== o.badge) label += '…';
   const lw = ctx.measureText(label).width + 44;
   ctx.fillStyle = '#ffffff';
   roundRect(ctx, W - PAD - lw, cy - 30, lw, 52, 16); ctx.fill();
   ctx.fillStyle = '#1f5a96';
   ctx.textAlign = 'center';
   ctx.fillText(label, W - PAD - lw / 2, cy - 3);
-  if (effectiveFrom) {
+  if (o.effectiveFrom) {
     ctx.fillStyle = '#2c5d93';
     ctx.font = `600 13px ${FONT}`;
-    ctx.fillText(`Áp dụng từ ${fmtVN(effectiveFrom)}`, W - PAD - lw / 2, cy + 40);
+    ctx.fillText(`Áp dụng từ ${fmtVN(o.effectiveFrom)}`, W - PAD - lw / 2, cy + 40);
   }
 
   // các buổi
@@ -220,6 +275,13 @@ async function exportPng(model, className, effectiveFrom) {
     ctx.textAlign = 'left';
     ctx.font = `800 16px ${FONT}`;
     ctx.fillText(s.label, PAD + 16, y + SESS_H / 2);
+    if (s.sh) {
+      const lx = PAD + 16 + ctx.measureText(s.label).width + 18;
+      ctx.font = `600 13px ${FONT}`;
+      ctx.globalAlpha = 0.92;
+      ctx.fillText(s.sh, lx, y + SESS_H / 2);
+      ctx.globalAlpha = 1;
+    }
     y += SESS_H + 6;
 
     ctx.font = `800 14px ${FONT}`;
@@ -238,12 +300,19 @@ async function exportPng(model, className, effectiveFrom) {
     y += TH_H;
 
     s.periods.forEach((p) => {
+      const tm = model.timeOf(s.key, p);
       ctx.fillStyle = '#eef5fd';
       roundRect(ctx, PAD, y, TCOL - GAP, ROW_H, 12); ctx.fill();
       ctx.fillStyle = '#2c5d93';
       ctx.font = `800 20px ${FONT}`;
       ctx.textAlign = 'center';
-      ctx.fillText(String(p), PAD + (TCOL - GAP) / 2, y + ROW_H / 2);
+      ctx.fillText(String(p), PAD + (TCOL - GAP) / 2, y + ROW_H / 2 - (tm ? 9 : 0));
+      if (tm) {
+        ctx.font = `600 11.5px ${FONT}`;
+        ctx.globalAlpha = 0.85;
+        ctx.fillText(tm, PAD + (TCOL - GAP) / 2, y + ROW_H / 2 + 15);
+        ctx.globalAlpha = 1;
+      }
       model.days.forEach((d, i) => {
         const x = PAD + TCOL + i * colW;
         const r = model.map.get(`${d}-${s.key}-${p}`);
@@ -262,14 +331,15 @@ async function exportPng(model, className, effectiveFrom) {
         ctx.textAlign = 'center';
         ctx.font = `800 15px ${FONT}`;
         const lines = wrapLines(ctx, r.subject, colW - GAP - 16, 2);
-        const tH = r.teacher ? 15 : 0;
+        const t2 = sub2(r);
+        const tH = t2 ? 15 : 0;
         const total = lines.length * 18 + tH;
         let ty = y + (ROW_H - total) / 2 + 9;
         lines.forEach((ln) => { ctx.fillText(ln, x + (colW - GAP) / 2, ty); ty += 18; });
-        if (r.teacher) {
+        if (t2) {
           ctx.font = `500 12px ${FONT}`;
           ctx.globalAlpha = 0.8;
-          const tl = wrapLines(ctx, r.teacher, colW - GAP - 16, 1)[0];
+          const tl = wrapLines(ctx, t2, colW - GAP - 16, 1)[0];
           ctx.fillText(tl, x + (colW - GAP) / 2, ty + 2);
           ctx.globalAlpha = 1;
         }
@@ -289,7 +359,7 @@ async function exportPng(model, className, effectiveFrom) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `TKB-lop-${String(className).replace(/[^\w-]+/g, '')}.png`;
+  a.download = o.fileName;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -297,16 +367,25 @@ async function exportPng(model, className, effectiveFrom) {
 }
 
 // ---------- Giao diện ----------
-export default function ClassTimetable({ rows, className, effectiveFrom, compact = false }) {
-  const model = useMemo(() => buildModel(rows), [rows]);
+export default function ClassTimetable({ rows, className, effectiveFrom, compact = false, bells = [], badge, title = 'THỜI KHÓA BIỂU' }) {
+  const model = useMemo(() => buildModel(rows, bells), [rows, bells]);
   const tw = todayWeekday();
   const [mobileDay, setMobileDay] = useState(model.days.includes(tw) ? tw : 2);
   const [busy, setBusy] = useState(false);
 
+  const badgeText = badge || `Lớp ${className}`;
+  const opts = {
+    title,
+    badge: badgeText,
+    effectiveFrom,
+    fileName: badge ? `TKB-giao-vien-${slug(badge)}.png` : `TKB-lop-${slug(className)}.png`,
+  };
+  const longBadge = badgeText.length > 12;
+
   async function onExport() {
     setBusy(true);
     try {
-      await exportPng(model, className, effectiveFrom);
+      await exportPng(model, opts);
     } catch (e) {
       alert(`Không lưu được ảnh: ${e.message}`);
     }
@@ -314,7 +393,7 @@ export default function ClassTimetable({ rows, className, effectiveFrom, compact
   }
 
   if (model.empty) {
-    return <div className="tt-empty">Lớp này chưa có thời khóa biểu.</div>;
+    return <div className="tt-empty">{badge ? 'Chưa có thời khóa biểu.' : 'Lớp này chưa có thời khóa biểu.'}</div>;
   }
 
   const day = model.days.includes(mobileDay) ? mobileDay : model.days[0];
@@ -327,10 +406,10 @@ export default function ClassTimetable({ rows, className, effectiveFrom, compact
           <img src="/logo-truong.png" alt="" width="52" height="52" />
           <div className="tt-head-t">
             <small>{SCHOOL}</small>
-            <h3>THỜI KHÓA BIỂU</h3>
+            <h3>{title}</h3>
           </div>
           <div className="tt-head-r">
-            <span className="tt-cls">Lớp {className}</span>
+            <span className={`tt-cls ${longBadge ? 'long' : ''}`}>{badgeText}</span>
             {effectiveFrom ? <small>Áp dụng từ {fmtVN(effectiveFrom)}</small> : null}
           </div>
         </div>
@@ -340,29 +419,35 @@ export default function ClassTimetable({ rows, className, effectiveFrom, compact
           <table className="tt-table">
             <thead>
               <tr>
-                <th className="tt-t">Tiết</th>
+                <th className={`tt-t ${model.hasBells ? 'wide' : ''}`}>Tiết</th>
                 {model.days.map((d) => <th key={d} className={d === tw ? 'tt-today' : ''}>{dayName(d)}</th>)}
               </tr>
             </thead>
             <tbody>
               {model.sessions.map((s) => [
-                <tr key={`${s.key}-h`} className="tt-sess"><td colSpan={model.days.length + 1}>{s.label}</td></tr>,
-                ...s.periods.map((p) => (
-                  <tr key={`${s.key}-${p}`}>
-                    <td className="tt-t">{p}</td>
-                    {model.days.map((d) => {
-                      const r = model.map.get(`${d}-${s.key}-${p}`);
-                      if (!r) return <td key={d} className="tt-e">·</td>;
-                      const c = subjectColors(r.subject);
-                      return (
-                        <td key={d} style={{ background: c.bg, borderColor: c.bd, color: c.fg }}>
-                          <b>{r.subject}</b>
-                          {r.teacher ? <small>{r.teacher}</small> : null}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                )),
+                <tr key={`${s.key}-h`} className="tt-sess">
+                  <td colSpan={model.days.length + 1}>{s.label}{s.sh ? <span>{s.sh}</span> : null}</td>
+                </tr>,
+                ...s.periods.map((p) => {
+                  const tm = model.timeOf(s.key, p);
+                  return (
+                    <tr key={`${s.key}-${p}`}>
+                      <td className={`tt-t ${model.hasBells ? 'wide' : ''}`}>{p}{tm ? <small>{tm}</small> : null}</td>
+                      {model.days.map((d) => {
+                        const r = model.map.get(`${d}-${s.key}-${p}`);
+                        if (!r) return <td key={d} className="tt-e">·</td>;
+                        const c = subjectColors(r.subject);
+                        const t2 = sub2(r);
+                        return (
+                          <td key={d} style={{ background: c.bg, borderColor: c.bd, color: c.fg }}>
+                            <b>{r.subject}</b>
+                            {t2 ? <small>{t2}</small> : null}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                }),
               ])}
             </tbody>
           </table>
@@ -382,13 +467,17 @@ export default function ClassTimetable({ rows, className, effectiveFrom, compact
             if (!list.length) return null;
             return (
               <div key={s.key} className="tt-day-sess">
-                <div className="tt-day-sess-h">{s.label}</div>
+                <div className="tt-day-sess-h">{s.label}{s.sh ? <span>{s.sh}</span> : null}</div>
                 {list.map(({ p, r }) => {
                   const c = subjectColors(r.subject);
+                  const tm = model.timeOf(s.key, p);
+                  const [t1, t2x] = tm ? tm.split('–') : [];
+                  const t2 = sub2(r);
                   return (
                     <div key={p} className="tt-day-row" style={{ background: c.bg, borderColor: c.bd, color: c.fg }}>
                       <span className="tt-day-n">{p}</span>
-                      <div><b>{r.subject}</b>{r.teacher ? <small>{r.teacher}</small> : null}</div>
+                      <div className="tt-day-main"><b>{r.subject}</b>{t2 ? <small>{t2}</small> : null}</div>
+                      {tm ? <span className="tt-day-time"><b>{t1}</b><i>{t2x}</i></span> : null}
                     </div>
                   );
                 })}
@@ -400,7 +489,7 @@ export default function ClassTimetable({ rows, className, effectiveFrom, compact
       </div>
 
       <div className={`tt-actions ${compact ? 'compact' : ''}`}>
-        <button type="button" className="tt-btn" onClick={() => doPrint(model, className, effectiveFrom)}>🖨 In thời khóa biểu</button>
+        <button type="button" className="tt-btn" onClick={() => doPrint(model, opts)}>🖨 In thời khóa biểu</button>
         <button type="button" className="tt-btn solid" disabled={busy} onClick={onExport}>{busy ? 'Đang tạo ảnh…' : '🖼 Lưu ảnh (PNG)'}</button>
       </div>
     </div>
@@ -414,9 +503,10 @@ const CSS = `
 .tt-head img{width:52px;height:52px;border-radius:50%;background:#fff;padding:3px;object-fit:contain;flex:none}
 .tt-head-t small{display:block;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:#2c5d93}
 .tt-head-t h3{margin:2px 0 0;font-size:20px;color:#173f6b;font-weight:800}
-.tt-head-r{margin-left:auto;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.tt-head-r{margin-left:auto;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:0}
 .tt-head-r small{font-size:11px;color:#2c5d93;font-weight:600}
 .tt-cls{background:#fff;color:#1f5a96;font-weight:800;font-size:18px;border-radius:12px;padding:3px 14px;white-space:nowrap}
+.tt-cls.long{white-space:normal;text-align:center;font-size:15px;line-height:1.25;max-width:260px}
 .tt-table-wrap{overflow-x:auto}
 .tt-table{width:100%;border-collapse:separate;border-spacing:4px;min-width:640px}
 .tt-table th{background:#e6f1fd;color:#1f5a96;font-size:13px;padding:8px 4px;border-radius:10px;font-weight:800}
@@ -425,8 +515,11 @@ const CSS = `
 .tt-table td b{display:block;font-size:13.5px;line-height:1.2;font-weight:800}
 .tt-table td small{display:block;font-size:11px;opacity:.8;margin-top:2px}
 .tt-table td.tt-t,.tt-table th.tt-t{width:46px;text-align:center;font-weight:800;color:#2c5d93;background:#eef5fd}
+.tt-table td.tt-t.wide,.tt-table th.tt-t.wide{width:84px}
+.tt-table td.tt-t small{font-size:10px;font-weight:600;opacity:.85;white-space:nowrap}
 .tt-table td.tt-e{color:#c2d0e2;background:#fafcff}
 .tt-table tr.tt-sess td{background:#4a8fd6;color:#fff;font-weight:800;text-align:left;padding:6px 14px;height:auto;border:0;font-size:13px;border-radius:10px}
+.tt-table tr.tt-sess td span{font-weight:600;font-size:11.5px;opacity:.92;margin-left:14px}
 .tt-day-view{display:none}
 .tt-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:12px}
 .tt-btn{border:1.5px solid #bcd6f2;background:#fff;color:#1f5a96;border-radius:12px;padding:11px 18px;font-weight:700;font-size:14px;cursor:pointer;min-height:44px;font-family:inherit}
@@ -441,6 +534,7 @@ const CSS = `
   .tt-head img{width:42px;height:42px}
   .tt-head-t h3{font-size:16px}
   .tt-cls{font-size:15px;padding:2px 11px}
+  .tt-cls.long{font-size:13px;max-width:150px}
   .tt-actions{justify-content:stretch}
   .tt-actions .tt-btn{flex:1 1 140px}
   .tt-day-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:6px;scrollbar-width:none}
@@ -449,9 +543,14 @@ const CSS = `
   .tt-day-tab i{font-style:normal;font-size:9.5px;font-weight:700;opacity:.85}
   .tt-day-tab.on{background:#4a8fd6;border-color:#4a8fd6;color:#fff}
   .tt-day-sess-h{font-size:12px;font-weight:800;color:#2c5d93;margin:10px 2px 6px;text-transform:uppercase;letter-spacing:.4px}
+  .tt-day-sess-h span{display:block;text-transform:none;letter-spacing:0;font-weight:600;font-size:11.5px;opacity:.85;margin-top:1px}
   .tt-day-row{display:flex;align-items:center;gap:12px;border:1px solid;border-radius:14px;padding:11px 13px;margin-bottom:7px}
   .tt-day-n{flex:none;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.75);display:grid;place-items:center;font-weight:800;font-size:14px}
-  .tt-day-row b{display:block;font-size:15px;line-height:1.25}
-  .tt-day-row small{display:block;font-size:12px;opacity:.8;margin-top:1px}
+  .tt-day-main{flex:1;min-width:0}
+  .tt-day-main b{display:block;font-size:15px;line-height:1.25}
+  .tt-day-main small{display:block;font-size:12px;opacity:.8;margin-top:1px}
+  .tt-day-time{flex:none;text-align:right;line-height:1.2}
+  .tt-day-time b{display:block;font-size:13px;font-weight:800}
+  .tt-day-time i{display:block;font-style:normal;font-size:11.5px;font-weight:600;opacity:.75}
 }
 `;
