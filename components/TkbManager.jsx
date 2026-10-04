@@ -39,6 +39,8 @@ export default function TkbManager({ nav, activeHref, roleLabel, school }) {
   const { profile, ready, logout } = useGuard('tpt');
   const [msg, setMsg] = useState(null);
   const isAdmin = profile?.role === 'admin';
+  // Tổng phụ trách (trang /tpt/tkb) chỉ được cập nhật từ file Excel; các mục còn lại dành cho admin
+  const limited = !school && !isAdmin;
   const [bellSource, setBellSource] = useState('tpt'); // 'admin' = giờ học do admin thiết lập
 
   // Nhập file
@@ -284,16 +286,24 @@ export default function TkbManager({ nav, activeHref, roleLabel, school }) {
   return (
     <Shell profile={profile} roleLabel={roleLabel} nav={nav} activeHref={activeHref} onLogout={logout}>
       <h1 className="pg-title">Thời khóa biểu toàn trường</h1>
-      <p className="pg-sub">
-        Nhập file Excel thời khóa biểu của trường. Hệ thống tự tách từng lớp, từng tiết và hiện thành thời khóa biểu riêng của mỗi lớp (có nút In và Lưu ảnh).
-        Học sinh thấy thời khóa biểu lớp mình ở mục “Thời khóa biểu”; mỗi giáo viên thấy thời khóa biểu riêng của mình (khớp theo tên ghi trong file); ban cán sự chọn đúng tiết và môn khi ghi nhận vi phạm hoặc điểm cộng; Sao đỏ được phân công lớp nào sẽ thấy đủ các tiết của lớp đó để đánh giá A/B/C (tiết không đánh là A).
-      </p>
+      {limited ? (
+        <p className="pg-sub">
+          Chọn file Excel thời khóa biểu của trường rồi bấm lưu. Hệ thống tự tách từng lớp, từng tiết và hiện thành thời khóa biểu riêng của mỗi lớp cho học sinh và giáo viên.
+        </p>
+      ) : (
+        <p className="pg-sub">
+          Nhập file Excel thời khóa biểu của trường. Hệ thống tự tách từng lớp, từng tiết và hiện thành thời khóa biểu riêng của mỗi lớp (có nút In và Lưu ảnh).
+          Học sinh thấy thời khóa biểu lớp mình ở mục “Thời khóa biểu”; mỗi giáo viên thấy thời khóa biểu riêng của mình (khớp theo tên ghi trong file); ban cán sự chọn đúng tiết và môn khi ghi nhận vi phạm hoặc điểm cộng; Sao đỏ được phân công lớp nào sẽ thấy đủ các tiết của lớp đó để đánh giá A/B/C (tiết không đánh là A).
+        </p>
+      )}
 
+      {!limited && (
       <div className="card" style={{ borderColor: '#9cc3ec' }}>
         <div className="card-h"><h3>Soạn thời khóa biểu tự động</h3></div>
         <p className="hint" style={{ marginTop: 0 }}>Khai báo giáo viên dạy môn gì, số tiết mỗi người, ngày nghỉ, nhóm giáo viên đi về cùng nhau; hệ thống tự xếp đúng thiết lập, rồi phân tích kết quả để chỉ ra lỗi. Không cần file Excel.</p>
         <Link href={`${activeHref}/soan`} className="btn btn-red">Mở công cụ soạn và xếp tự động</Link>
       </div>
+      )}
 
       <div className="card">
         <div className="card-h"><h3>Cập nhật từ file Excel</h3></div>
@@ -355,6 +365,8 @@ export default function TkbManager({ nav, activeHref, roleLabel, school }) {
         )}
       </div>
 
+      {!limited && (
+      <>
       <div className="card">
         <div className="card-h"><h3>Thời khóa biểu đã lưu</h3></div>
         {versions.length === 0 ? (
@@ -479,6 +491,9 @@ export default function TkbManager({ nav, activeHref, roleLabel, school }) {
           </>
         )}
       </div>
+
+      </>
+      )}
 
       <Toast msg={msg} onDone={() => setMsg(null)} />
     </Shell>

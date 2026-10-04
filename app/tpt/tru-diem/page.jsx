@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useGuard } from '@/lib/useGuard';
 import { useRankingPing } from '@/lib/useRankingPing';
+import { useSchoolWeeks } from '@/lib/useSchoolWeeks';
 import { TPT_NAV } from '@/lib/nav';
-import { addDays, fmtIso, mondayOf, timeVN, vnTodayIso } from '@/lib/dates';
+import { addDays, fmtDate, fmtIso, mondayOf, timeVN, vnTodayIso } from '@/lib/dates';
 import AppShell, { Modal, Toast } from '@/components/AppShell';
 
 // Trang /tpt/tru-diem - thiet ke lai toan bo:
@@ -37,6 +38,9 @@ export default function TptDeductPage() {
   // Cả tuần (lưới lớp x thứ)
   const thisMonday = mondayOf(today);
   const [weekStart, setWeekStart] = useState(thisMonday);
+  const sw = useSchoolWeeks();
+  const wkNo = sw.noOf(weekStart);
+  const atFirstWeek = !!sw.firstStart && weekStart <= sw.firstStart; // tuần 1: không cho lùi nữa
   const [matrix, setMatrix] = useState([]);
   const [weekLoading, setWeekLoading] = useState(true);
   const formRef = useRef(null);
@@ -313,7 +317,8 @@ export default function TptDeductPage() {
         <div className="card-h">
           <h3>Cả tuần theo lớp</h3>
           <div className="row" style={{ gap: 6 }}>
-            <button className="btn btn-sm" onClick={() => setWeekStart(addDays(weekStart, -7))}>‹ Tuần trước</button>
+            <button className="btn btn-sm" disabled={atFirstWeek} onClick={() => setWeekStart(addDays(weekStart, -7))}>‹ Tuần trước</button>
+            <strong style={{ fontSize: 13.5, padding: '0 6px', whiteSpace: 'nowrap' }}>{wkNo ? `Tuần ${wkNo}` : 'Tuần'} · {fmtDate(weekStart)} – {fmtDate(addDays(weekStart, 6))}{weekStart === thisMonday ? ' (hiện tại)' : ''}</strong>
             <button className="btn btn-sm" disabled={weekStart === thisMonday} onClick={() => setWeekStart(thisMonday)}>Tuần này</button>
             <button className="btn btn-sm" onClick={() => setWeekStart(addDays(weekStart, 7))}>Tuần sau ›</button>
           </div>
