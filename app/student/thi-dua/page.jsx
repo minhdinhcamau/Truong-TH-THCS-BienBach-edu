@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useRankingPing } from '@/lib/useRankingPing';
-import { fmtIso, mondayOf, timeVN, vnTodayIso } from '@/lib/dates';
+import { addDays, fmtDate, fmtIso, mondayOf, timeVN, vnTodayIso } from '@/lib/dates';
 import RankingBoard from '@/components/RankingBoard';
 import { useStudent } from '../layout';
 
@@ -17,14 +17,16 @@ export default function ThiDuaPage() {
   const className = profile.classes?.name;
   const [feed, setFeed] = useState(null);
   const [summary, setSummary] = useState(null); // { mine, tied }
-  const weekStart = mondayOf(vnTodayIso());
+  const today = vnTodayIso();
+  const thisMonday = mondayOf(today);
+  const [viewWeek, setViewWeek] = useState(thisMonday); // tuần đang xem mục bị trừ điểm
 
   const loadFeed = useCallback(async () => {
     if (!classId) {
       setFeed([]);
       return;
     }
-    const { data, error } = await supabase.rpc('student_class_feed', { p_days: 14 });
+    const { data, error } = await supabase.rpc('student_class_feed', { p_days: 60 });
     setFeed(error ? [] : data || []);
   }, [classId]);
 
@@ -34,17 +36,40 @@ export default function ThiDuaPage() {
 
   useRankingPing(loadFeed);
 
-  // Chỉ hiện các ghi nhận của tuần hiện tại (từ thứ Hai)
+  // Các tuần xem được: dữ liệu lấy tối đa 60 ngày gần nhất, từ tuần hiện tại lùi về
+  const weeks = useMemo(() => {
+    const list = [];
+    const earliest = mondayOf(addDays(today, -60));
+    for (let w = thisMonday; w >= earliest; w = addDays(w, -7)) list.push(w);
+    return list; // mới nhất trước
+  }, [today, thisMonday]);
+
+  // Tổng điểm trừ theo từng tuần, để biết tuần nào có bị trừ
+  const weekSum = useMemo(() => {
+    const m = new Map();
+    (feed || []).forEach((r) => {
+      const w = mondayOf(String(r.occurred_date));
+      m.set(w, (m.get(w) || 0) + Number(r.points));
+    });
+    return m;
+  }, [feed]);
+
+  // Chỉ hiện các ghi nhận của tuần đang chọn (thứ Hai đến Chủ nhật)
   const groups = useMemo(() => {
     const m = new Map();
     (feed || [])
-      .filter((r) => String(r.occurred_date) >= weekStart)
+      .filter((r) => mondayOf(String(r.occurred_date)) === viewWeek)
       .forEach((r) => {
         if (!m.has(r.occurred_date)) m.set(r.occurred_date, []);
         m.get(r.occurred_date).push(r);
       });
     return Array.from(m.entries());
-  }, [feed, weekStart]);
+  }, [feed, viewWeek]);
+
+  const weekTotal = weekSum.get(viewWeek) || 0;
+  const isThisWeek = viewWeek === thisMonday;
+  const canPrev = viewWeek > weeks[weeks.length - 1];
+  const withDeduct = weeks.filter((w) => (weekSum.get(w) || 0) < 0);
 
   const mine = summary?.mine;
   const place = mine && mine.rank <= 3 ? (summary.tied ? PLACE_TIED : PLACE)[mine.rank] : null;
@@ -80,6 +105,17 @@ export default function ThiDuaPage() {
 
         .box { background: var(--card); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); padding: 20px 22px; margin-top: 30px; }
         .box h3 { margin: 0 0 4px; font-size: 18px; }
+        .wkbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 12px 0 4px; }
+        .wk { display: inline-flex; align-items: center; border: 1px solid var(--line); background: #fff; border-radius: 12px; overflow: hidden; }
+        .wk button { border: none; background: #fff; width: 42px; height: 42px; cursor: pointer; color: var(--ink); display: inline-flex; align-items: center; justify-content: center; }
+        .wk button:disabled { opacity: 0.3; cursor: not-allowed; }
+        .wk span { padding: 0 12px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+        .wk-sum { font-size: 12.5px; font-weight: 700; border-radius: 999px; padding: 6px 13px; color: #167a4e; background: #e6f6ee; }
+        .wk-sum.bad { color: #b3261e; background: #fdeceb; }
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .chips small { width: 100%; color: var(--ink-soft); font-size: 12px; }
+        .chip { border: 1px solid #f1c4c0; background: #fff6f5; color: #b3261e; border-radius: 999px; font-size: 12.5px; font-weight: 700; padding: 6px 12px; cursor: pointer; min-height: 34px; }
+        .chip.on { background: #b3261e; color: #fff; border-color: #b3261e; }
         .day { margin-top: 18px; }
         .day-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 700; font-size: 13.5px; color: var(--ink-soft); padding-bottom: 8px; border-bottom: 1px solid var(--line); }
         .day-sum { color: #b3261e; background: #fdeceb; border-radius: 999px; padding: 2px 11px; font-size: 12.5px; }
@@ -124,10 +160,37 @@ export default function ThiDuaPage() {
       />
 
       <div className="box">
-        <h3>Lớp {className || ''} bị trừ điểm những mục nào (tuần này)</h3>
+        <h3>Lớp {className || ''} bị trừ điểm những mục nào</h3>
         <p className="section-sub" style={{ margin: '0 0 4px', fontSize: 13 }}>
-          Các ghi nhận của Sao đỏ và cô Tổng phụ trách từ thứ Hai tuần này. Cùng nhau khắc phục để lớp mình lên hạng nhé!
+          Chỉ xem theo từng tuần (thứ Hai đến Chủ nhật). Chọn tuần có bị trừ điểm để xem chi tiết. Cùng nhau khắc phục để lớp mình lên hạng nhé!
         </p>
+
+        {classId && feed !== null && (
+          <>
+            <div className="wkbar">
+              <div className="wk">
+                <button type="button" onClick={() => setViewWeek(addDays(viewWeek, -7))} disabled={!canPrev} aria-label="Tuần trước">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+                </button>
+                <span>{isThisWeek ? 'Tuần này' : 'Tuần'} {fmtDate(viewWeek)} – {fmtDate(addDays(viewWeek, 6))}</span>
+                <button type="button" onClick={() => setViewWeek(addDays(viewWeek, 7))} disabled={isThisWeek} aria-label="Tuần sau">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+                </button>
+              </div>
+              <span className={`wk-sum ${weekTotal < 0 ? 'bad' : ''}`}>{weekTotal < 0 ? `${isThisWeek ? 'Tuần này' : 'Tuần đó'} bị trừ ${weekTotal} điểm` : 'Không bị trừ điểm'}</span>
+            </div>
+            {withDeduct.length > 0 && (
+              <div className="chips">
+                <small>Các tuần có bị trừ điểm:</small>
+                {withDeduct.map((w) => (
+                  <button type="button" key={w} className={`chip ${w === viewWeek ? 'on' : ''}`} onClick={() => setViewWeek(w)}>
+                    {fmtDate(w)} – {fmtDate(addDays(w, 6))} ({weekSum.get(w)})
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
 
         {!classId ? (
           <div className="empty-note">Tài khoản này chưa thuộc lớp nào.</div>
@@ -136,7 +199,7 @@ export default function ThiDuaPage() {
         ) : groups.length === 0 ? (
           <div className="good">
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5" /><path d="M7.8 12.4l3 3 5.4-6" /></svg>
-            Tuần này lớp mình chưa bị trừ điểm. Hãy tiếp tục phát huy nhé!
+            {isThisWeek ? 'Tuần này lớp mình chưa bị trừ điểm. Hãy tiếp tục phát huy nhé!' : 'Tuần đó lớp không bị trừ điểm.'}
           </div>
         ) : (
           groups.map(([date, list]) => {
