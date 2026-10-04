@@ -841,6 +841,9 @@ export default function AdminPage() {
           <Link href="/admin/gvcn" className={styles.navBtn}>
             Phân công chủ nhiệm
           </Link>
+          <Link href="/admin/tkb" className={styles.navBtn}>
+            Thời khóa biểu
+          </Link>
           <Link href="/teacher" className={styles.navBtn}>
             Xem trang Giáo viên
           </Link>

@@ -33,6 +33,8 @@ function ClassPicker({ id, value, options, onChange }) {
 export default function TkbManager({ nav, activeHref, roleLabel }) {
   const { profile, ready, logout } = useGuard('tpt');
   const [msg, setMsg] = useState(null);
+  const isAdmin = profile?.role === 'admin';
+  const [bellSource, setBellSource] = useState('tpt'); // 'admin' = giờ học do admin thiết lập
 
   // Nhập file
   const [fileName, setFileName] = useState('');
@@ -64,6 +66,8 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
 
   const reloadBells = useCallback(async () => {
     const b = await loadBellTimes();
+    const src = await supabase.rpc('tkb_bell_source');
+    setBellSource(src.data === 'admin' ? 'admin' : 'tpt');
     setBells(b);
     setBellDraft(b.map((x) => ({ session: x.session, period: x.period, label: x.label || '', start: hhmm(x.start_time), end: hhmm(x.end_time) })));
   }, []);
@@ -158,6 +162,10 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
       return;
     }
     const existing = versions.find((v) => v.effective_from === effectiveFrom);
+    if (existing && existing.source === 'admin' && !isAdmin) {
+      setMsg({ type: 'error', text: 'Bản này do quản trị viên (admin) thiết lập, Tổng phụ trách không ghi đè được. Hãy chọn ngày áp dụng khác.' });
+      return;
+    }
     if (existing && !window.confirm(`Đã có thời khóa biểu áp dụng từ ${fmtDate(effectiveFrom)}. Ghi đè bản đó?`)) return;
     setSaving(true);
     const { data, error } = await supabase.rpc('tpt_import_timetable', {
@@ -176,6 +184,10 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
   }
 
   async function removeVersion(v) {
+    if (v.source === 'admin' && !isAdmin) {
+      setMsg({ type: 'error', text: 'Bản này do admin thiết lập, chỉ admin mới xoá được.' });
+      return;
+    }
     if (!window.confirm(`Xoá thời khóa biểu áp dụng từ ${fmtDate(v.effective_from)}?`)) return;
     const { error } = await supabase.rpc('tpt_delete_timetable', { p_effective_from: v.effective_from });
     if (error) {
@@ -201,6 +213,10 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
     setBellDraft((d) => d.filter((_, k) => k !== i));
   }
   async function saveBells() {
+    if (bellSource === 'admin' && !isAdmin) {
+      setMsg({ type: 'error', text: 'Giờ học do admin thiết lập, Tổng phụ trách không sửa được.' });
+      return;
+    }
     if (bellDraft.some((r) => !r.start || !r.end)) {
       setMsg({ type: 'error', text: 'Mỗi tiết cần có giờ vào và giờ ra.' });
       return;
@@ -329,23 +345,24 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
           <>
             <div className="tbl-wrap">
               <table className="tbl">
-                <thead><tr><th>Áp dụng từ</th><th>Số lớp</th><th>Số tiết</th><th></th></tr></thead>
+                <thead><tr><th>Áp dụng từ</th><th>Số lớp</th><th>Số tiết</th><th>Người nhập</th><th></th></tr></thead>
                 <tbody>
                   {versions.map((v) => (
                     <tr key={v.effective_from}>
                       <td><strong>{fmtDate(v.effective_from)}</strong></td>
                       <td className="num">{v.class_count}</td>
                       <td className="num">{v.row_count}</td>
+                      <td>{v.source === 'admin' ? <span className="pill ok">Admin</span> : <span className="pill">Tổng phụ trách</span>}</td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button className={`btn btn-sm ${viewVersion === v.effective_from ? 'btn-red' : ''}`} onClick={() => setViewVersion(v.effective_from)}>Xem</button>{' '}
-                        <button className="btn btn-sm btn-danger" onClick={() => removeVersion(v)}>Xoá</button>
+                        <button className="btn btn-sm btn-danger" disabled={v.source === 'admin' && !isAdmin} onClick={() => removeVersion(v)}>Xoá</button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="hint" style={{ marginTop: 10 }}>Hệ thống tự dùng bản có ngày áp dụng gần nhất không vượt quá ngày đang kiểm tra.</p>
+            <p className="hint" style={{ marginTop: 10 }}>Hệ thống tự dùng bản có ngày áp dụng gần nhất không vượt quá ngày đang kiểm tra. Quản trị viên (admin) có quyền cao nhất: khi admin lưu một bản thì ghi đè bản của Tổng phụ trách từ ngày đó trở đi, và Tổng phụ trách không sửa hay xoá được bản do admin nhập.</p>
 
             {viewVersion && (
               <>
@@ -366,6 +383,12 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
       <div className="card">
         <div className="card-h"><h3>Giờ học các tiết</h3></div>
         <p className="hint">Giờ vào, giờ ra của từng tiết (kể cả sinh hoạt đầu giờ, là tiết 0). Hiện trên thời khóa biểu của học sinh và giáo viên, khi in và khi lưu ảnh.</p>
+        {bellSource === 'admin' && (
+          <p style={{ margin: '0 0 10px' }}>
+            <span className="pill ok">Giờ học do admin thiết lập</span>{' '}
+            <span className="hint" style={{ margin: 0 }}>{isAdmin ? 'Bạn là admin nên sửa được.' : 'Tổng phụ trách chỉ xem, không sửa được.'}</span>
+          </p>
+        )}
         {['sang', 'chieu'].map((sk) => (
           <div key={sk} style={{ marginBottom: 14 }}>
             <div className="lbl" style={{ marginTop: 0 }}>{SESS_LABEL[sk]}</div>
@@ -376,26 +399,26 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
                   {bellDraft.map((r, i) => (r.session !== sk ? null : (
                     <tr key={`${r.session}-${r.period}-${i}`}>
                       <td><b>{Number(r.period) === 0 ? 'SH' : r.period}</b></td>
-                      <td><input className="input" style={{ minWidth: 150 }} value={r.label} onChange={(e) => setBellField(i, 'label', e.target.value)} placeholder={Number(r.period) === 0 ? 'Sinh hoạt đầu giờ' : ''} aria-label="Tên tiết" /></td>
-                      <td><input type="time" className="input" style={{ width: 130 }} value={r.start} onChange={(e) => setBellField(i, 'start', e.target.value)} aria-label="Giờ vào" /></td>
-                      <td><input type="time" className="input" style={{ width: 130 }} value={r.end} onChange={(e) => setBellField(i, 'end', e.target.value)} aria-label="Giờ ra" /></td>
-                      <td><button type="button" className="btn btn-sm btn-danger" onClick={() => removeBellRow(i)} aria-label="Xóa tiết này">✕</button></td>
+                      <td><input className="input" style={{ minWidth: 150 }} disabled={bellSource === 'admin' && !isAdmin} value={r.label} onChange={(e) => setBellField(i, 'label', e.target.value)} placeholder={Number(r.period) === 0 ? 'Sinh hoạt đầu giờ' : ''} aria-label="Tên tiết" /></td>
+                      <td><input type="time" className="input" style={{ width: 130 }} disabled={bellSource === 'admin' && !isAdmin} value={r.start} onChange={(e) => setBellField(i, 'start', e.target.value)} aria-label="Giờ vào" /></td>
+                      <td><input type="time" className="input" style={{ width: 130 }} disabled={bellSource === 'admin' && !isAdmin} value={r.end} onChange={(e) => setBellField(i, 'end', e.target.value)} aria-label="Giờ ra" /></td>
+                      <td><button type="button" className="btn btn-sm btn-danger" disabled={bellSource === 'admin' && !isAdmin} onClick={() => removeBellRow(i)} aria-label="Xóa tiết này">✕</button></td>
                     </tr>
                   )))}
                 </tbody>
               </table>
             </div>
-            <button type="button" className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => addBellRow(sk)}>＋ Thêm tiết {SESS_LABEL[sk].toLowerCase()}</button>
+            <button type="button" className="btn btn-sm" style={{ marginTop: 8 }} disabled={bellSource === 'admin' && !isAdmin} onClick={() => addBellRow(sk)}>＋ Thêm tiết {SESS_LABEL[sk].toLowerCase()}</button>
           </div>
         ))}
-        <button className="btn btn-red" disabled={bellBusy || bellDraft.length === 0} onClick={saveBells}>{bellBusy ? 'Đang lưu…' : 'Lưu giờ học'}</button>
+        <button className="btn btn-red" disabled={bellBusy || bellDraft.length === 0 || (bellSource === 'admin' && !isAdmin)} onClick={saveBells}>{bellBusy ? 'Đang lưu…' : 'Lưu giờ học'}</button>
       </div>
 
       <div className="card">
         <div className="card-h"><h3>Thời khóa biểu của giáo viên</h3></div>
         <p className="hint">
           Mỗi giáo viên tự thấy thời khóa biểu riêng khi đăng nhập. Hệ thống khớp theo tên ghi trong thời khóa biểu: tên trong file (ví dụ “Đỉnh”) khớp với tài khoản có họ tên kết thúc bằng tên đó (ví dụ “Phan Nguyễn Minh Đỉnh”).
-          Nếu hai thầy cô trùng tên hoặc khớp chưa đúng, khai báo “tên trên thời khóa biểu” bên dưới.
+          Nếu hai thầy cô trùng tên hoặc khớp chưa đúng, khai báo “tên trên thời khóa biểu” bên dưới. Tên do admin khai báo sẽ ghi đè, Tổng phụ trách không đổi được.
         </p>
         {unmatched.length > 0 && (
           <div className="card" style={{ background: 'var(--warn-bg)', borderColor: '#f0d28a', marginBottom: 12 }}>
