@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { useGuard } from '@/lib/useGuard';
 import { parseWorkbookSheets } from '@/lib/tkb';
@@ -277,6 +278,12 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
         Nhập file Excel thời khóa biểu của trường. Hệ thống tự tách từng lớp, từng tiết và hiện thành thời khóa biểu riêng của mỗi lớp (có nút In và Lưu ảnh).
         Học sinh thấy thời khóa biểu lớp mình ở mục “Thời khóa biểu”; mỗi giáo viên thấy thời khóa biểu riêng của mình (khớp theo tên ghi trong file); ban cán sự chọn đúng tiết và môn khi ghi nhận vi phạm hoặc điểm cộng; Sao đỏ được phân công lớp nào sẽ thấy đủ các tiết của lớp đó để đánh giá A/B/C (tiết không đánh là A).
       </p>
+
+      <div className="card" style={{ borderColor: '#9cc3ec' }}>
+        <div className="card-h"><h3>Soạn thời khóa biểu tự động</h3></div>
+        <p className="hint" style={{ marginTop: 0 }}>Khai báo giáo viên dạy môn gì, số tiết mỗi người, ngày nghỉ, nhóm giáo viên đi về cùng nhau; hệ thống tự xếp công bằng, báo thiếu/thừa tiết và gợi ý chuyển tiết. Không cần file Excel.</p>
+        <Link href={`${activeHref}/soan`} className="btn btn-red">Mở công cụ soạn và xếp tự động</Link>
+      </div>
 
       <div className="card">
         <div className="card-h"><h3>Cập nhật từ file Excel</h3></div>
