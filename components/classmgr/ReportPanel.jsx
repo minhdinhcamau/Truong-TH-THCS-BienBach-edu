@@ -38,6 +38,8 @@ export default function ReportPanel({ classId, className, toast }) {
       days: (rep.sao_do_by_day || []).map((d) => ({ label: dayName(d.date), value: d.cnt })),
       groups: (rep.groups || []).filter((g) => g.group_no > 0).map((g) => ({ label: `Tổ ${g.group_no}`, value: Math.round(g.net * 10) / 10, color: groupColor(g.group_no), violations: g.violations })),
       repeat: rep.repeat_violators || [], top: rep.top_students || [], impr: rep.improvers || [], tot: rep.totals || {},
+      // Chi tiết điểm trừ của Sao đỏ (đủ tên): chỉ có khi người xem là giáo viên chủ nhiệm / Tổng phụ trách / admin
+      detail: Array.isArray(rep.sao_do_detail) ? rep.sao_do_detail : null,
     };
   }, [rep]);
 
@@ -83,6 +85,54 @@ function trendText(d) {
   return 'giữ nguyên hạng so với tuần trước';
 }
 
+// Danh sách Sao đỏ trừ điểm trong tuần, có đủ tên bạn, lỗi, điểm, ghi chú, Sao đỏ nào ghi, ngày. Chỉ giáo viên chủ nhiệm thấy.
+function SaoDoDetail({ items }) {
+  const total = items.reduce((s, x) => s + Number(x.points || 0), 0);
+  const named = items.filter((x) => x.student_name);
+  const byStudent = {};
+  named.forEach((x) => { byStudent[x.student_name] = (byStudent[x.student_name] || 0) + 1; });
+  const repeated = Object.entries(byStudent).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]);
+  return (
+    <div className="cm-card">
+      <div className="cm-h">
+        <h3>🔻 Sao đỏ trừ điểm trong tuần (chi tiết)</h3>
+        <span className="cm-pill bad">{items.length} lượt · {n1(total)} điểm</span>
+      </div>
+      <p className="cm-hint" style={{ margin: '0 0 8px' }}>
+        Chỉ giáo viên chủ nhiệm xem được mục này. Học sinh trong lớp chỉ nhận thông báo chung, không có tên bạn bị trừ.
+      </p>
+      {items.length === 0 ? <div className="cm-empty">Tuần này Sao đỏ chưa trừ điểm lớp.</div> : (
+        <>
+          {repeated.length > 0 && (
+            <div className="cm-hint" style={{ margin: '0 0 8px', color: 'var(--cm-bad, #b42318)' }}>
+              Bị trừ từ 2 lần: {repeated.map(([name, n]) => `${name} ×${n}`).join(', ')}
+            </div>
+          )}
+          <div className="cm-wrap">
+            <table className="cm-tbl">
+              <thead>
+                <tr><th>Ngày</th><th>Bạn bị trừ</th><th>Lỗi</th><th>Điểm</th><th>Ghi chú</th><th>Sao đỏ ghi</th></tr>
+              </thead>
+              <tbody>
+                {items.map((x) => (
+                  <tr key={x.id}>
+                    <td>{shortDate(x.date)}</td>
+                    <td>{x.student_name ? <b>{x.student_name}</b> : <span className="cm-hint" style={{ margin: 0 }}>Cả lớp</span>}</td>
+                    <td>{x.label}</td>
+                    <td><span className="cm-pill bad">{n1(x.points)}</span></td>
+                    <td>{x.note || '—'}</td>
+                    <td>{x.reporter_name || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Body({ v, rep, classId, advice }) {
   const { c, tot } = v;
   return (
@@ -103,6 +153,8 @@ function Body({ v, rep, classId, advice }) {
         <div className="cm-card cm-grow"><div className="cm-h"><h3>Sao đỏ trừ điểm theo mục</h3></div><BarList items={v.reasons} emptyText="Tuần này Sao đỏ chưa trừ điểm lớp." /></div>
         <div className="cm-card cm-grow"><div className="cm-h"><h3>Số lượt trừ điểm theo ngày</h3></div><ColumnChart items={v.days} /></div>
       </div>
+
+      {v.detail !== null && <SaoDoDetail items={v.detail} />}
 
       <div className="cm-row" style={{ alignItems: 'stretch' }}>
         <div className="cm-card cm-grow">
