@@ -7,6 +7,7 @@ import RankingBoard from '@/components/RankingBoard';
 import { useStudent } from '../layout';
 
 const CAT_LABEL = { ne_nep: 'Nề nếp', hoc_tap: 'Học tập' };
+const PLACE = { 1: 'hạng Nhất', 2: 'hạng Nhì', 3: 'hạng Ba' };
 
 export default function ThiDuaPage() {
   const { profile } = useStudent();
@@ -50,6 +51,13 @@ export default function ThiDuaPage() {
         .me-r div { text-align: right; }
         .me-r small { display: block; color: #bfdcf5; font-size: 11.5px; }
         .me-r b { font-family: 'Baloo 2', sans-serif; font-size: 24px; }
+        @media (max-width: 560px) {
+          .me-card { padding: 14px 16px; margin-bottom: 16px; }
+          .me-l b { font-size: 21px; }
+          .me-r { width: 100%; justify-content: space-between; gap: 10px; }
+          .me-r div { text-align: left; }
+          .me-r b { font-size: 21px; }
+        }
         .box { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 18px 20px; margin-top: 28px; }
         .box h3 { margin: 0 0 4px; font-size: 18px; }
         .day { margin-top: 16px; }
@@ -65,13 +73,16 @@ export default function ThiDuaPage() {
       `}</style>
 
       <h2 className="section-title">Thi đua lớp</h2>
-      <p className="section-sub">Sao đỏ và cô Tổng phụ trách chấm điểm nề nếp, học tập mỗi ngày. Bảng xếp hạng tự cập nhật ngay khi có điểm mới.</p>
+      <p className="section-sub">Sao đỏ và cô Tổng phụ trách chấm điểm nề nếp, học tập mỗi ngày. Bảng vinh danh tự cập nhật ngay khi có điểm mới.</p>
 
       {classId && summary?.mine && (
         <div className="me-card">
           <div className="me-l">
             <small>Lớp em</small>
-            <b>Lớp {className || summary.mine.class_name} · hạng {summary.mine.rank}/{summary.total}</b>
+            <b>
+              Lớp {className || summary.mine.class_name} ·{' '}
+              {summary.mine.rank <= 3 ? PLACE[summary.mine.rank] : 'cố lên, cùng lọt top 3 nhé!'}
+            </b>
           </div>
           <div className="me-r">
             <div><small>Nề nếp</small><b>{Number(summary.mine.ne_nep_score).toLocaleString('vi-VN')}</b></div>

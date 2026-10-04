@@ -7,6 +7,7 @@ import { useRankingPing } from '@/lib/useRankingPing';
 import { SAODO_NAV } from '@/lib/nav';
 import { defaultDateIso, fmtDate, fmtIso, getWeekdays, mondayOf, timeVN, vnTodayIso, weekdaysForMonday } from '@/lib/dates';
 import AppShell, { Modal, Toast } from '@/components/AppShell';
+import StudentPicker from '@/components/StudentPicker';
 
 const SESSION_LABEL = { sang: 'Buổi sáng', chieu: 'Buổi chiều' };
 
@@ -34,7 +35,7 @@ export default function SaoDoPage() {
   const [rStudentId, setRStudentId] = useState('');
   const [rNote, setRNote] = useState('');
   const [editing, setEditing] = useState(null);
-  const [roster, setRoster] = useState([]); // hoc sinh cua lop dang mo, de CHON thay vi go ten
+  const [roster, setRoster] = useState([]); // hoc sinh cua lop dang mo: gõ tên để tìm và chọn
   const [neGroup, setNeGroup] = useState('');
 
   const selectedDay = weekdays.find((d) => d.iso === selectedDate) || weekdays[0];
@@ -679,13 +680,16 @@ export default function SaoDoPage() {
           <div style={{ fontWeight: 700, marginTop: 8 }}>{reporting.label}</div>
           <div className="pts-big">{reporting.points} điểm</div>
           <label className="lbl" htmlFor="r-stu">
-            {reporting.is_individual ? 'Học sinh vi phạm (bắt buộc)' : 'Học sinh vi phạm (chỉ chọn nếu biết rõ ai vi phạm)'}
+            {reporting.is_individual ? 'Học sinh vi phạm (bắt buộc) — gõ tên hoặc họ và tên để tìm' : 'Học sinh vi phạm (chỉ chọn nếu biết rõ ai vi phạm)'}
           </label>
-          <select id="r-stu" className="input" value={rStudentId} onChange={(e) => setRStudentId(e.target.value)}
-            style={reporting.is_individual && !rStudentId ? { borderColor: 'var(--red)' } : undefined}>
-            <option value="">{reporting.is_individual ? '— Chọn học sinh —' : 'Cả lớp (không chọn học sinh)'}</option>
-            {roster.map((s2) => <option key={s2.student_id} value={s2.student_id}>{s2.full_name}</option>)}
-          </select>
+          <StudentPicker
+            id="r-stu"
+            roster={roster}
+            value={rStudentId}
+            onChange={setRStudentId}
+            noneLabel={reporting.is_individual ? undefined : 'Cả lớp (không chọn học sinh)'}
+            invalid={reporting.is_individual && !rStudentId}
+          />
           {reporting.is_individual && (
             <p className="hint" style={{ margin: '4px 0 0' }}>Đây là lỗi cá nhân nên phải chọn đúng học sinh vi phạm.</p>
           )}
@@ -707,12 +711,15 @@ export default function SaoDoPage() {
           <select id="e-r" className="input" value={editing.reason_code} onChange={(e) => setEditing({ ...editing, reason_code: e.target.value })}>
             {editableReasons.map((r) => <option key={r.code} value={r.code}>{r.label} ({r.points} đ)</option>)}
           </select>
-          <label className="lbl" htmlFor="e-s">{editIndividual ? 'Học sinh (bắt buộc vì là lỗi cá nhân)' : 'Học sinh'}</label>
-          <select id="e-s" className="input" value={editing.student_id} onChange={(e) => setEditing({ ...editing, student_id: e.target.value })}
-            style={editIndividual && !editing.student_id ? { borderColor: 'var(--red)' } : undefined}>
-            <option value="">{editIndividual ? '— Chọn học sinh —' : 'Cả lớp (không chọn học sinh)'}</option>
-            {roster.map((s2) => <option key={s2.student_id} value={s2.student_id}>{s2.full_name}</option>)}
-          </select>
+          <label className="lbl" htmlFor="e-s">{editIndividual ? 'Học sinh (bắt buộc vì là lỗi cá nhân) — gõ tên để tìm' : 'Học sinh — gõ tên để tìm'}</label>
+          <StudentPicker
+            id="e-s"
+            roster={roster}
+            value={editing.student_id}
+            onChange={(sid) => setEditing({ ...editing, student_id: sid })}
+            noneLabel={editIndividual ? undefined : 'Cả lớp (không chọn học sinh)'}
+            invalid={editIndividual && !editing.student_id}
+          />
           <label className="lbl" htmlFor="e-n">Ghi chú</label>
           <input id="e-n" className="input" value={editing.note} onChange={(e) => setEditing({ ...editing, note: e.target.value })} />
           <div className="modal-f">
