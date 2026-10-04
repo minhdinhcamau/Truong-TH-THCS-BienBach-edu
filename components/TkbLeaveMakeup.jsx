@@ -5,13 +5,16 @@ import { supabase } from '@/lib/supabaseClient';
 import { useGuard } from '@/lib/useGuard';
 import { addDays, fmtDate, vnTodayIso } from '@/lib/dates';
 import AppShell, { Toast } from '@/components/AppShell';
+import TkbShell from '@/components/TkbShell';
 import { loadBellTimes } from '@/lib/tkbClient';
 import { DAY_NAME, SESS_NAME, findSlots, missedLessons, qualifiedTeachers, teacherNames, weekdayOf } from '@/lib/tkbMakeup';
 
 const hhmm = (t) => String(t || '').slice(0, 5);
 
 // Giáo viên xin nghỉ -> xếp dạy bù. Chỉ admin được ghi; Tổng phụ trách chỉ xem.
-export default function TkbLeaveMakeup({ nav, activeHref, roleLabel, backHref }) {
+// school = true: dùng khung giao diện kiểu trường học (dành cho admin).
+export default function TkbLeaveMakeup({ nav, activeHref, roleLabel, backHref, school }) {
+  const Shell = school ? TkbShell : AppShell;
   const { profile, ready, logout } = useGuard('tpt');
   const isAdmin = profile?.role === 'admin';
   const [msg, setMsg] = useState(null);
@@ -151,11 +154,11 @@ export default function TkbLeaveMakeup({ nav, activeHref, roleLabel, backHref })
   if (!ready || !loaded) return <div className="app"><div className="center-loading">Đang tải…</div></div>;
 
   return (
-    <AppShell profile={profile} roleLabel={roleLabel} nav={nav} activeHref={activeHref} onLogout={logout}>
+    <Shell profile={profile} roleLabel={roleLabel} nav={nav} activeHref={activeHref} onLogout={logout}>
       <h1 className="pg-title">Giáo viên nghỉ và dạy bù</h1>
       <p className="pg-sub">
         Ghi nhận giáo viên xin nghỉ, rồi xếp dạy bù vào buổi sáng hoặc chiều tùy bạn chọn. Chỉ giáo viên đã được phân công dạy đúng môn đó mới được xếp dạy bù. Hệ thống chỉ liệt kê chỗ thật sự trống (lớp trống, giáo viên rảnh); không có chỗ thì sẽ báo, không tự ý xếp. Mỗi lần xếp hoặc hủy, toàn trường nhận thông báo.{' '}
-        {backHref && <Link href={backHref} style={{ color: 'var(--accent, #1d6fb8)' }}>← Về trang thời khóa biểu</Link>}
+        {backHref && !school && <Link href={backHref} style={{ color: 'var(--accent, #1d6fb8)' }}>← Về trang thời khóa biểu</Link>}
       </p>
       {!isAdmin && <div className="card" style={{ background: 'var(--warn-bg)', borderColor: '#f0d28a' }}>Bạn chỉ có quyền xem. Chỉ quản trị viên (admin) được ghi nhận nghỉ và xếp dạy bù.</div>}
       {ctx.rows.length === 0 && <div className="card" style={{ background: 'var(--warn-bg)', borderColor: '#f0d28a' }}>Chưa có thời khóa biểu hiện hành nên chưa thể xếp dạy bù. Hãy lưu thời khóa biểu trước.</div>}
@@ -190,16 +193,18 @@ export default function TkbLeaveMakeup({ nav, activeHref, roleLabel, backHref })
               {isAdmin && <button className="btn btn-sm" onClick={() => cancelLeave(l.id)}>Hủy ghi nhận</button>}
             </div>
             {l.items.length === 0 ? <p className="hint" style={{ margin: '6px 0 0' }}>Hôm đó giáo viên không có tiết học, không cần dạy bù.</p> : (
-              <table className="tbl" style={{ marginTop: 6 }}>
-                <thead><tr><th>Lớp</th><th>Môn</th><th>Tiết bị lỡ</th><th>Dạy bù</th><th /></tr></thead>
-                <tbody>{l.items.map((r, i) => (
-                  <tr key={i}>
-                    <td>{r.class_name}</td><td>{r.subject}</td><td>Tiết {r.period} {SESS_NAME[r.session]}</td>
-                    <td>{r.makeup ? <span className="pill ok">{DAY_NAME[weekdayOf(r.makeup.lesson_date)]} {fmtDate(r.makeup.lesson_date)}, tiết {r.makeup.period} {SESS_NAME[r.makeup.session]} · {r.makeup.teacher}</span> : <span className="pill warn">Chưa xếp bù</span>}</td>
-                    <td>{!r.makeup && isAdmin && <button className="btn btn-sm btn-red" onClick={() => pickLesson(l, r)}>Xếp bù</button>}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
+              <div className="tbl-wrap">
+                <table className="tbl" style={{ marginTop: 6 }}>
+                  <thead><tr><th>Lớp</th><th>Môn</th><th>Tiết bị lỡ</th><th>Dạy bù</th><th /></tr></thead>
+                  <tbody>{l.items.map((r, i) => (
+                    <tr key={i}>
+                      <td>{r.class_name}</td><td>{r.subject}</td><td>Tiết {r.period} {SESS_NAME[r.session]}</td>
+                      <td>{r.makeup ? <span className="pill ok">{DAY_NAME[weekdayOf(r.makeup.lesson_date)]} {fmtDate(r.makeup.lesson_date)}, tiết {r.makeup.period} {SESS_NAME[r.makeup.session]} · {r.makeup.teacher}</span> : <span className="pill warn">Chưa xếp bù</span>}</td>
+                      <td>{!r.makeup && isAdmin && <button className="btn btn-sm btn-red" onClick={() => pickLesson(l, r)}>Xếp bù</button>}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
             )}
           </div>
         ))}
@@ -237,17 +242,19 @@ export default function TkbLeaveMakeup({ nav, activeHref, roleLabel, backHref })
               <b>Không có chỗ trống phù hợp.</b> Lớp {target.className} hoặc giáo viên {tTeacher} đã kín lịch trong khoảng này. Bạn hãy thử: đổi giáo viên dạy bù, chọn thêm buổi còn lại, tăng số ngày tìm, hoặc cho phép thứ 7. Hệ thống không tự ý xếp vào chỗ bị trùng.
             </div>
           ) : (
-            <table className="tbl" style={{ marginTop: 10 }}>
-              <thead><tr><th>Ngày</th><th>Buổi</th><th>Tiết</th><th>Giờ</th><th>Lưu ý</th><th /></tr></thead>
-              <tbody>{slots.map((s) => (
-                <tr key={`${s.iso}${s.session}${s.period}`}>
-                  <td>{DAY_NAME[s.wd]} {fmtDate(s.iso)}</td><td>{SESS_NAME[s.session]}</td><td>{s.period}</td>
-                  <td>{s.bell ? `${hhmm(s.bell.start_time)} – ${hhmm(s.bell.end_time)}` : ''}</td>
-                  <td>{s.warn ? <span className="pill warn">{s.warn}</span> : <span className="pill ok">Phù hợp quy tắc</span>}</td>
-                  <td><button className="btn btn-sm btn-red" disabled={busy || !isAdmin} onClick={() => save(s)}>Chọn chỗ này</button></td>
-                </tr>
-              ))}</tbody>
-            </table>
+            <div className="tbl-wrap">
+              <table className="tbl" style={{ marginTop: 10 }}>
+                <thead><tr><th>Ngày</th><th>Buổi</th><th>Tiết</th><th>Giờ</th><th>Lưu ý</th><th /></tr></thead>
+                <tbody>{slots.map((s) => (
+                  <tr key={`${s.iso}${s.session}${s.period}`}>
+                    <td>{DAY_NAME[s.wd]} {fmtDate(s.iso)}</td><td>{SESS_NAME[s.session]}</td><td>{s.period}</td>
+                    <td>{s.bell ? `${hhmm(s.bell.start_time)} – ${hhmm(s.bell.end_time)}` : ''}</td>
+                    <td>{s.warn ? <span className="pill warn">{s.warn}</span> : <span className="pill ok">Phù hợp quy tắc</span>}</td>
+                    <td><button className="btn btn-sm btn-red" disabled={busy || !isAdmin} onClick={() => save(s)}>Chọn chỗ này</button></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
@@ -255,21 +262,23 @@ export default function TkbLeaveMakeup({ nav, activeHref, roleLabel, backHref })
       <div className="card">
         <div className="card-h"><h3>Lịch dạy bù đã xếp</h3></div>
         {ctx.makeups.length === 0 ? <p className="hint">Chưa có lịch dạy bù nào.</p> : (
-          <table className="tbl">
-            <thead><tr><th>Ngày</th><th>Tiết</th><th>Lớp</th><th>Môn</th><th>Giáo viên</th><th>Loại</th><th /></tr></thead>
-            <tbody>{ctx.makeups.map((m) => (
-              <tr key={m.id}>
-                <td>{DAY_NAME[weekdayOf(m.lesson_date)]} {fmtDate(m.lesson_date)}</td><td>Tiết {m.period} {SESS_NAME[m.session]}</td><td>{m.class_name}</td><td>{m.subject}</td>
-                <td>{m.teacher}{m.orig_teacher && m.orig_teacher !== m.teacher ? ` (thay ${m.orig_teacher})` : ''}</td>
-                <td>{m.kind === 'leave' ? 'Bù do nghỉ' : 'Dạy thêm'}</td>
-                <td>{isAdmin && <button className="btn btn-sm" onClick={() => cancelMakeup(m)}>Hủy</button>}</td>
-              </tr>
-            ))}</tbody>
-          </table>
+          <div className="tbl-wrap">
+            <table className="tbl">
+              <thead><tr><th>Ngày</th><th>Tiết</th><th>Lớp</th><th>Môn</th><th>Giáo viên</th><th>Loại</th><th /></tr></thead>
+              <tbody>{ctx.makeups.map((m) => (
+                <tr key={m.id}>
+                  <td>{DAY_NAME[weekdayOf(m.lesson_date)]} {fmtDate(m.lesson_date)}</td><td>Tiết {m.period} {SESS_NAME[m.session]}</td><td>{m.class_name}</td><td>{m.subject}</td>
+                  <td>{m.teacher}{m.orig_teacher && m.orig_teacher !== m.teacher ? ` (thay ${m.orig_teacher})` : ''}</td>
+                  <td>{m.kind === 'leave' ? 'Bù do nghỉ' : 'Dạy thêm'}</td>
+                  <td>{isAdmin && <button className="btn btn-sm" onClick={() => cancelMakeup(m)}>Hủy</button>}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
         )}
       </div>
 
       <Toast msg={msg} onDone={() => setMsg(null)} />
-    </AppShell>
+    </Shell>
   );
 }

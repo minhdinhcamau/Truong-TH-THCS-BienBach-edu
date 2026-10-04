@@ -5,10 +5,12 @@ import { supabase } from '@/lib/supabaseClient';
 import { useGuard } from '@/lib/useGuard';
 import { vnTodayIso } from '@/lib/dates';
 import AppShell, { Toast } from '@/components/AppShell';
+import TkbShell from '@/components/TkbShell';
 import ClassTimetable from '@/components/Timetable';
 import SchoolTimetableExport from '@/components/SchoolTimetableExport';
 import { loadBellTimes } from '@/lib/tkbClient';
 import { preflight, applyFix } from '@/lib/tkbPreflight';
+import { verifyResult } from '@/lib/tkbVerify';
 import {
   DAY_LABEL, mergeCfg, newId, gradeOf, buildConfigFromRows, analyzeLoad, applySuggestion,
   fillFromCurriculum, autoAssign, syncTeachers, solve,
@@ -27,8 +29,13 @@ const STATUS = {
   ok: ['Đủ định mức', 'ok'],
 };
 const num = (v, d = 0) => (v === '' || v === null || v === undefined || Number.isNaN(Number(v)) ? d : Number(v));
+// Bỏ cụm "kiêm nhiệm" khỏi các câu gợi ý do bộ phân tích tạo ra
+const plainText = (t) => String(t || '')
+  .replace(/\s*hoặc kiêm nhiệm \(chủ nhiệm, bồi dưỡng, câu lạc bộ\)/g, '')
+  .replace(/ dạy kiêm/g, ' nhận thêm');
 
-export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
+export default function TkbPlanner({ nav, activeHref, roleLabel, backHref, school }) {
+  const Shell = school ? TkbShell : AppShell;
   const { profile, ready, logout } = useGuard('tpt');
   const [msg, setMsg] = useState(null);
   const [cfg, setCfg] = useState(mergeCfg());
@@ -41,6 +48,7 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
+  const [report, setReport] = useState(null);
   const [seed, setSeed] = useState(1);
   const [viewClass, setViewClass] = useState('');
   const [viewTeacher, setViewTeacher] = useState('');
@@ -84,6 +92,7 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
     setCfg(next);
     setDirty(true);
     setResult(null);
+    setReport(null);
     setMsg({ type: 'ok', text: `Đã nạp ${next.assignments.length} dòng phân công, ${next.teachers.length} giáo viên, ${next.locks.length} tiết cố định (Chào cờ, Sinh hoạt).` });
   }
 
@@ -96,30 +105,36 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
 
   async function run(newSeed) {
     if (!cfg.assignments.length) { setMsg({ type: 'error', text: 'Chưa có phân công. Hãy nạp từ thời khóa biểu hiện hành hoặc thêm phân công ở bước 2.' }); return; }
-    if (!pre.ok) { setMsg({ type: 'error', text: `Chưa thể xếp: còn ${pre.errors.length} lỗi cần chỉnh (xem khung “Kiểm tra trước khi xếp”).` }); return; }
     const s = newSeed ?? seed;
     setSeed(s);
     setRunning(true);
     setProgress(0);
     setResult(null);
+    setReport(null);
     // Ngày nghỉ và công bằng chỉ dùng khi người soạn bật (mặc định tắt)
     const effCfg = cfg.options.useFairness ? cfg : { ...cfg, teachers: cfg.teachers.map((t) => ({ ...t, dayOff: typeof t.dayOff === 'number' ? t.dayOff : 'none' })), options: { ...cfg.options, wFair: 0, wCarpool: 0 } };
     const r = await solve(effCfg, { seed: s, onProgress: (p) => aliveRef.current && setProgress(p) });
     if (!aliveRef.current) return;
     setRunning(false);
     setResult(r);
+    const rep = verifyResult(effCfg, r);
+    setReport(rep);
     if (r.rows.length) {
       const cl = [...new Set(r.rows.map((x) => x.class_name))].sort((a, b) => a.localeCompare(b, 'vi'));
       setViewClass((c) => (cl.includes(c) ? c : cl[0]));
       setViewTeacher((t) => (r.stats.some((x) => x.name === t) ? t : r.stats[0]?.name || ''));
     }
-    setMsg(r.stopped ? { type: 'error', text: 'Đã dừng: có giáo viên không thể nghỉ trọn 1 ngày.' } : { type: r.ok ? 'ok' : 'error', text: r.ok ? 'Đã xếp xong. Xem kết quả bên dưới.' : `Xếp xong nhưng còn ${r.unplaced} tiết chưa xếp được. Xem cảnh báo.` });
+    if (r.stopped) setMsg({ type: 'error', text: 'Đã dừng: có giáo viên không thể nghỉ trọn 1 ngày.' });
+    else if (rep.errors.length) setMsg({ type: 'error', text: `Đã xếp theo thiết lập nhưng phân tích thấy ${rep.errors.length} lỗi. Xem khung “Phân tích kết quả xếp”.` });
+    else if (rep.warnings.length) setMsg({ type: 'ok', text: `Đã xếp xong, không có lỗi. Có ${rep.warnings.length} điểm nên xem lại.` });
+    else setMsg({ type: 'ok', text: 'Đã xếp xong, phân tích không thấy lỗi nào.' });
   }
 
   async function saveTimetable() {
     if (!result || !result.rows.length) return;
     if (!effectiveFrom) { setMsg({ type: 'error', text: 'Hãy chọn ngày bắt đầu áp dụng.' }); return; }
-    if (result.unplaced > 0 && !window.confirm(`Còn ${result.unplaced} tiết chưa xếp được. Vẫn lưu thành thời khóa biểu?`)) return;
+    const nErr = report ? report.errors.length : 0;
+    if ((result.unplaced > 0 || nErr > 0) && !window.confirm(`Bảng này còn ${result.unplaced} tiết chưa xếp được và ${nErr} lỗi theo phân tích. Vẫn lưu thành thời khóa biểu?`)) return;
     if (!window.confirm(`Lưu thành thời khóa biểu áp dụng từ ${effectiveFrom}? Nếu đã có bản cùng ngày, bản đó sẽ bị thay thế.`)) return;
     setSaving(true);
     const { data, error } = await supabase.rpc('tpt_import_timetable', { p_effective_from: effectiveFrom, p_rows: result.rows });
@@ -142,13 +157,14 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
   const lines = cfg.assignments.filter((a) => a.cls === classSel);
   const setLine = (id, patch) => edit((c) => ({ ...c, assignments: c.assignments.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
   const classLoad = lines.reduce((x, a) => x + Number(a.periods || 0), 0) + cfg.locks.filter((l) => l.cls === classSel).length;
+  const nIssues = pre.errors.length;
 
   return (
-    <AppShell profile={profile} roleLabel={roleLabel} nav={nav} activeHref={activeHref} onLogout={logout}>
+    <Shell profile={profile} roleLabel={roleLabel} nav={nav} activeHref={activeHref} onLogout={logout}>
       <h1 className="pg-title">Soạn thời khóa biểu tự động</h1>
       <p className="pg-sub">
-        Khai báo giáo viên dạy môn gì, số tiết, ngày nghỉ, rồi để hệ thống tự xếp công bằng. Đây là bộ xếp theo quy tắc tính toán (không phải trí tuệ nhân tạo ngôn ngữ) nên kết quả nhanh và giải thích được.
-        Kết quả chỉ vào thời khóa biểu thật khi bạn bấm “Lưu thành thời khóa biểu”. {backHref && <Link href={backHref} style={{ color: 'var(--accent, #1d6fb8)' }}>← Về trang thời khóa biểu</Link>}
+        Khai báo giáo viên dạy môn gì, số tiết, ngày nghỉ, rồi để hệ thống tự xếp. Đây là bộ xếp theo quy tắc tính toán (không phải trí tuệ nhân tạo ngôn ngữ) nên kết quả nhanh và giải thích được.
+        Hệ thống luôn xếp đúng như thiết lập của bạn, sau đó phân tích bảng vừa xếp để chỉ ra lỗi. Kết quả chỉ vào thời khóa biểu thật khi bạn bấm “Lưu thành thời khóa biểu”. {backHref && !school && <Link href={backHref} style={{ color: 'var(--accent, #1d6fb8)' }}>← Về trang thời khóa biểu</Link>}
       </p>
 
       <div className="row" style={{ marginBottom: 12 }}>
@@ -208,13 +224,13 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
                 {analysis.suggestions.map((s, i) => (
                   <div key={i} className="row" style={{ alignItems: 'center' }}>
                     <span className={`pill ${s.type === 'move' ? 'ok' : 'warn'}`}>{s.type === 'move' ? 'Có thể áp dụng' : 'Cần quyết định'}</span>
-                    <span className="grow">{s.text}</span>
+                    <span className="grow">{plainText(s.text)}</span>
                     {s.type === 'move' && <button className="btn btn-sm" onClick={() => edit((c) => applySuggestion(c, s))}>Áp dụng</button>}
                   </div>
                 ))}
               </div>
             )}
-            <p className="hint" style={{ marginTop: 10 }}>Gợi ý chỉ chuyển tiết cho giáo viên đã khai báo dạy được môn đó và còn trong mức tối đa. Giáo viên thiếu tiết so với định mức được nhắc để bạn giao thêm hoặc phân công kiêm nhiệm.</p>
+            <p className="hint" style={{ marginTop: 10 }}>Gợi ý chỉ chuyển tiết cho giáo viên đã khai báo dạy được môn đó và còn trong mức tối đa. Giáo viên thiếu tiết so với định mức được nhắc để bạn giao thêm tiết.</p>
           </div>
 
           <div className="card">
@@ -348,7 +364,7 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
             </div>
             <p className="hint" style={{ marginTop: 8 }}>
               Mặc định: Mỹ thuật, Âm nhạc, Thể dục, Giáo dục địa phương học buổi chiều; Toán, Văn, Anh, KHTN, Sử - Địa, GDCD, Công nghệ, Tin học, HĐTN... chỉ học buổi sáng. Hệ thống hiểu cả tên viết tắt (MT, Nhạc, GDTC, GDĐP).
-              Nếu một lớp có quá nhiều tiết phải học buổi sáng so với số chỗ buổi sáng, phần cảnh báo sau khi xếp sẽ nói rõ lớp nào.
+              Nếu một lớp có quá nhiều tiết phải học buổi sáng so với số chỗ buổi sáng, phần phân tích sau khi xếp sẽ nói rõ lớp nào.
             </p>
           </div>
 
@@ -360,7 +376,7 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
             </label>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
               <input type="checkbox" checked={!!cfg.options.requireExactQuota} onChange={(e) => edit((c) => ({ ...c, options: { ...c.options, requireExactQuota: e.target.checked } }))} />
-              <span><b>Mỗi giáo viên phải đúng số tiết định mức</b> (lệch định mức thì không cho xếp)</span>
+              <span><b>Báo đỏ khi giáo viên lệch số tiết định mức</b> (chỉ nhắc, vẫn cho xếp)</span>
             </label>
             <div className="row" style={{ alignItems: 'flex-end' }}>
               <div>
@@ -415,12 +431,15 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
 
       {tab === 'kq' && (
         <>
-          <div className="card" style={pre.ok ? undefined : { borderColor: '#e0a3a3', background: '#fff6f6' }}>
-            <div className="card-h"><h3>Kiểm tra trước khi xếp</h3><span className={`pill ${pre.ok ? 'ok' : 'bad'}`}>{pre.ok ? 'Đủ điều kiện xếp' : `${pre.errors.length} lỗi, chưa cho xếp`}</span></div>
-            {pre.errors.length > 0 && (
+          <div className="card" style={nIssues === 0 ? undefined : { borderColor: '#f0d28a', background: '#fffaf0' }}>
+            <div className="card-h">
+              <h3>Kiểm tra trước khi xếp</h3>
+              <span className={`pill ${nIssues === 0 ? 'ok' : 'warn'}`}>{nIssues === 0 ? 'Không thấy vấn đề' : `${nIssues} vấn đề, vẫn cho xếp`}</span>
+            </div>
+            {nIssues > 0 && (
               <>
-                <p className="hint" style={{ marginTop: 0 }}>Hệ thống không tự ý xếp khi dữ liệu còn thiếu hoặc bị trùng. Hãy chỉnh ở bước 1 hoặc 2 cho đúng ý rồi quay lại đây.</p>
-                <ul style={{ margin: '0 0 0 18px', color: '#a12a2a' }}>{pre.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                <p className="hint" style={{ marginTop: 0 }}>Đây chỉ là cảnh báo, hệ thống không chặn. Bấm “Xếp tự động” sẽ xếp đúng như thiết lập hiện tại (dòng chưa có giáo viên thì bỏ qua), rồi phân tích kết quả để chỉ ra lỗi cụ thể.</p>
+                <ul style={{ margin: '0 0 0 18px', color: '#8a5b0a' }}>{pre.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
               </>
             )}
             {pre.warnings.length > 0 && <ul style={{ margin: '8px 0 0 18px', color: 'var(--warn)' }}>{pre.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
@@ -437,28 +456,50 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
                 {pre.fixes.length > 12 && <p className="hint">Còn {pre.fixes.length - 12} gợi ý nữa, thêm bớt rồi gợi ý sẽ cập nhật.</p>}
               </div>
             )}
-            {pre.ok && pre.warnings.length === 0 && <p className="hint" style={{ margin: 0 }}>Mọi lớp đủ tiết theo chương trình, không trùng, không giáo viên nào vượt mức.</p>}
+            {nIssues === 0 && pre.warnings.length === 0 && <p className="hint" style={{ margin: 0 }}>Mọi lớp đủ tiết theo chương trình, không trùng, không giáo viên nào vượt mức.</p>}
           </div>
 
           <div className="card">
             <div className="card-h"><h3>Xếp thời khóa biểu</h3></div>
             <div className="row" style={{ alignItems: 'center' }}>
-              <button className="btn btn-red" disabled={running || !pre.ok} onClick={() => run()}>{running ? `Đang xếp… ${Math.round(progress * 100)}%` : 'Xếp tự động'}</button>
+              <button className="btn btn-red" disabled={running} onClick={() => run()}>{running ? `Đang xếp… ${Math.round(progress * 100)}%` : 'Xếp tự động'}</button>
               <button className="btn" disabled={running || !result} onClick={() => run(seed + 1)}>Xếp lại (phương án khác)</button>
               <span className="hint" style={{ margin: 0 }}>Phương án số {seed}. Xếp lại cho ra cách sắp xếp khác, bạn chọn cái ưng ý nhất.</span>
             </div>
             {running && <div style={{ height: 8, background: '#e6eef7', borderRadius: 6, marginTop: 10, overflow: 'hidden' }}><div style={{ width: `${Math.round(progress * 100)}%`, height: '100%', background: '#4a90d9', transition: 'width .2s' }} /></div>}
           </div>
 
+          {result && report && (
+            <div className="card" style={report.errors.length ? { borderColor: '#e0a3a3', background: '#fff8f8' } : report.warnings.length ? { borderColor: '#f0d28a', background: '#fffaf0' } : { borderColor: '#9fd5b8', background: '#f4fbf7' }}>
+              <div className="card-h">
+                <h3>Phân tích kết quả xếp</h3>
+                <span className={`pill ${report.errors.length ? 'bad' : report.warnings.length ? 'warn' : 'ok'}`}>
+                  {report.errors.length ? `${report.errors.length} lỗi` : 'Không có lỗi'}{report.warnings.length ? ` · ${report.warnings.length} điểm nên xem` : ''}
+                </span>
+              </div>
+              {report.infos.map((x, i) => <p key={i} className="hint" style={{ margin: '0 0 6px' }}>{x.text}</p>)}
+              {report.errors.length > 0 && (
+                <>
+                  <strong style={{ color: '#a12a2a' }}>Lỗi (bảng xếp chưa đúng thiết lập)</strong>
+                  <ul style={{ margin: '4px 0 10px 18px' }}>
+                    {report.errors.map((e, i) => <li key={i} style={{ color: '#a12a2a' }}>{e.text}{e.advice && <span style={{ color: 'var(--muted)' }}> → {e.advice}</span>}</li>)}
+                  </ul>
+                </>
+              )}
+              {report.warnings.length > 0 && (
+                <>
+                  <strong style={{ color: 'var(--warn)' }}>Nên xem lại</strong>
+                  <ul style={{ margin: '4px 0 0 18px' }}>
+                    {report.warnings.map((w, i) => <li key={i} style={{ color: 'var(--warn)' }}>{w.text}{w.advice && <span style={{ color: 'var(--muted)' }}> → {w.advice}</span>}</li>)}
+                  </ul>
+                </>
+              )}
+              {report.errors.length === 0 && report.warnings.length === 0 && <p style={{ margin: 0, color: 'var(--ok)', fontWeight: 700 }}>Bảng đã xếp khớp với mọi thiết lập: không trùng lớp, không trùng giáo viên, đủ tiết, đúng buổi, không ai vượt mức.</p>}
+            </div>
+          )}
+
           {result && (
             <>
-              {result.warnings.length > 0 && (
-                <div className="card" style={{ background: 'var(--warn-bg)', borderColor: '#f0d28a' }}>
-                  <strong style={{ color: 'var(--warn)' }}>Cảnh báo</strong>
-                  <ul style={{ margin: '8px 0 0 18px' }}>{result.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
-                </div>
-              )}
-
               {result.stats.length > 0 && (
                 <div className="card">
                   <div className="card-h"><h3>Công bằng giữa các giáo viên</h3></div>
@@ -511,7 +552,6 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
       )}
 
       <Toast msg={msg} onDone={() => setMsg(null)} />
-    </AppShell>
+    </Shell>
   );
 }
-

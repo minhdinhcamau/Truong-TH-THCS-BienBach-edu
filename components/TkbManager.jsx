@@ -6,6 +6,7 @@ import { useGuard } from '@/lib/useGuard';
 import { parseWorkbookSheets } from '@/lib/tkb';
 import { fmtDate, vnTodayIso } from '@/lib/dates';
 import AppShell, { Toast } from '@/components/AppShell';
+import TkbShell from '@/components/TkbShell';
 import ClassTimetable from '@/components/Timetable';
 import SchoolTimetableExport from '@/components/SchoolTimetableExport';
 import { loadBellTimes, loadTeacherTimetable } from '@/lib/tkbClient';
@@ -32,7 +33,9 @@ function ClassPicker({ id, value, options, onChange }) {
 }
 
 // Quản lý thời khóa biểu toàn trường: dùng chung cho trang Tổng phụ trách (/tpt/tkb) và trang admin (/admin/tkb).
-export default function TkbManager({ nav, activeHref, roleLabel }) {
+// school = true: dùng khung giao diện kiểu trường học (logo trường, thanh chuyển mục thời khóa biểu), dành cho admin.
+export default function TkbManager({ nav, activeHref, roleLabel, school }) {
+  const Shell = school ? TkbShell : AppShell;
   const { profile, ready, logout } = useGuard('tpt');
   const [msg, setMsg] = useState(null);
   const isAdmin = profile?.role === 'admin';
@@ -279,7 +282,7 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
   if (!ready) return <div className="app"><div className="center-loading">Đang tải…</div></div>;
 
   return (
-    <AppShell profile={profile} roleLabel={roleLabel} nav={nav} activeHref={activeHref} onLogout={logout}>
+    <Shell profile={profile} roleLabel={roleLabel} nav={nav} activeHref={activeHref} onLogout={logout}>
       <h1 className="pg-title">Thời khóa biểu toàn trường</h1>
       <p className="pg-sub">
         Nhập file Excel thời khóa biểu của trường. Hệ thống tự tách từng lớp, từng tiết và hiện thành thời khóa biểu riêng của mỗi lớp (có nút In và Lưu ảnh).
@@ -288,7 +291,7 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
 
       <div className="card" style={{ borderColor: '#9cc3ec' }}>
         <div className="card-h"><h3>Soạn thời khóa biểu tự động</h3></div>
-        <p className="hint" style={{ marginTop: 0 }}>Khai báo giáo viên dạy môn gì, số tiết mỗi người, ngày nghỉ, nhóm giáo viên đi về cùng nhau; hệ thống tự xếp công bằng, báo thiếu/thừa tiết và gợi ý chuyển tiết. Không cần file Excel.</p>
+        <p className="hint" style={{ marginTop: 0 }}>Khai báo giáo viên dạy môn gì, số tiết mỗi người, ngày nghỉ, nhóm giáo viên đi về cùng nhau; hệ thống tự xếp đúng thiết lập, rồi phân tích kết quả để chỉ ra lỗi. Không cần file Excel.</p>
         <Link href={`${activeHref}/soan`} className="btn btn-red">Mở công cụ soạn và xếp tự động</Link>
       </div>
 
@@ -478,6 +481,6 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
       </div>
 
       <Toast msg={msg} onDone={() => setMsg(null)} />
-    </AppShell>
+    </Shell>
   );
 }
