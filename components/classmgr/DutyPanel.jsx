@@ -3,25 +3,32 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { addDays, fmtDate, fmtIso, mondayOf, vnTodayIso } from '@/lib/dates';
 import { MODES, missingReasons, planDuty } from '@/lib/dutyPlanner';
+import { assignYard } from '@/lib/yardPlanner';
 
 const WEEKDAYS = [2, 3, 4, 5, 6]; // không có Thứ 7, Chủ nhật
 const STATUS = { tot: ['Trực tốt', 'ok'], chua_tot: ['Chưa tốt', 'warn'], khong_truc: ['Không trực', 'bad'] };
 const SOURCE = { manual: 'Tự chọn', ai_group: 'Trợ lý: theo điểm tổ', ai_violators: 'Trợ lý: người vi phạm', rotation: 'Trợ lý: xoay vòng tổ' };
+const AREA = { trong_lop: { label: 'Trong lớp', icon: '🧹' }, ngoai_san: { label: 'Ngoài sân', icon: '🌳' } };
 
-// Lịch trực nhật của lớp. Lớp phó lao động / lớp trưởng / GVCN xếp lịch; tổ trưởng, tổ phó ghi nhận tổ trực.
+// Lịch trực nhật của lớp. Lớp phó lao động / lớp trưởng / GVCN xếp lịch (trợ lý hoặc tự chọn) và xóa lịch khi cần;
+// tổ trưởng, tổ phó ghi nhận tổ trực. Nếu Tổng phụ trách đã phân khu vực ngoài sân cho lớp, trợ lý tự chia bạn ra sân.
 export default function DutyPanel({ classId, students, perms, role, roleGroup, toast }) {
   const today = vnTodayIso();
   const thisMonday = mondayOf(today);
   const [weekStart, setWeekStart] = useState(thisMonday);
   const [saved, setSaved] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [yard, setYard] = useState(null); // { area_name, note } của tuần đang xem
   const [mode, setMode] = useState('group_low');
   const [wds, setWds] = useState([2, 3, 4, 5, 6]);
   const [perDay, setPerDay] = useState(4);
+  const [yardPerDay, setYardPerDay] = useState(2);
   const [plan, setPlan] = useState(null); // null = chưa soạn
   const [warnings, setWarnings] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [add, setAdd] = useState({}); // date -> { g, sid }
+  const [add, setAdd] = useState({}); // date -> { g, sid, area }
+
+  const hasYard = !!yard?.area_name;
 
   const days = useMemo(
     () => wds.slice().sort((a, b) => a - b).map((wd) => ({ date: addDays(weekStart, wd - 2), weekday: wd, label: `Thứ ${wd}` })),
@@ -30,12 +37,14 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
 
   const load = useCallback(async () => {
     const to = addDays(weekStart, 6);
-    const [d, l] = await Promise.all([
+    const [d, l, y] = await Promise.all([
       supabase.rpc('class_get_duty', { p_class_id: classId, p_from: weekStart, p_to: to }),
       supabase.rpc('class_get_duty_logs', { p_class_id: classId, p_from: weekStart, p_to: to }),
+      supabase.rpc('class_yard_week', { p_class_id: classId, p_week_start: weekStart }),
     ]);
     setSaved(d.data || []);
     setLogs(l.data || []);
+    setYard(y.data || null);
   }, [classId, weekStart]);
 
   useEffect(() => { setPlan(null); load(); }, [load]);
@@ -51,15 +60,16 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
       toast({ type: 'error', text: error.message });
       return;
     }
-    const res = planDuty({ mode, members: data.members, days, perDay: Number(perDay) || 4, lastWeekDuty: data.last_week_duty });
-    setPlan(res.rows);
+    const yardN = hasYard ? Math.max(0, Number(yardPerDay) || 0) : 0;
+    const res = planDuty({ mode, members: data.members, days, perDay: (Number(perDay) || 4) + yardN, lastWeekDuty: data.last_week_duty });
+    setPlan(hasYard ? assignYard(res.rows, data.members, yardN, yard.area_name) : res.rows.map((r) => ({ ...r, area: 'trong_lop' })));
     setWarnings(res.warnings);
   }
 
   function startManual() {
     setPlan(saved.map((r) => ({
       date: r.duty_date, label: `Thứ ${new Date(`${r.duty_date}T00:00:00Z`).getUTCDay() + 1}`, student_id: r.student_id,
-      name: r.full_name, group_no: r.group_no, source: r.source, reason: r.reason || '',
+      name: r.full_name, group_no: r.group_no, source: r.source, reason: r.reason || '', area: r.area || 'trong_lop',
     })));
     setWarnings([]);
   }
@@ -72,18 +82,22 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
       toast({ type: 'error', text: `${s.full_name} đã có trong ${day.label}.` });
       return;
     }
-    setPlan([...plan, { date: day.date, label: day.label, student_id: s.student_id, name: s.full_name, group_no: s.group_no || null, source: 'manual', reason: '' }]);
+    setPlan([...plan, {
+      date: day.date, label: day.label, student_id: s.student_id, name: s.full_name, group_no: s.group_no || null,
+      source: 'manual', reason: '', area: hasYard && st.area === 'ngoai_san' ? 'ngoai_san' : 'trong_lop',
+    }]);
     setAdd({ ...add, [day.date]: { ...st, sid: '' } });
   }
 
   const setReason = (i, v) => setPlan(plan.map((r, k) => (k === i ? { ...r, reason: v } : r)));
+  const setAreaOf = (i, v) => setPlan(plan.map((r, k) => (k === i ? { ...r, area: v } : r)));
   const removeRow = (i) => setPlan(plan.filter((_, k) => k !== i));
 
   async function save() {
     setBusy(true);
     const { data, error } = await supabase.rpc('class_save_duty', {
       p_class_id: classId, p_week_start: weekStart,
-      p_rows: plan.map((r) => ({ date: r.date, student_id: r.student_id, group_no: r.group_no, source: r.source, reason: r.reason })),
+      p_rows: plan.map((r) => ({ date: r.date, student_id: r.student_id, group_no: r.group_no, source: r.source, reason: r.reason, area: r.area || 'trong_lop' })),
     });
     setBusy(false);
     if (error) {
@@ -92,6 +106,22 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
     }
     toast({ type: 'ok', text: `Đã lưu lịch trực (${data} lượt).` });
     setPlan(null);
+    load();
+  }
+
+  // Xóa lịch trực đã lưu: 1 bạn, cả 1 ngày hoặc cả tuần
+  async function removeDuty({ id, date, week }, question) {
+    if (!window.confirm(question)) return;
+    setBusy(true);
+    const { data, error } = await supabase.rpc('class_delete_duty', {
+      p_class_id: classId, p_duty_id: id || null, p_date: date || null, p_week_start: week || null,
+    });
+    setBusy(false);
+    if (error) {
+      toast({ type: 'error', text: error.message });
+      return;
+    }
+    toast({ type: 'ok', text: `Đã xóa ${data} lượt trực.` });
     load();
   }
 
@@ -109,6 +139,27 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
   }, [saved]);
   const logOf = (date, g) => logs.find((l) => l.duty_date === date && l.group_no === g);
   const scopedGroup = !perms.staff && (role === 'to_truong' || role === 'to_pho') ? roleGroup : null;
+  // Người xếp lịch chỉ được xóa lịch của tuần hiện tại trở đi (giáo viên xóa được mọi tuần)
+  const canDelete = (date) => perms.duty && (perms.staff || date >= thisMonday);
+  const weekDeletable = perms.duty && (perms.staff || weekStart >= thisMonday);
+
+  const renderPerson = (r) => (
+    <div key={r.id} style={{ fontSize: 13, padding: '3px 0', display: 'flex', alignItems: 'flex-start', gap: 6 }} title={r.reason || ''}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {r.full_name} {r.group_no ? <span className="cm-chip" style={{ padding: '0 7px' }}>T{r.group_no}</span> : null}
+        {r.reason ? <div className="cm-hint" style={{ margin: 0, fontSize: 11.5 }}>{r.reason}</div> : null}
+      </div>
+      {canDelete(r.duty_date) && (
+        <button
+          className="cm-btn cm-btn-sm cm-btn-danger"
+          style={{ minHeight: 28, padding: '2px 9px' }}
+          disabled={busy}
+          onClick={() => removeDuty({ id: r.id }, `Xóa ${r.full_name} khỏi lịch trực ${fmtIso(r.duty_date)}?`)}
+          aria-label={`Xóa ${r.full_name} khỏi lịch trực`}
+        >✕</button>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -120,38 +171,72 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
             <button className={`cm-btn cm-btn-sm ${weekStart === addDays(thisMonday, 7) ? 'cm-btn-main' : ''}`} onClick={() => setWeekStart(addDays(thisMonday, 7))}>Tuần sau</button>
           </div>
         </div>
+        <div className="cm-hint" style={{ marginTop: 0 }}>
+          Khu vực ngoài sân tuần này:{' '}
+          {hasYard ? <span className="cm-chip">🌳 {yard.area_name}</span> : <span className="cm-pill mute">Chưa được Tổng phụ trách phân công</span>}
+        </div>
+
         {savedDays.length === 0 ? (
           <div className="cm-empty">Chưa có lịch trực cho tuần này.</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
-            {savedDays.map(([date, list]) => {
-              const gs = Array.from(new Set(list.map((r) => r.group_no).filter(Boolean))).sort((a, b) => a - b);
-              return (
-                <div key={date} style={{ border: '1px solid var(--cm-line)', borderRadius: 12, padding: 10, background: date === today ? '#fff8f7' : '#fff' }}>
-                  <div style={{ fontWeight: 800 }}>{fmtIso(date)}{date === today ? ' •' : ''}</div>
-                  {list.map((r) => (
-                    <div key={r.id} style={{ fontSize: 13, padding: '2px 0' }} title={r.reason || ''}>
-                      {r.full_name} {r.group_no ? <span className="cm-chip" style={{ padding: '0 7px' }}>T{r.group_no}</span> : null}
-                      {r.reason ? <div className="cm-hint" style={{ margin: 0, fontSize: 11.5 }}>{r.reason}</div> : null}
+          <>
+            {weekDeletable && (
+              <div className="cm-row" style={{ justifyContent: 'flex-end', marginBottom: 8 }}>
+                <button
+                  className="cm-btn cm-btn-sm cm-btn-danger"
+                  disabled={busy}
+                  onClick={() => removeDuty({ week: weekStart }, `Xóa TOÀN BỘ lịch trực tuần ${fmtDate(weekStart)} – ${fmtDate(addDays(weekStart, 6))}?`)}
+                >🗑 Xóa cả tuần</button>
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10 }}>
+              {savedDays.map(([date, list]) => {
+                const gs = Array.from(new Set(list.map((r) => r.group_no).filter(Boolean))).sort((a, b) => a - b);
+                const inClass = list.filter((r) => (r.area || 'trong_lop') !== 'ngoai_san');
+                const inYard = list.filter((r) => r.area === 'ngoai_san');
+                return (
+                  <div key={date} style={{ border: '1px solid var(--cm-line)', borderRadius: 12, padding: 10, background: date === today ? '#f4f9ff' : '#fff' }}>
+                    <div className="cm-row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+                      <div style={{ fontWeight: 800 }}>{fmtIso(date)}{date === today ? ' •' : ''}</div>
+                      {canDelete(date) && (
+                        <button
+                          className="cm-btn cm-btn-sm cm-btn-danger"
+                          style={{ minHeight: 28 }}
+                          disabled={busy}
+                          onClick={() => removeDuty({ date }, `Xóa toàn bộ lịch trực ngày ${fmtIso(date)}?`)}
+                        >Xóa ngày</button>
+                      )}
                     </div>
-                  ))}
-                  {perms.dutyLog && date <= today && gs.filter((g) => !scopedGroup || g === scopedGroup).map((g) => {
-                    const lg = logOf(date, g);
-                    return (
-                      <div key={g} style={{ marginTop: 8, borderTop: '1px dashed var(--cm-line)', paddingTop: 6 }}>
-                        <div className="cm-hint" style={{ margin: '0 0 4px' }}>Ghi nhận Tổ {g}: {lg ? <span className={`cm-pill ${STATUS[lg.status][1]}`}>{STATUS[lg.status][0]}</span> : 'chưa ghi'}</div>
-                        <div className="cm-chips">
-                          {Object.entries(STATUS).map(([k, [label]]) => (
-                            <button key={k} className={`cm-btn cm-btn-sm ${lg?.status === k ? 'cm-btn-main' : ''}`} onClick={() => log(date, g, k)}>{label}</button>
-                          ))}
+                    {inClass.length > 0 && (
+                      <>
+                        <div className="cm-lbl" style={{ margin: '8px 0 2px' }}>{AREA.trong_lop.icon} {AREA.trong_lop.label}</div>
+                        {inClass.map(renderPerson)}
+                      </>
+                    )}
+                    {inYard.length > 0 && (
+                      <>
+                        <div className="cm-lbl" style={{ margin: '8px 0 2px' }}>{AREA.ngoai_san.icon} {AREA.ngoai_san.label}{yard?.area_name ? ` · ${yard.area_name}` : ''}</div>
+                        {inYard.map(renderPerson)}
+                      </>
+                    )}
+                    {perms.dutyLog && date <= today && gs.filter((g) => !scopedGroup || g === scopedGroup).map((g) => {
+                      const lg = logOf(date, g);
+                      return (
+                        <div key={g} style={{ marginTop: 8, borderTop: '1px dashed var(--cm-line)', paddingTop: 6 }}>
+                          <div className="cm-hint" style={{ margin: '0 0 4px' }}>Ghi nhận Tổ {g}: {lg ? <span className={`cm-pill ${STATUS[lg.status][1]}`}>{STATUS[lg.status][0]}</span> : 'chưa ghi'}</div>
+                          <div className="cm-chips">
+                            {Object.entries(STATUS).map(([k, [label]]) => (
+                              <button key={k} className={`cm-btn cm-btn-sm ${lg?.status === k ? 'cm-btn-main' : ''}`} onClick={() => log(date, g, k)}>{label}</button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
@@ -182,8 +267,14 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
             </div>
             {mode !== 'manual' && (
               <div>
-                <label className="cm-lbl" htmlFor="dp-per" style={{ marginTop: 0 }}>Số bạn / ngày</label>
+                <label className="cm-lbl" htmlFor="dp-per" style={{ marginTop: 0 }}>{hasYard ? 'Số bạn trong lớp / ngày' : 'Số bạn / ngày'}</label>
                 <input id="dp-per" type="number" min={1} max={15} className="cm-input" style={{ width: 90 }} value={perDay} onChange={(e) => setPerDay(e.target.value)} />
+              </div>
+            )}
+            {mode !== 'manual' && hasYard && (
+              <div>
+                <label className="cm-lbl" htmlFor="dp-yard" style={{ marginTop: 0 }}>Số bạn ngoài sân / ngày</label>
+                <input id="dp-yard" type="number" min={1} max={10} className="cm-input" style={{ width: 90 }} value={yardPerDay} onChange={(e) => setYardPerDay(e.target.value)} />
               </div>
             )}
             {mode === 'manual'
@@ -192,6 +283,9 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
           </div>
           <p className="cm-hint" style={{ marginTop: 8 }}>
             Trợ lý dựa vào điểm và vi phạm của lớp (mục Ghi nhận) để đề xuất kèm lý do; bạn xem, chỉnh rồi mới lưu. Bạn nào trực từ 2 lần trong tuần bắt buộc phải có lý do.
+            {hasYard
+              ? ` Lớp đang có khu vực ngoài sân (${yard.area_name}) nên trợ lý tự chia một số bạn ra sân mỗi ngày; bạn vẫn đổi được “Trong lớp / Ngoài sân” cho từng bạn.`
+              : ' Khi Tổng phụ trách Đội phân khu vực ngoài sân cho lớp, trợ lý sẽ tự chia các bạn ra sân.'}
           </p>
 
           {plan && (
@@ -201,9 +295,12 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
                 const rows = plan.map((r, i) => ({ r, i })).filter((x) => x.r.date === day.date);
                 const st = add[day.date] || {};
                 const pool = students.filter((s) => !st.g || s.group_no === Number(st.g));
+                const yardCount = rows.filter((x) => x.r.area === 'ngoai_san').length;
                 return (
                   <div key={day.date} style={{ border: '1px solid var(--cm-line)', borderRadius: 12, padding: 12, marginTop: 10 }}>
-                    <div style={{ fontWeight: 800, marginBottom: 6 }}>{fmtIso(day.date)} · {rows.length} bạn</div>
+                    <div style={{ fontWeight: 800, marginBottom: 6 }}>
+                      {fmtIso(day.date)} · {rows.length} bạn{hasYard ? ` (${rows.length - yardCount} trong lớp, ${yardCount} ngoài sân)` : ''}
+                    </div>
                     {rows.length === 0 && <div className="cm-hint">Chưa có ai.</div>}
                     {rows.map(({ r, i }) => {
                       const need = missing.some((m) => m.student_id === r.student_id) && !String(r.reason).trim();
@@ -213,6 +310,12 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
                             {r.name} {r.group_no ? <span className="cm-chip" style={{ padding: '0 7px' }}>T{r.group_no}</span> : null}
                             <div className="cm-hint" style={{ margin: 0, fontSize: 11 }}>{SOURCE[r.source]}</div>
                           </div>
+                          {hasYard && (
+                            <select className="cm-input" style={{ width: 128 }} value={r.area || 'trong_lop'} onChange={(e) => setAreaOf(i, e.target.value)} aria-label={`Khu vực của ${r.name}`}>
+                              <option value="trong_lop">🧹 Trong lớp</option>
+                              <option value="ngoai_san">🌳 Ngoài sân</option>
+                            </select>
+                          )}
                           <input
                             className="cm-input cm-grow"
                             style={need ? { borderColor: 'var(--cm-bad)', background: '#fff6f5' } : undefined}
@@ -226,7 +329,7 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
                       );
                     })}
                     <div className="cm-row" style={{ marginTop: 6 }}>
-                      <select className="cm-input" style={{ width: 110 }} value={st.g || ''} onChange={(e) => setAdd({ ...add, [day.date]: { g: e.target.value, sid: '' } })} aria-label="Lọc theo tổ">
+                      <select className="cm-input" style={{ width: 110 }} value={st.g || ''} onChange={(e) => setAdd({ ...add, [day.date]: { ...st, g: e.target.value, sid: '' } })} aria-label="Lọc theo tổ">
                         <option value="">Mọi tổ</option>
                         {groupNos.map((g) => <option key={g} value={g}>Tổ {g}</option>)}
                       </select>
@@ -234,6 +337,12 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
                         <option value="">— Thêm bạn vào {day.label} —</option>
                         {pool.map((s) => <option key={s.student_id} value={s.student_id}>{s.full_name}{s.group_no ? ` · Tổ ${s.group_no}` : ''}</option>)}
                       </select>
+                      {hasYard && (
+                        <select className="cm-input" style={{ width: 128 }} value={st.area || 'trong_lop'} onChange={(e) => setAdd({ ...add, [day.date]: { ...st, area: e.target.value } })} aria-label="Khu vực của bạn mới thêm">
+                          <option value="trong_lop">🧹 Trong lớp</option>
+                          <option value="ngoai_san">🌳 Ngoài sân</option>
+                        </select>
+                      )}
                       <button className="cm-btn cm-btn-sm" disabled={!st.sid} onClick={() => addPerson(day)}>＋ Thêm</button>
                     </div>
                   </div>
@@ -252,7 +361,6 @@ export default function DutyPanel({ classId, students, perms, role, roleGroup, t
           )}
         </div>
       )}
-
     </>
   );
 }

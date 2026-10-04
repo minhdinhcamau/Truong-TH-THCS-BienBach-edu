@@ -6,52 +6,22 @@ import { TPT_NAV } from '@/lib/nav';
 import { parseWorkbookSheets } from '@/lib/tkb';
 import { fmtDate, vnTodayIso } from '@/lib/dates';
 import AppShell, { Toast } from '@/components/AppShell';
+import ClassTimetable from '@/components/Timetable';
 
-const WEEKDAYS = [2, 3, 4, 5, 6, 7];
-const SESSIONS = [
-  { key: 'sang', label: 'Sáng', periods: [1, 2, 3, 4, 5] },
-  { key: 'chieu', label: 'Chiều', periods: [1, 2, 3, 4] },
-];
-
-// Bảng thời khóa biểu của 1 lớp: cột = Thứ 2..Thứ 7, hàng = tiết
-function TimetableGrid({ rows }) {
-  const map = useMemo(() => {
-    const m = new Map();
-    rows.forEach((r) => m.set(`${r.weekday}-${r.session}-${r.period}`, r));
-    return m;
-  }, [rows]);
+// Chọn lớp nhanh: danh sách thả xuống + nút lớp trước / lớp sau
+function ClassPicker({ id, value, options, onChange }) {
+  const idx = options.findIndex((o) => o.value === value);
+  const go = (d) => {
+    const n = options[idx + d];
+    if (n) onChange(n.value);
+  };
   return (
-    <div className="tbl-wrap">
-      <table className="tbl tkb-grid">
-        <thead>
-          <tr>
-            <th>Buổi · Tiết</th>
-            {WEEKDAYS.map((d) => <th key={d}>Thứ {d}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {SESSIONS.flatMap((s) =>
-            s.periods.map((p) => (
-              <tr key={`${s.key}-${p}`}>
-                <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)', fontWeight: 600 }}>{s.label} · {p}</td>
-                {WEEKDAYS.map((d) => {
-                  const r = map.get(`${d}-${s.key}-${p}`);
-                  return (
-                    <td key={d}>
-                      {r ? (
-                        <>
-                          <div style={{ fontWeight: 600 }}>{r.subject}</div>
-                          {r.teacher ? <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{r.teacher}</div> : null}
-                        </>
-                      ) : <span style={{ color: '#c3cad4' }}>·</span>}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+    <div className="row" style={{ gap: 6 }}>
+      <button type="button" className="btn btn-sm" disabled={idx <= 0} onClick={() => go(-1)} aria-label="Lớp trước">‹</button>
+      <select id={id} className="input" style={{ width: 130 }} value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <button type="button" className="btn btn-sm" disabled={idx < 0 || idx >= options.length - 1} onClick={() => go(1)} aria-label="Lớp sau">›</button>
     </div>
   );
 }
@@ -186,21 +156,26 @@ export default function TptTimetablePage() {
     return Array.from(m.values());
   }, [parsed]);
 
+  const previewOptions = useMemo(() => (parsed ? parsed.classes.map((c) => ({ value: c, label: c })) : []), [parsed]);
+  const classOptions = useMemo(() => classes.map((c) => ({ value: c.id, label: c.name })), [classes]);
+  const viewClassName = classes.find((c) => c.id === viewClass)?.name || '';
+
   if (!ready) return <div className="app"><div className="center-loading">Đang tải…</div></div>;
 
   return (
     <AppShell profile={profile} roleLabel="Tổng phụ trách Đội" nav={TPT_NAV} activeHref="/tpt/tkb" onLogout={logout}>
-      <h1 className="pg-title">Thời khóa biểu</h1>
+      <h1 className="pg-title">Thời khóa biểu toàn trường</h1>
       <p className="pg-sub">
-        Nhập file Excel thời khóa biểu của trường. Hệ thống tự tách từng lớp, từng tiết; Sao đỏ được phân công lớp nào sẽ thấy đủ các tiết của lớp đó
-        để đánh giá A/B/C (tiết không đánh là A).
+        Nhập file Excel thời khóa biểu của trường. Hệ thống tự tách từng lớp, từng tiết và hiện thành thời khóa biểu riêng của mỗi lớp (có nút In và Lưu ảnh).
+        Học sinh thấy thời khóa biểu lớp mình ở mục “Thời khóa biểu”; ban cán sự chọn đúng tiết và môn khi ghi nhận vi phạm hoặc điểm cộng; Sao đỏ được phân công lớp nào sẽ thấy đủ các tiết của lớp đó để đánh giá A/B/C (tiết không đánh là A).
       </p>
 
       <div className="card">
-        <div className="card-h"><h3>Nhập từ file Excel</h3></div>
+        <div className="card-h"><h3>Cập nhật từ file Excel</h3></div>
         <input type="file" accept=".xls,.xlsx" onChange={onFile} aria-label="Chọn file thời khóa biểu" />
         <p className="hint" style={{ marginTop: 8 }}>
           Đọc được file .xls và .xlsx theo mẫu hiện tại: mỗi sheet một buổi (sáng / chiều), hàng tiêu đề “THỨ – TIẾT – 6A1 – 6A2…”.
+          Mỗi lần nhập là một bản có “ngày áp dụng”; khi có bản mới, các lớp tự dùng bản mới từ ngày đó.
         </p>
 
         {parsed && (
@@ -226,14 +201,14 @@ export default function TptTimetablePage() {
 
             <div className="row" style={{ marginTop: 14 }}>
               <label className="lbl" htmlFor="pv" style={{ margin: 0 }}>Xem thử lớp</label>
-              <select id="pv" className="input" style={{ width: 130 }} value={previewClass} onChange={(e) => setPreviewClass(e.target.value)}>
-                {parsed.classes.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <ClassPicker id="pv" value={previewClass} options={previewOptions} onChange={setPreviewClass} />
               <span className="hint" style={{ margin: 0 }}>
                 {perClass.find((c) => c.name === previewClass)?.sang || 0} tiết sáng · {perClass.find((c) => c.name === previewClass)?.chieu || 0} tiết chiều
               </span>
             </div>
-            <div style={{ marginTop: 10 }}><TimetableGrid rows={previewRows} /></div>
+            <div style={{ marginTop: 10 }}>
+              <ClassTimetable rows={previewRows} className={previewClass} effectiveFrom={effectiveFrom} />
+            </div>
           </div>
         )}
 
@@ -283,12 +258,12 @@ export default function TptTimetablePage() {
               <>
                 <div className="row" style={{ margin: '12px 0 10px' }}>
                   <label className="lbl" htmlFor="vc" style={{ margin: 0 }}>Lớp</label>
-                  <select id="vc" className="input" style={{ width: 130 }} value={viewClass} onChange={(e) => setViewClass(e.target.value)}>
-                    {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <ClassPicker id="vc" value={viewClass} options={classOptions} onChange={setViewClass} />
                   <span className="hint" style={{ margin: 0 }}>Bản áp dụng từ {fmtDate(viewVersion)}</span>
                 </div>
-                {viewRows.length === 0 ? <div className="empty">Lớp này chưa có tiết nào trong bản này.</div> : <TimetableGrid rows={viewRows} />}
+                {viewRows.length === 0
+                  ? <div className="empty">Lớp này chưa có tiết nào trong bản này.</div>
+                  : <ClassTimetable rows={viewRows} className={viewClassName} effectiveFrom={viewVersion} />}
               </>
             )}
           </>

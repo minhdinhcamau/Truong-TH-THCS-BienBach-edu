@@ -11,8 +11,9 @@ const KIND_TONE = { violation: 'bad', singing: 'bad', plus: 'ok', cadre_ok: 'mut
 const SESS = { sang: 'sáng', chieu: 'chiều' };
 
 // Ghi nhận trong lớp: mỗi chức vụ chỉ thấy những mục mình được phép ghi (theo perms).
-// Thiết kế theo từng bước, tối ưu cho điện thoại: chọn học sinh (gom theo tổ) → chọn loại (và tiết nếu cần) → ghi nhận.
-// Chống trùng: 1 tiết chỉ ghi 1 lần (nói chuyện, bị nhắc nhở), 1 ngày chỉ ghi 1 lần (thiếu sổ, khăn quàng...).
+// Thiết kế theo từng bước, tối ưu cho điện thoại: chọn học sinh (gom theo tổ) → chọn loại (và tiết + môn nếu cần) → ghi nhận.
+// Chống trùng: 1 tiết chỉ ghi 1 lần (nói chuyện, bị nhắc nhở, điểm cộng), 1 ngày chỉ ghi 1 lần (thiếu sổ, khăn quàng...).
+// Tổ trưởng / tổ phó: ghi vi phạm cho tổ đang giám sát; ghi điểm cộng cho tổ của mình hoặc tổ đang giám sát.
 export default function RecordPanel({ classId, students, perms, role, roleGroup, profileId, toast }) {
   const today = vnTodayIso();
   const monday = mondayOf(today);
@@ -76,19 +77,22 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
     { kind: 'plus', title: '✨ Điểm cộng', list: allowed.filter((t) => t.kind === 'plus') },
   ].filter((g) => g.list.length > 0);
 
-  // Tổ trưởng / tổ phó chỉ ghi được thành viên trong tổ của mình
+  // Tổ trưởng / tổ phó chỉ ghi được thành viên trong tổ của mình hoặc tổ đang giám sát
   const scoped = !perms.staff && (role === 'to_truong' || role === 'to_pho');
-  const effectiveGroup = watchGroup || roleGroup; // tổ trưởng/tổ phó ghi nhận cho tổ đang giám sát (có thể khác tổ của mình nếu đã xếp trực chéo)
+  const effectiveGroup = watchGroup || roleGroup; // tổ đang giám sát (có thể khác tổ của mình nếu đã xếp trực chéo)
   const isCross = scoped && effectiveGroup !== roleGroup;
-  const candidates = students.filter((s) => !scoped || s.group_no === effectiveGroup);
+  const candidates = students.filter((s) => !scoped || s.group_no === effectiveGroup || s.group_no === roleGroup);
   const picked = allowed.find((t) => t.code === typeCode);
   const isCustom = typeCode === 'khac';
   const selectedStudent = students.find((s) => s.student_id === studentId);
+  // Vi phạm / không hát chỉ ghi cho tổ đang giám sát; điểm cộng ghi được cho cả tổ của mình
+  const outOfScope = scoped && !!selectedStudent && !!picked && picked.kind !== 'plus' && selectedStudent.group_no !== effectiveGroup;
 
   const scope = picked?.dedupe_scope || 'none';
   const needPeriod = scope === 'period' && periods.length > 0;
   const noTimetable = scope === 'period' && periods.length === 0;
   const [pSess, pNo] = periodKey ? periodKey.split(':') : [null, null];
+  const pickedPeriod = needPeriod && periodKey ? periods.find((p) => p.session === pSess && String(p.period) === pNo) : null;
 
   // Đã có ai ghi đúng mục này cho bạn này (cùng tiết / cùng ngày) chưa?
   const existing = useMemo(() => {
@@ -100,7 +104,7 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
   const takenPeriod = (p) => !!studentId && !!picked && dedupe.some((d) => d.student_id === studentId && d.type_code === picked.code
     && d.period_session === p.session && d.period_no === p.period);
 
-  const readyToSubmit = !!studentId && !!typeCode && (!isCustom || custom.trim()) && (!needPeriod || !!periodKey) && !existing;
+  const readyToSubmit = !!studentId && !!typeCode && (!isCustom || custom.trim()) && (!needPeriod || !!periodKey) && !existing && !outOfScope;
 
   async function submit() {
     if (!readyToSubmit) {
@@ -163,13 +167,14 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
         .rp-step-n { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--cm-accent, #2f6f5e); color: #fff; font-size: 12px; display: grid; place-items: center; }
         .rp-type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
         .rp-type { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 11px 13px; border-radius: 12px; border: 1.5px solid var(--cm-line); background: #fff; cursor: pointer; min-height: 54px; text-align: left; }
-        .rp-type.on { border-color: var(--cm-accent, #2f6f5e); background: #f3f9f6; }
+        .rp-type.on { border-color: var(--cm-accent, #2f6f5e); background: var(--cm-tint, #f3f9f6); }
         .rp-type:disabled { opacity: 0.45; cursor: not-allowed; }
         .rp-type-lbl { font-size: 13px; font-weight: 700; line-height: 1.25; }
         .rp-type-pt { font-size: 13px; font-weight: 800; }
         .rp-type-pt.neg { color: var(--cm-bad); } .rp-type-pt.pos { color: var(--cm-ok); }
         .rp-once { font-size: 11.5px; color: var(--cm-muted); font-weight: 600; }
-        .rp-summary { background: #f3f9f6; border: 1.5px dashed var(--cm-accent, #2f6f5e); border-radius: 12px; padding: 12px 14px; font-size: 13.5px; }
+        .rp-subj { font-size: 14px; font-weight: 800; color: var(--cm-ink); line-height: 1.25; }
+        .rp-summary { background: var(--cm-tint, #f3f9f6); border: 1.5px dashed var(--cm-accent, #2f6f5e); border-radius: 12px; padding: 12px 14px; font-size: 13.5px; }
         .rp-summary b { color: var(--cm-accent-d, #234f42); }
         .rp-dup { background: #fff4e5; border: 1.5px solid #f0b866; border-radius: 12px; padding: 12px 14px; font-size: 13.5px; margin-top: 14px; }
         .rp-per-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
@@ -223,8 +228,11 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
         <div className="cm-card" id="rp-new-record">
           <div className="cm-h"><h3>Ghi nhận mới</h3></div>
 
-          <div className="rp-step-h"><span className="rp-step-n">1</span> Chọn học sinh{scoped ? ` (Tổ ${effectiveGroup}${isCross ? ' — tổ em đang giám sát tuần này' : ''})` : ''}</div>
-          <StudentPicker students={candidates} value={studentId} onChange={setStudentId} scopeGroup={scoped ? effectiveGroup : null} />
+          <div className="rp-step-h">
+            <span className="rp-step-n">1</span> Chọn học sinh
+            {scoped ? ` (Tổ ${effectiveGroup}${isCross ? ' — tổ em đang giám sát tuần này' : ''}${roleGroup && roleGroup !== effectiveGroup ? `; điểm cộng ghi được cả Tổ ${roleGroup}` : ''})` : ''}
+          </div>
+          <StudentPicker students={candidates} value={studentId} onChange={setStudentId} scopeGroup={scoped && roleGroup === effectiveGroup ? effectiveGroup : null} />
 
           <div className="rp-step-h" style={{ marginTop: 16 }}><span className="rp-step-n">2</span> Chọn nội dung</div>
           {groups.map((g) => (
@@ -258,15 +266,16 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
 
           {needPeriod && (
             <>
-              <div className="cm-lbl">Việc này xảy ra ở tiết nào? ({periods.length} tiết trong ngày)</div>
+              <div className="cm-lbl">Việc này xảy ra ở tiết nào? Chọn đúng tiết và môn ({periods.length} tiết trong ngày)</div>
               <div className="rp-per-grid">
                 {periods.map((p) => {
                   const key = `${p.session}:${p.period}`;
                   const taken = takenPeriod(p);
                   return (
                     <button key={key} type="button" disabled={taken} className={`rp-type ${periodKey === key ? 'on' : ''}`} onClick={() => setPeriodKey(key)} aria-pressed={periodKey === key}>
-                      <span className="rp-type-lbl">Tiết {p.period} {SESS[p.session]}</span>
-                      <span className="rp-once">{p.subject}{p.teacher ? ` · ${p.teacher}` : ''}</span>
+                      <span className="rp-once">Tiết {p.period} {SESS[p.session]}</span>
+                      <span className="rp-subj">{p.subject}</span>
+                      {p.teacher ? <span className="rp-once">{p.teacher}</span> : null}
                       {taken && <span className="rp-once" style={{ color: 'var(--cm-bad)' }}>Đã có người ghi</span>}
                     </button>
                   );
@@ -275,17 +284,23 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
             </>
           )}
           {noTimetable && (
-            <p className="cm-hint" style={{ marginTop: 10 }}>Lớp chưa có thời khóa biểu cho ngày này nên tạm tính “1 lần mỗi ngày”. Khi cô Tổng phụ trách cập nhật thời khóa biểu, em sẽ chọn được tiết.</p>
+            <p className="cm-hint" style={{ marginTop: 10 }}>Lớp chưa có thời khóa biểu cho ngày này nên tạm tính “1 lần mỗi ngày”. Khi cô Tổng phụ trách cập nhật thời khóa biểu, em sẽ chọn được tiết và môn.</p>
           )}
 
           <div className="rp-step-h" style={{ marginTop: 16 }}><span className="rp-step-n">3</span> Ghi chú & ngày</div>
           <label className="cm-lbl" htmlFor="rc-note" style={{ marginTop: 0 }}>Ghi chú (không bắt buộc)</label>
-          <input id="rc-note" className="cm-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="VD: tiết Toán, đã nhắc 2 lần…" />
+          <input id="rc-note" className="cm-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="VD: đã nhắc 2 lần, phát biểu đúng câu 3…" />
           {perms.staff && (
             <>
               <label className="cm-lbl" htmlFor="rc-date">Ngày</label>
               <input id="rc-date" type="date" className="cm-input" value={date} max={today} onChange={(e) => setDate(e.target.value || today)} />
             </>
+          )}
+
+          {outOfScope && (
+            <div className="rp-dup" role="alert">
+              <b>Bạn này không thuộc tổ em đang giám sát.</b> Tuần này em chỉ ghi vi phạm cho Tổ {effectiveGroup}. Riêng điểm cộng thì em ghi được cho cả tổ của mình.
+            </div>
           )}
 
           {existing && (
@@ -299,7 +314,7 @@ export default function RecordPanel({ classId, students, perms, role, roleGroup,
           {readyToSubmit && (
             <div className="rp-summary" style={{ marginTop: 14 }}>
               Sẽ ghi: <b>{selectedStudent?.full_name}</b> — {isCustom ? custom : picked?.label}
-              {needPeriod && pNo ? ` (tiết ${pNo} ${SESS[pSess]})` : ''}
+              {needPeriod && pNo ? ` (tiết ${pNo} ${SESS[pSess]}${pickedPeriod?.subject ? ` · môn ${pickedPeriod.subject}` : ''})` : ''}
               {' '}(<b>{isCustom ? -1 : picked?.points > 0 ? `+${picked.points}` : picked?.points} điểm</b>)
             </div>
           )}

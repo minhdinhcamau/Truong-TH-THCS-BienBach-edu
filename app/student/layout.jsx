@@ -13,13 +13,38 @@ export function useStudent() {
   return useContext(StudentContext);
 }
 
-// Thanh chuyển mục. "Học tập" là trang tổng hợp các môn (Ngữ văn, Tiếng Anh, Âm nhạc...)
+// Các mục chuyển trang. "Học tập" là trang tổng hợp các môn (Ngữ văn, Tiếng Anh, Âm nhạc...).
+// bottom: hiện ở thanh menu dưới cùng trên điện thoại; các mục còn lại nằm trong menu "Thêm".
 const TABS = [
   {
     href: '/student',
     label: 'Học tập',
+    bottom: true,
     match: (p) => p === '/student' || p.startsWith('/student/english') || p.startsWith('/student/music') || p.startsWith('/student/ngu-van'),
     icon: <path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" />,
+  },
+  {
+    href: '/student/thi-dua',
+    label: 'Thi đua lớp',
+    short: 'Thi đua',
+    bottom: true,
+    match: (p) => p.startsWith('/student/thi-dua'),
+    icon: <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />,
+  },
+  {
+    href: '/student/thoi-khoa-bieu',
+    label: 'Thời khóa biểu',
+    short: 'Lịch học',
+    bottom: true,
+    match: (p) => p.startsWith('/student/thoi-khoa-bieu'),
+    icon: <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 10h16M9 4v3M15 4v3M8 14h3M13 14h3M8 17h3" />,
+  },
+  {
+    href: '/student/bang-tin',
+    label: 'Bảng tin',
+    bottom: true,
+    match: (p) => p.startsWith('/student/bang-tin'),
+    icon: <path d="M4 5h13v14H6a2 2 0 0 1-2-2V5zM17 9h3v8a2 2 0 0 1-2 2M8 9h6M8 13h6" />,
   },
   {
     href: '/student/leaderboard',
@@ -34,22 +59,10 @@ const TABS = [
     icon: <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
   },
   {
-    href: '/student/thi-dua',
-    label: 'Thi đua lớp',
-    match: (p) => p.startsWith('/student/thi-dua'),
-    icon: <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />,
-  },
-  {
     href: '/student/khieu-nai',
     label: 'Khiếu nại',
     match: (p) => p.startsWith('/student/khieu-nai'),
     icon: <path d="M12 9v4M12 17h.01M10.3 3.9l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3.1l-8-14a2 2 0 0 0-3.4 0z" />,
-  },
-  {
-    href: '/student/bang-tin',
-    label: 'Bảng tin',
-    match: (p) => p.startsWith('/student/bang-tin'),
-    icon: <path d="M4 5h13v14H6a2 2 0 0 1-2-2V5zM17 9h3v8a2 2 0 0 1-2 2M8 9h6M8 13h6" />,
   },
   {
     href: '/student/bao-cao-vi-pham',
@@ -66,10 +79,16 @@ const BCS_TAB = {
   icon: <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4" />,
 };
 
+const Icon = ({ d }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>
+);
+const DOTS = <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth="3.4" />;
+
 export default function StudentLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const [state, setState] = useState({ loading: true, profile: null, stats: null, classRole: null });
+  const [moreOpen, setMoreOpen] = useState(false);
 
   async function loadAll() {
     const { data: userRes } = await supabase.auth.getUser();
@@ -97,7 +116,7 @@ export default function StudentLayout({ children }) {
       .eq('student_id', user.id)
       .maybeSingle();
 
-    // Chức vụ ban cán sự (nếu có) -> hiện thêm tab "Ban cán sự"
+    // Chức vụ ban cán sự (nếu có) -> hiện thêm mục "Ban cán sự"
     const { data: roleRows } = await supabase.rpc('my_class_role');
 
     setState({
@@ -113,6 +132,22 @@ export default function StudentLayout({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Đổi trang thì đóng menu "Thêm"
+  useEffect(() => { setMoreOpen(false); }, [pathname]);
+
+  // Mở menu thì khóa cuộn nền; bấm Esc để đóng
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const k = (e) => e.key === 'Escape' && setMoreOpen(false);
+    window.addEventListener('keydown', k);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', k);
+    };
+  }, [moreOpen]);
+
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push('/login');
@@ -127,33 +162,41 @@ export default function StudentLayout({ children }) {
 
   const { profile, stats, classRole } = state;
   const tabs = classRole && profile.role !== 'admin' ? [...TABS, BCS_TAB] : TABS;
+  const bottomTabs = tabs.filter((t) => t.bottom);
+  const moreTabs = tabs.filter((t) => !t.bottom);
+  const moreActive = moreTabs.some((t) => t.match(pathname));
   // Quản trị viên bấm "Xem trang Học sinh" từ trang admin -> hiện nút quay về thay vì các tính năng của học sinh
   const isAdminViewing = profile.role === 'admin';
   const tier = getRankTier(stats.total_xp);
   const initials = getInitials(profile.full_name);
+
+  const avatar = (size, core, font) => (
+    <div className={`avatar-frame ${tier.className}`} style={{ width: size, height: size }}>
+      <div className="core" style={{ width: core, height: core, fontSize: font }}>
+        {profile.photo_url ? <img src={profile.photo_url} alt="" /> : initials}
+      </div>
+      {tier.badge && <div className="rank-badge">{tier.badge}</div>}
+    </div>
+  );
 
   return (
     <StudentContext.Provider value={{ profile, stats, classRole, refresh: loadAll }}>
       <div className="student-shell sx-shell">
         <header className="sx-top">
           <div className="sx-top-in">
-            <div className="sx-brand">
-              <img src="/logo-truong.png" alt="Logo Trường TH - THCS Biển Bạch" className="sx-logo" width="62" height="62" />
-              <div>
+            <Link href="/student" className="sx-brand" aria-label="Về trang chủ">
+              <img src="/logo-truong.png" alt="Logo Trường TH - THCS Biển Bạch" className="sx-logo" width="56" height="56" />
+              <div className="sx-brand-t">
                 <div className="sx-school">Trường TH - THCS Biển Bạch</div>
                 <div className="sx-place">Xã Biển Bạch, tỉnh Cà Mau</div>
               </div>
-            </div>
+            </Link>
 
+            {/* Một chuông duy nhất (tránh kêu 2 lần); phần còn lại ẩn/hiện theo cỡ màn hình */}
             <div className="sx-actions">
               {!isAdminViewing && (
-                <div className="sx-chip">
-                  <div className={`avatar-frame ${tier.className}`} style={{ width: 46, height: 46 }}>
-                    <div className="core" style={{ width: 38, height: 38, fontSize: 14 }}>
-                      {profile.photo_url ? <img src={profile.photo_url} alt="" /> : initials}
-                    </div>
-                    {tier.badge && <div className="rank-badge">{tier.badge}</div>}
-                  </div>
+                <div className="sx-chip sx-desk-only">
+                  {avatar(46, 38, 14)}
                   <div>
                     <div className="sx-name">{profile.full_name} · Lớp {profile.classes?.name || '—'}</div>
                     <div className="sx-sub">
@@ -164,28 +207,25 @@ export default function StudentLayout({ children }) {
                   </div>
                 </div>
               )}
-              {isAdminViewing && (
-                <Link href="/admin" className="sx-pill back">← Quay về trang quản trị</Link>
-              )}
-              {!isAdminViewing && profile.is_saodo && (
-                <Link href="/saodo" className="sx-pill">Sao đỏ</Link>
-              )}
+              {isAdminViewing && <Link href="/admin" className="sx-pill back">← Quay về trang quản trị</Link>}
+              {!isAdminViewing && profile.is_saodo && <Link href="/saodo" className="sx-pill sx-desk-only">Sao đỏ</Link>}
               {!isAdminViewing && <NotificationBell studentId={profile.id} />}
-              {!isAdminViewing && (
-                <Link href="/student/doi-mat-khau" title="Đổi mật khẩu" className="sx-pill">Đổi mật khẩu</Link>
-              )}
-              <button className="sx-pill solid" onClick={handleLogout}>Đăng xuất</button>
+              {!isAdminViewing && <Link href="/student/doi-mat-khau" title="Đổi mật khẩu" className="sx-pill sx-desk-only">Đổi mật khẩu</Link>}
+              <button className="sx-pill solid sx-desk-only" onClick={handleLogout}>Đăng xuất</button>
+              {/* Điện thoại: ảnh đại diện, bấm mở menu Thêm */}
+              <button className="sx-avatar-btn sx-mob-only" onClick={() => setMoreOpen(true)} aria-label="Mở menu tài khoản">
+                {avatar(42, 34, 12)}
+              </button>
             </div>
           </div>
         </header>
 
         <div className="sx-wrap student-wrap">
+          {/* Máy tính: thanh chuyển mục ngang */}
           <nav className="sx-tabs" aria-label="Chuyển mục">
             {tabs.map((t) => (
               <Link key={t.href} href={t.href} className={`sx-tab ${t.match(pathname) ? 'active' : ''}`}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  {t.icon}
-                </svg>
+                <Icon d={t.icon} />
                 {t.label}
               </Link>
             ))}
@@ -195,6 +235,67 @@ export default function StudentLayout({ children }) {
 
           <footer className="sx-footer">Không gian học tập · Trường TH-THCS Biển Bạch</footer>
         </div>
+
+        {/* Điện thoại: thanh menu dưới cùng */}
+        <nav className="sx-bottom" aria-label="Menu chính">
+          {bottomTabs.map((t) => (
+            <Link key={t.href} href={t.href} className={`sx-bt ${t.match(pathname) ? 'active' : ''}`} aria-current={t.match(pathname) ? 'page' : undefined}>
+              <span className="sx-bt-ic"><Icon d={t.icon} /></span>
+              <span className="sx-bt-lb">{t.short || t.label}</span>
+            </Link>
+          ))}
+          <button type="button" className={`sx-bt ${moreActive || moreOpen ? 'active' : ''}`} onClick={() => setMoreOpen(true)} aria-haspopup="dialog">
+            <span className="sx-bt-ic"><Icon d={DOTS} /></span>
+            <span className="sx-bt-lb">Thêm</span>
+          </button>
+        </nav>
+
+        {/* Menu "Thêm" */}
+        {moreOpen && (
+          <div className="sx-sheet-bg" onClick={() => setMoreOpen(false)}>
+            <div className="sx-sheet" role="dialog" aria-modal="true" aria-label="Menu" onClick={(e) => e.stopPropagation()}>
+              <div className="sx-sheet-grip" aria-hidden="true" />
+              {!isAdminViewing && (
+                <div className="sx-sheet-me">
+                  {avatar(54, 44, 15)}
+                  <div className="sx-sheet-me-t">
+                    <b>{profile.full_name}</b>
+                    <span>Lớp {profile.classes?.name || '—'} · {tier.name}</span>
+                    <span>{stats.total_xp.toLocaleString('vi-VN')} KN · {stats.current_streak} ngày liên tiếp</span>
+                  </div>
+                  <button className="sx-sheet-x" onClick={() => setMoreOpen(false)} aria-label="Đóng">✕</button>
+                </div>
+              )}
+              <div className="sx-sheet-grid">
+                {moreTabs.map((t) => (
+                  <Link key={t.href} href={t.href} className={`sx-tile ${t.match(pathname) ? 'active' : ''}`}>
+                    <span className="sx-tile-ic"><Icon d={t.icon} /></span>
+                    <span>{t.label}</span>
+                  </Link>
+                ))}
+                {!isAdminViewing && profile.is_saodo && (
+                  <Link href="/saodo" className="sx-tile">
+                    <span className="sx-tile-ic"><Icon d={<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />} /></span>
+                    <span>Sao đỏ</span>
+                  </Link>
+                )}
+                {!isAdminViewing && (
+                  <Link href="/student/doi-mat-khau" className="sx-tile">
+                    <span className="sx-tile-ic"><Icon d={<path d="M6 11V8a6 6 0 0 1 12 0v3M5 11h14v9H5z" />} /></span>
+                    <span>Đổi mật khẩu</span>
+                  </Link>
+                )}
+                {isAdminViewing && (
+                  <Link href="/admin" className="sx-tile">
+                    <span className="sx-tile-ic"><Icon d={<path d="M15 6l-6 6 6 6" />} /></span>
+                    <span>Về trang quản trị</span>
+                  </Link>
+                )}
+              </div>
+              <button className="sx-sheet-out" onClick={handleLogout}>Đăng xuất</button>
+            </div>
+          </div>
+        )}
       </div>
     </StudentContext.Provider>
   );

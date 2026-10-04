@@ -1,87 +1,251 @@
-/* Giao diện khung trang học sinh (đầu trang, thanh chuyển mục, chân trang).
-   Dùng tiền tố sx- để không đụng vào student.css của các trang con. */
+/* Giao diện khung trang học sinh: màu chủ đạo xanh nước biển PASTEL, ưu tiên điện thoại.
+   Dùng tiền tố sx- để không đụng vào student.css của các trang con.
+   File này nạp SAU student.css nên các biến màu bên dưới ghi đè màu cũ cho mọi trang học sinh. */
 
 .student-shell.sx-shell {
-  --sx-navy: #0b2a66;
-  --sx-blue: #0a52c7;
-  --sx-sky: #e8f0fc;
-  --sx-gold: #f5b800;
-  --sx-red: #d92d3a;
-  --sx-ink: #12263f;
-  --sx-line: #dbe5f3;
+  /* Bảng màu pastel */
+  --sx-bg: #f4f9ff;
+  --sx-sky: #e6f1fd;
+  --sx-sky2: #d3e6fa;
+  --sx-line: #d7e6f6;
+  --sx-primary: #3478b8;      /* nút chính: vẫn đủ đậm để chữ trắng dễ đọc */
+  --sx-primary-d: #245f9a;
+  --sx-text: #16324f;
+  --sx-soft: #52708f;
+  --sx-accent: #4a8fd6;
+
+  /* Ghi đè biến của student.css (dùng cho các trang con) */
+  --bg: #f4f9ff;
+  --bg-deep: #4a8fd6;
+  --bg-deep2: #6aa5de;
+  --card: #ffffff;
+  --ink: #16324f;
+  --ink-soft: #52708f;
+  --ink-faint: #8fa8c2;
+  --ocean: #3478b8;
+  --ocean-dark: #245f9a;
+  --ocean-tint: #e6f1fd;
+  --line: #d7e6f6;
+  --radius-lg: 20px;
+  --shadow: 0 10px 24px -18px rgba(40, 90, 150, 0.45);
+
+  /* Công cụ ban cán sự (components/classmgr) khi nằm trong trang học sinh */
+  --cm-accent: #3478b8;
+  --cm-accent-d: #245f9a;
+  --cm-tint: #eaf3fd;
+  --cm-line: #d7e6f6;
+  --cm-ink: #16324f;
+  --cm-muted: #52708f;
+
   min-height: 100vh;
-  background: #f2f6fc;
+  background: var(--sx-bg);
+  color: var(--sx-text);
   font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ---------- Đầu trang ---------- */
 .sx-top {
-  background: linear-gradient(135deg, #0b2a66 0%, #0a52c7 100%);
-  color: #fff;
+  background: linear-gradient(135deg, #e6f2fe 0%, #cfe4f9 100%);
+  color: #17406b;
+  border-bottom: 1px solid #c3dbf3;
   position: relative;
-}
-.sx-top::after {
-  content: '';
-  position: absolute; left: 0; right: 0; bottom: 0; height: 4px;
-  background: linear-gradient(90deg, var(--sx-gold) 0 34%, var(--sx-red) 34% 67%, #fff 67% 100%);
-  opacity: 0.95;
+  z-index: 40;
 }
 .sx-top-in {
-  max-width: 1120px; margin: 0 auto; padding: 16px 24px 22px;
-  display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+  max-width: 1120px; margin: 0 auto; padding: 14px 24px 26px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
 }
-.sx-brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.sx-brand { display: flex; align-items: center; gap: 14px; min-width: 0; text-decoration: none; color: inherit; }
 .sx-logo {
-  width: 62px; height: 62px; border-radius: 50%; background: #fff; padding: 4px; flex: none;
-  box-shadow: 0 6px 18px -6px rgba(0,0,0,0.45); object-fit: contain; display: block;
+  width: 58px; height: 58px; border-radius: 50%; background: #fff; padding: 4px; flex: none;
+  box-shadow: 0 6px 16px -8px rgba(40, 90, 150, 0.55); object-fit: contain; display: block;
 }
-.sx-school { font-weight: 800; font-size: 20px; line-height: 1.15; letter-spacing: 0.1px; }
-.sx-place { font-size: 12.5px; color: #bcd3f6; margin-top: 3px; }
+.sx-brand-t { min-width: 0; }
+.sx-school { font-weight: 800; font-size: 19px; line-height: 1.2; color: #173f6b; }
+.sx-place { font-size: 12.5px; color: #4a6f96; margin-top: 2px; }
 
 .sx-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sx-pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 9px 15px; border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.42); background: rgba(255,255,255,0.12); color: #fff;
+  border: 1px solid #b9d4f0; background: #fff; color: #1f5a96;
   font-weight: 700; font-size: 12.5px; text-decoration: none; white-space: nowrap; cursor: pointer; font-family: inherit;
 }
-.sx-pill:hover { background: rgba(255,255,255,0.22); }
-.sx-pill.solid { background: #fff; color: var(--sx-navy); border-color: #fff; }
-.sx-pill.solid:hover { background: #eef4ff; }
-.sx-pill.back { background: #fff; color: var(--sx-navy); }
+.sx-pill:hover { background: #f1f7fe; }
+.sx-pill.solid { background: var(--sx-primary); color: #fff; border-color: var(--sx-primary); }
+.sx-pill.solid:hover { background: var(--sx-primary-d); }
+.sx-pill.back { background: #fff; color: #1f5a96; }
 
 .sx-chip {
   display: flex; align-items: center; gap: 12px; padding: 6px 18px 6px 6px; border-radius: 999px;
-  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.28);
+  background: rgba(255, 255, 255, 0.75); border: 1px solid #bcd6f2;
 }
-.sx-chip .sx-name { font-weight: 800; font-size: 14px; line-height: 1.2; }
-.sx-chip .sx-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: #cfe0fa; margin-top: 3px; }
-.sx-chip .sx-tag { background: rgba(255,255,255,0.16); border-radius: 999px; padding: 2px 9px; font-weight: 700; color: #fff; }
+.sx-chip .sx-name { font-weight: 800; font-size: 14px; line-height: 1.2; color: #173f6b; }
+.sx-chip .sx-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: #52708f; margin-top: 3px; }
+.sx-chip .sx-tag { background: #e3effc; border-radius: 999px; padding: 2px 9px; font-weight: 700; color: #1f5a96; }
 
-/* ---------- Thanh chuyển mục ---------- */
+/* Ảnh đại diện: viền sáng hợp nền pastel */
+.student-shell .avatar-frame .core { border-color: #fff; background: #4a8fd6; }
+
+/* Chuông thông báo (giữ nguyên chức năng, chỉ đổi màu cho hợp nền sáng) */
+.student-shell .sx-top .bell {
+  background: #fff !important; border: 1px solid #b9d4f0 !important; color: #1f5a96;
+  width: 42px; height: 42px; padding: 0 !important; font-size: 19px !important;
+}
+.student-shell .sx-top .badge { border-color: #fff !important; }
+.student-shell .panel { top: 72px !important; }
+
+.sx-avatar-btn { border: 0; background: none; padding: 0; cursor: pointer; display: none; border-radius: 50%; }
+.sx-mob-only { display: none; }
+
+/* ---------- Thanh chuyển mục (máy tính) ---------- */
 .sx-wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px 56px; }
 .sx-tabs {
-  display: flex; gap: 4px; overflow-x: auto; background: #fff; border: 1px solid var(--sx-line); border-radius: 16px;
-  padding: 6px; margin: -20px auto 26px; position: relative; z-index: 2;
-  box-shadow: 0 14px 30px -20px rgba(11,42,102,0.5); scrollbar-width: none;
+  display: flex; gap: 4px; overflow-x: auto; background: #fff; border: 1px solid var(--sx-line); border-radius: 18px;
+  padding: 6px; margin: -18px auto 26px; position: relative; z-index: 2;
+  box-shadow: 0 14px 28px -22px rgba(40, 90, 150, 0.6); scrollbar-width: none;
 }
 .sx-tabs::-webkit-scrollbar { display: none; }
 .sx-tab {
-  display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border-radius: 11px; text-decoration: none;
-  color: #3a4f6e; font-weight: 700; font-size: 13.5px; white-space: nowrap; flex: none;
+  display: inline-flex; align-items: center; gap: 8px; padding: 11px 16px; border-radius: 13px; text-decoration: none;
+  color: #3f5f84; font-weight: 700; font-size: 13.5px; white-space: nowrap; flex: none;
 }
 .sx-tab svg { width: 18px; height: 18px; }
 .sx-tab:hover { background: var(--sx-sky); }
-.sx-tab.active { background: var(--sx-blue); color: #fff; }
-.sx-tab:focus-visible, .sx-pill:focus-visible { outline: 3px solid var(--sx-gold); outline-offset: 2px; }
+.sx-tab.active { background: #d7e8fb; color: #1f5a96; box-shadow: inset 0 0 0 1.5px #a9cbee; }
+.sx-tab:focus-visible, .sx-pill:focus-visible, .sx-bt:focus-visible, .sx-tile:focus-visible { outline: 3px solid var(--sx-accent); outline-offset: 2px; }
 
-.sx-footer { text-align: center; color: #6b7f99; font-size: 12.5px; padding: 8px 0 0; }
+.sx-footer { text-align: center; color: #7b93ad; font-size: 12.5px; padding: 8px 0 0; }
+.sx-loading { display: grid; place-items: center; min-height: 60vh; color: var(--sx-soft); font-weight: 600; }
 
-.sx-loading { display: grid; place-items: center; min-height: 60vh; color: #5c6f86; font-weight: 600; }
+/* ---------- Thanh menu dưới + menu "Thêm" (chỉ hiện trên điện thoại) ---------- */
+.sx-bottom, .sx-sheet-bg { display: none; }
 
-@media (max-width: 720px) {
-  .sx-top-in { padding: 14px 16px 20px; }
-  .sx-wrap { padding: 0 14px 48px; }
-  .sx-school { font-size: 17px; }
-  .sx-logo { width: 52px; height: 52px; }
-  .sx-chip .sx-sub { display: none; }
+/* ---------- Giao diện công cụ ban cán sự trong trang học sinh ---------- */
+.student-shell .cm-root .cm-card { border-radius: 18px; border-color: var(--cm-line); box-shadow: 0 8px 22px -20px rgba(40, 90, 150, 0.55); }
+.student-shell .cm-root .cm-btn { border-color: #c9dcf1; border-radius: 12px; }
+.student-shell .cm-root .cm-btn:hover:not(:disabled) { background: #f1f7fe; }
+.student-shell .cm-root .cm-btn-main { border-color: var(--cm-accent); }
+.student-shell .cm-root .cm-input { border-color: #c9dcf1; border-radius: 12px; }
+.student-shell .cm-root .cm-chip { background: #e8f1fc; color: #1f5a96; }
+.student-shell .cm-root .cm-pill.mute { background: #e8f1fc; color: #52708f; }
+.student-shell .cm-root .cm-tabs { border-bottom-color: var(--cm-line); }
+.student-shell .sp-chip.on, .student-shell .sp-selected, .student-shell .rp-summary, .student-shell .rp-type.on { background: #eaf3fd !important; }
+
+/* ---------- Điện thoại và máy tính bảng nhỏ ---------- */
+@media (max-width: 900px) {
+  .student-shell.sx-shell { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+
+  .sx-top { position: sticky; top: 0; border-bottom: 1px solid #c3dbf3; box-shadow: 0 6px 18px -16px rgba(40, 90, 150, 0.7); }
+  .sx-top-in { padding: 8px 14px; flex-wrap: nowrap; gap: 10px; }
+  .sx-logo { width: 40px; height: 40px; padding: 3px; }
+  .sx-brand { gap: 10px; flex: 1; min-width: 0; }
+  .sx-school { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sx-place { display: none; }
+  .sx-actions { flex-wrap: nowrap; gap: 8px; flex: none; }
+  .sx-desk-only { display: none !important; }
+  .sx-mob-only { display: inline-flex; }
+  .sx-avatar-btn.sx-mob-only { display: inline-flex; }
+  .student-shell .sx-top .bell { width: 40px; height: 40px; font-size: 18px !important; }
+  .student-shell .panel { top: 62px !important; right: 8px !important; width: min(92vw, 360px) !important; max-height: 70vh !important; }
+
+  .sx-tabs { display: none; }
+  .sx-wrap { padding: 14px 14px 18px; }
+  .sx-footer { padding-bottom: 4px; }
+
+  /* Thanh menu dưới cùng */
+  .sx-bottom {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    background: rgba(255, 255, 255, 0.97); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border-top: 1px solid var(--sx-line); box-shadow: 0 -10px 26px -18px rgba(40, 90, 150, 0.55);
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); gap: 2px;
+  }
+  .sx-bt {
+    flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 2px 0;
+    text-decoration: none; color: #5f7d9f; background: none; border: 0; cursor: pointer; font-family: inherit; min-height: 52px;
+  }
+  .sx-bt-ic { display: grid; place-items: center; width: 52px; height: 30px; border-radius: 999px; transition: background 0.15s; }
+  .sx-bt-ic svg { width: 22px; height: 22px; }
+  .sx-bt-lb { font-size: 11px; font-weight: 700; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .sx-bt.active { color: #1f5a96; }
+  .sx-bt.active .sx-bt-ic { background: #d7e8fb; }
+  .sx-bt.active .sx-bt-lb { font-weight: 800; }
+
+  /* Menu "Thêm" dạng tấm trượt từ dưới lên */
+  .sx-sheet-bg {
+    display: flex; align-items: flex-end; position: fixed; inset: 0; z-index: 100; background: rgba(22, 50, 79, 0.42);
+    animation: sx-fade 0.18s ease;
+  }
+  .sx-sheet {
+    width: 100%; max-height: 88vh; overflow-y: auto; background: #fff; border-radius: 26px 26px 0 0;
+    padding: 8px 16px calc(18px + env(safe-area-inset-bottom)); box-shadow: 0 -18px 40px -20px rgba(22, 50, 79, 0.5);
+    animation: sx-up 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .sx-sheet-grip { width: 42px; height: 5px; border-radius: 999px; background: #cfe0f3; margin: 4px auto 12px; }
+  .sx-sheet-me { display: flex; align-items: center; gap: 12px; background: #eef5fd; border-radius: 18px; padding: 12px 14px; margin-bottom: 14px; }
+  .sx-sheet-me-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .sx-sheet-me-t b { font-size: 15.5px; color: #173f6b; }
+  .sx-sheet-me-t span { font-size: 12px; color: #52708f; }
+  .sx-sheet-x { border: 0; background: #fff; width: 34px; height: 34px; border-radius: 50%; color: #52708f; font-size: 15px; cursor: pointer; flex: none; }
+  .sx-sheet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .sx-tile {
+    display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 6px 12px; border-radius: 18px;
+    background: #f4f9ff; border: 1px solid var(--sx-line); text-decoration: none; color: #24476f;
+    font-weight: 700; font-size: 12.5px; text-align: center; line-height: 1.25; min-height: 96px;
+  }
+  .sx-tile.active { background: #d7e8fb; border-color: #a9cbee; color: #1f5a96; }
+  .sx-tile-ic { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; background: #fff; color: #3478b8; }
+  .sx-tile-ic svg { width: 22px; height: 22px; }
+  .sx-sheet-out {
+    width: 100%; margin-top: 14px; min-height: 48px; border-radius: 14px; border: 1.5px solid #f0c9c6; background: #fff7f6;
+    color: #b3261e; font-weight: 800; font-size: 14.5px; cursor: pointer; font-family: inherit;
+  }
+
+  /* Cỡ chữ ô nhập 16px để iPhone không tự phóng to; nút bấm đủ lớn */
+  .student-shell input, .student-shell select, .student-shell textarea { font-size: 16px; }
+  .student-shell button, .student-shell .cta { min-height: 40px; }
+
+  /* Thông báo nhỏ (toast) nổi phía trên thanh menu dưới */
+  .student-shell .toast, .student-shell .cm-root .cm-toast { bottom: calc(86px + env(safe-area-inset-bottom)); }
+
+  /* Cửa sổ hiện lên thành tấm trượt từ dưới */
+  .student-shell .modal-bg { align-items: flex-end; padding: 0; }
+  .student-shell .modal { border-radius: 24px 24px 0 0; max-width: 100%; max-height: 88vh; padding: 20px 18px calc(20px + env(safe-area-inset-bottom)); }
+
+  /* Các khối dùng chung trong trang con */
+  .student-shell .section-title { font-size: 20px; }
+  .student-shell .section-sub { font-size: 13.5px; margin-bottom: 16px; }
+  .student-shell .compose, .student-shell .post, .student-shell .missions { padding: 14px; border-radius: 18px; }
+  .student-shell .post { margin-bottom: 14px; }
+  .student-shell .lb-row { padding: 12px 14px; gap: 10px; }
+  .student-shell .lb-subtabs { margin: 0 -14px 16px; padding: 0 14px 4px; }
+  .student-shell .podium { gap: 8px; }
+  .student-shell .pod-slot { width: 30%; max-width: 110px; }
+  .student-shell .tbl-wrap, .student-shell .cm-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Công cụ ban cán sự: thanh tab cuộn ngang gọn, bấm dễ */
+  .student-shell .cm-root .cm-tabs { gap: 6px; padding-bottom: 8px; border-bottom: 0; margin: 0 -14px 12px; padding-left: 14px; padding-right: 14px; scrollbar-width: none; }
+  .student-shell .cm-root .cm-tabs::-webkit-scrollbar { display: none; }
+  .student-shell .cm-root .cm-tab {
+    border: 1.5px solid #d3e4f6; border-radius: 999px; background: #fff; margin: 0; padding: 9px 15px; min-height: 40px; flex: none;
+  }
+  .student-shell .cm-root .cm-tab.on { background: #d7e8fb; border-color: #a9cbee; color: #1f5a96; }
+  .student-shell .cm-root .cm-card { padding: 14px; }
+}
+
+@media (max-width: 420px) {
+  .sx-sheet-grid { gap: 8px; }
+  .sx-tile { font-size: 12px; padding: 12px 4px 10px; }
+}
+
+@keyframes sx-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sx-up { from { transform: translateY(40px); opacity: 0.6; } to { transform: translateY(0); opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sx-sheet, .sx-sheet-bg { animation: none; }
+}
+
+/* Máy tính: khung rộng hơn một chút */
+@media (min-width: 901px) {
+  .student-shell .sx-top .bell { margin-right: 2px; }
 }
