@@ -44,6 +44,7 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
   const [effectiveFrom, setEffectiveFrom] = useState(vnTodayIso());
   const [previewClass, setPreviewClass] = useState('');
   const [saving, setSaving] = useState(false);
+  const [notifyAll, setNotifyAll] = useState(true);
   const [result, setResult] = useState(null);
 
   // Đã lưu
@@ -180,7 +181,12 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
       return;
     }
     setResult(data);
-    setMsg({ type: 'ok', text: `Đã lưu ${data.inserted} tiết học.` });
+    let extra = '';
+    if (notifyAll) {
+      const an = await supabase.rpc('tkb_announce_update', { p_effective_from: effectiveFrom, p_note: null });
+      extra = an.error ? ` Chưa gửi được thông báo toàn trường: ${an.error.message}` : ` Đã gửi thông báo cho ${an.data} tài khoản.`;
+    }
+    setMsg({ type: 'ok', text: `Đã lưu ${data.inserted} tiết học.${extra}` });
     setViewVersion(effectiveFrom);
     loadVersions();
   }
@@ -310,6 +316,7 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
                 <input id="eff" type="date" className="input" style={{ width: 170 }} value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} />
               </div>
               <button className="btn btn-red" disabled={saving} onClick={save}>{saving ? 'Đang lưu…' : 'Lưu thời khóa biểu'}</button>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={notifyAll} onChange={(e) => setNotifyAll(e.target.checked)} /> Thông báo cho toàn trường</label>
               <button className="btn" onClick={() => { setParsed(null); setResult(null); setFileName(''); }}>Bỏ file này</button>
             </div>
             {parsed.effectiveFrom && (

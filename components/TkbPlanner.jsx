@@ -8,6 +8,7 @@ import AppShell, { Toast } from '@/components/AppShell';
 import ClassTimetable from '@/components/Timetable';
 import SchoolTimetableExport from '@/components/SchoolTimetableExport';
 import { loadBellTimes } from '@/lib/tkbClient';
+import { preflight, applyFix } from '@/lib/tkbPreflight';
 import {
   DAY_LABEL, mergeCfg, newId, gradeOf, buildConfigFromRows, analyzeLoad, applySuggestion,
   fillFromCurriculum, autoAssign, syncTeachers, solve,
@@ -62,6 +63,8 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
 
   const edit = (fn) => { setCfg((c) => syncTeachers(fn(c))); setDirty(true); };
   const analysis = useMemo(() => analyzeLoad(cfg), [cfg]);
+  const pre = useMemo(() => preflight(cfg), [cfg]);
+  const [notify, setNotify] = useState(true);
   const classes = useMemo(() => [...new Set([...cfg.assignments.map((a) => a.cls), ...cfg.locks.map((l) => l.cls)])].sort((a, b) => a.localeCompare(b, 'vi')), [cfg.assignments, cfg.locks]);
   useEffect(() => { if (classes.length && !classes.includes(classSel)) setClassSel(classes[0]); }, [classes, classSel]);
   const grades = useMemo(() => [...new Set(classes.map(gradeOf).filter(Boolean))].sort(), [classes]);
@@ -93,12 +96,15 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
 
   async function run(newSeed) {
     if (!cfg.assignments.length) { setMsg({ type: 'error', text: 'Chưa có phân công. Hãy nạp từ thời khóa biểu hiện hành hoặc thêm phân công ở bước 2.' }); return; }
+    if (!pre.ok) { setMsg({ type: 'error', text: `Chưa thể xếp: còn ${pre.errors.length} lỗi cần chỉnh (xem khung “Kiểm tra trước khi xếp”).` }); return; }
     const s = newSeed ?? seed;
     setSeed(s);
     setRunning(true);
     setProgress(0);
     setResult(null);
-    const r = await solve(cfg, { seed: s, onProgress: (p) => aliveRef.current && setProgress(p) });
+    // Ngày nghỉ và công bằng chỉ dùng khi người soạn bật (mặc định tắt)
+    const effCfg = cfg.options.useFairness ? cfg : { ...cfg, teachers: cfg.teachers.map((t) => ({ ...t, dayOff: typeof t.dayOff === 'number' ? t.dayOff : 'none' })), options: { ...cfg.options, wFair: 0, wCarpool: 0 } };
+    const r = await solve(effCfg, { seed: s, onProgress: (p) => aliveRef.current && setProgress(p) });
     if (!aliveRef.current) return;
     setRunning(false);
     setResult(r);
@@ -119,7 +125,12 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
     const { data, error } = await supabase.rpc('tpt_import_timetable', { p_effective_from: effectiveFrom, p_rows: result.rows });
     setSaving(false);
     if (error) { setMsg({ type: 'error', text: error.message }); return; }
-    setMsg({ type: 'ok', text: `Đã lưu ${data.inserted} tiết vào thời khóa biểu toàn trường.` });
+    let extra = '';
+    if (notify) {
+      const an = await supabase.rpc('tkb_announce_update', { p_effective_from: effectiveFrom, p_note: null });
+      extra = an.error ? ` Chưa gửi được thông báo toàn trường: ${an.error.message}` : ` Đã gửi thông báo cho ${an.data} tài khoản.`;
+    }
+    setMsg({ type: 'ok', text: `Đã lưu ${data.inserted} tiết vào thời khóa biểu toàn trường.${extra}` });
   }
 
   const viewRows = useMemo(() => (result ? result.rows.filter((r) => r.class_name === viewClass).map(({ weekday, session, period, subject, teacher }) => ({ weekday, session, period, subject, teacher })) : []), [result, viewClass]);
@@ -343,6 +354,14 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
 
           <div className="card">
             <div className="card-h"><h3>Ngày nghỉ và công bằng</h3></div>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+              <input type="checkbox" checked={!!cfg.options.useFairness} onChange={(e) => edit((c) => ({ ...c, options: { ...c.options, useFairness: e.target.checked } }))} />
+              <span><b>Dùng ngày nghỉ và công bằng giờ vào/ra</b> (chỉ bật khi trường thật sự cần; tắt thì giáo viên không bị xếp ngày nghỉ riêng, trừ thầy cô bạn chọn ngày nghỉ cụ thể)</span>
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+              <input type="checkbox" checked={!!cfg.options.requireExactQuota} onChange={(e) => edit((c) => ({ ...c, options: { ...c.options, requireExactQuota: e.target.checked } }))} />
+              <span><b>Mỗi giáo viên phải đúng số tiết định mức</b> (lệch định mức thì không cho xếp)</span>
+            </label>
             <div className="row" style={{ alignItems: 'flex-end' }}>
               <div>
                 <label className="lbl" htmlFor="q-no" style={{ marginTop: 0 }}>Nếu có giáo viên không thể nghỉ trọn 1 ngày</label>
@@ -396,10 +415,35 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
 
       {tab === 'kq' && (
         <>
+          <div className="card" style={pre.ok ? undefined : { borderColor: '#e0a3a3', background: '#fff6f6' }}>
+            <div className="card-h"><h3>Kiểm tra trước khi xếp</h3><span className={`pill ${pre.ok ? 'ok' : 'bad'}`}>{pre.ok ? 'Đủ điều kiện xếp' : `${pre.errors.length} lỗi, chưa cho xếp`}</span></div>
+            {pre.errors.length > 0 && (
+              <>
+                <p className="hint" style={{ marginTop: 0 }}>Hệ thống không tự ý xếp khi dữ liệu còn thiếu hoặc bị trùng. Hãy chỉnh ở bước 1 hoặc 2 cho đúng ý rồi quay lại đây.</p>
+                <ul style={{ margin: '0 0 0 18px', color: '#a12a2a' }}>{pre.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+              </>
+            )}
+            {pre.warnings.length > 0 && <ul style={{ margin: '8px 0 0 18px', color: 'var(--warn)' }}>{pre.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
+            {pre.fixes.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <strong>Gợi ý bù tiết còn thiếu của giáo viên (Hoạt động trải nghiệm, Giáo dục địa phương)</strong>
+                <p className="hint" style={{ margin: '2px 0 6px' }}>Chỉ là gợi ý, bạn bấm “Thêm” thì mới được thêm vào phân công.</p>
+                {pre.fixes.slice(0, 12).map((f) => (
+                  <div key={f.id} className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ flex: 1 }}>{f.text}</span>
+                    <button className="btn btn-sm" onClick={() => edit((c) => applyFix(c, f))}>Thêm</button>
+                  </div>
+                ))}
+                {pre.fixes.length > 12 && <p className="hint">Còn {pre.fixes.length - 12} gợi ý nữa, thêm bớt rồi gợi ý sẽ cập nhật.</p>}
+              </div>
+            )}
+            {pre.ok && pre.warnings.length === 0 && <p className="hint" style={{ margin: 0 }}>Mọi lớp đủ tiết theo chương trình, không trùng, không giáo viên nào vượt mức.</p>}
+          </div>
+
           <div className="card">
             <div className="card-h"><h3>Xếp thời khóa biểu</h3></div>
             <div className="row" style={{ alignItems: 'center' }}>
-              <button className="btn btn-red" disabled={running} onClick={() => run()}>{running ? `Đang xếp… ${Math.round(progress * 100)}%` : 'Xếp tự động'}</button>
+              <button className="btn btn-red" disabled={running || !pre.ok} onClick={() => run()}>{running ? `Đang xếp… ${Math.round(progress * 100)}%` : 'Xếp tự động'}</button>
               <button className="btn" disabled={running || !result} onClick={() => run(seed + 1)}>Xếp lại (phương án khác)</button>
               <span className="hint" style={{ margin: 0 }}>Phương án số {seed}. Xếp lại cho ra cách sắp xếp khác, bạn chọn cái ưng ý nhất.</span>
             </div>
@@ -457,6 +501,7 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
                 <div className="row" style={{ alignItems: 'flex-end' }}>
                   <div><label className="lbl" htmlFor="eff" style={{ marginTop: 0 }}>Áp dụng từ ngày</label><input id="eff" type="date" className="input" style={{ width: 170 }} value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} /></div>
                   <button className="btn btn-red" disabled={saving} onClick={saveTimetable}>{saving ? 'Đang lưu…' : 'Lưu thành thời khóa biểu'}</button>
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} /> Thông báo cho toàn trường</label>
                 </div>
                 <p className="hint" style={{ marginTop: 8 }}>Học sinh và giáo viên thấy thời khóa biểu mới từ ngày áp dụng. Nếu admin đã thiết lập bản cùng ngày thì Tổng phụ trách phải chọn ngày khác (admin ghi đè Tổng phụ trách).</p>
               </div>
