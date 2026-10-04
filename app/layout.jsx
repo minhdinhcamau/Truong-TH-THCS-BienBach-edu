@@ -1,6 +1,12 @@
 export const metadata = {
   title: 'LMS Trường học',
   description: 'Nền tảng học tập của trường',
+  // Biểu tượng hiện trên thẻ trình duyệt, lấy từ public/logo-truong.png
+  icons: {
+    icon: [{ url: '/logo-truong.png', type: 'image/png' }],
+    shortcut: '/logo-truong.png',
+    apple: '/logo-truong.png',
+  },
 };
 
 export default function RootLayout({ children }) {
