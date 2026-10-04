@@ -53,7 +53,7 @@
   z-index: 40;
 }
 .sx-top-in {
-  max-width: 1120px; margin: 0 auto; padding: 14px 24px 26px;
+  max-width: 1120px; margin: 0 auto; padding: 14px 24px 16px;
   display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
 }
 .sx-brand { display: flex; align-items: center; gap: 14px; min-width: 0; text-decoration: none; color: inherit; }
@@ -102,7 +102,7 @@
 .sx-wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px 56px; }
 .sx-tabs {
   display: flex; gap: 4px; overflow-x: auto; background: #fff; border: 1px solid var(--sx-line); border-radius: 18px;
-  padding: 6px; margin: -18px auto 26px; position: relative; z-index: 2;
+  padding: 6px; margin: 16px auto 26px; position: relative; z-index: 2;
   box-shadow: 0 14px 28px -22px rgba(40, 90, 150, 0.6); scrollbar-width: none;
 }
 .sx-tabs::-webkit-scrollbar { display: none; }
