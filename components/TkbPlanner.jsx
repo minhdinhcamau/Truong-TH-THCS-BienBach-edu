@@ -6,6 +6,7 @@ import { useGuard } from '@/lib/useGuard';
 import { vnTodayIso } from '@/lib/dates';
 import AppShell, { Toast } from '@/components/AppShell';
 import ClassTimetable from '@/components/Timetable';
+import SchoolTimetableExport from '@/components/SchoolTimetableExport';
 import { loadBellTimes } from '@/lib/tkbClient';
 import {
   DAY_LABEL, mergeCfg, newId, gradeOf, buildConfigFromRows, analyzeLoad, applySuggestion,
@@ -319,6 +320,28 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
           </div>
 
           <div className="card">
+            <div className="card-h"><h3>Môn học buổi chiều</h3></div>
+            <label className="chip" style={{ cursor: 'pointer', display: 'inline-flex', gap: 6 }}>
+              <input type="checkbox" checked={cfg.morningOnly !== false} onChange={(e) => edit((c) => ({ ...c, morningOnly: e.target.checked }))} />
+              Chỉ các môn dưới đây được học buổi chiều, mọi môn khác chỉ học buổi sáng
+            </label>
+            <div className="row" style={{ marginTop: 10, alignItems: 'flex-end' }}>
+              <div className="grow">
+                <label className="lbl" htmlFor="q-pm" style={{ marginTop: 0 }}>Các môn học buổi chiều (cách nhau dấu phẩy)</label>
+                <input id="q-pm" className="input" style={{ width: '100%', maxWidth: 520 }} key={(cfg.afternoonSubjects || []).join('|')} defaultValue={(cfg.afternoonSubjects || []).join(', ')} onBlur={(e) => edit((c) => ({ ...c, afternoonSubjects: e.target.value.split(/[,;]+/).map((x) => x.trim()).filter(Boolean) }))} />
+              </div>
+              <label className="chip" style={{ cursor: 'pointer', display: 'inline-flex', gap: 6 }}>
+                <input type="checkbox" checked={cfg.afternoonStrict !== false} onChange={(e) => edit((c) => ({ ...c, afternoonStrict: e.target.checked }))} />
+                Bắt buộc các môn này học buổi chiều
+              </label>
+            </div>
+            <p className="hint" style={{ marginTop: 8 }}>
+              Mặc định: Mỹ thuật, Âm nhạc, Thể dục, Giáo dục địa phương học buổi chiều; Toán, Văn, Anh, KHTN, Sử - Địa, GDCD, Công nghệ, Tin học, HĐTN... chỉ học buổi sáng. Hệ thống hiểu cả tên viết tắt (MT, Nhạc, GDTC, GDĐP).
+              Nếu một lớp có quá nhiều tiết phải học buổi sáng so với số chỗ buổi sáng, phần cảnh báo sau khi xếp sẽ nói rõ lớp nào.
+            </p>
+          </div>
+
+          <div className="card">
             <div className="card-h"><h3>Ngày nghỉ và công bằng</h3></div>
             <div className="row" style={{ alignItems: 'flex-end' }}>
               <div>
@@ -426,6 +449,8 @@ export default function TkbPlanner({ nav, activeHref, roleLabel, backHref }) {
                 </div>
                 <ClassTimetable rows={teacherRows} className={viewTeacher} badge={viewTeacher} title="THỜI KHÓA BIỂU GIÁO VIÊN" effectiveFrom={effectiveFrom} bells={bells} />
               </div>
+
+              <SchoolTimetableExport rows={result.rows} bells={bells} effectiveFrom={effectiveFrom} />
 
               <div className="card">
                 <div className="card-h"><h3>Lưu thành thời khóa biểu toàn trường</h3></div>

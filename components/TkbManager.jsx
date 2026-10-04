@@ -7,6 +7,7 @@ import { parseWorkbookSheets } from '@/lib/tkb';
 import { fmtDate, vnTodayIso } from '@/lib/dates';
 import AppShell, { Toast } from '@/components/AppShell';
 import ClassTimetable from '@/components/Timetable';
+import SchoolTimetableExport from '@/components/SchoolTimetableExport';
 import { loadBellTimes, loadTeacherTimetable } from '@/lib/tkbClient';
 
 const SESS_LABEL = { sang: 'Buổi sáng', chieu: 'Buổi chiều' };
@@ -386,6 +387,8 @@ export default function TkbManager({ nav, activeHref, roleLabel }) {
           </>
         )}
       </div>
+
+      <SchoolTimetableExport bells={bells} />
 
       <div className="card">
         <div className="card-h"><h3>Giờ học các tiết</h3></div>
