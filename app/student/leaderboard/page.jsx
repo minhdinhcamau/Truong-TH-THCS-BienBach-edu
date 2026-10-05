@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
-import { getRankTier, getInitials } from '../../../lib/rankTiers';
+import AvatarFrame from '../../../components/AvatarFrame';
+import RankRules from '../../../components/RankRules';
 import { useStudent } from '../layout';
 
 const PERIODS = [
@@ -10,19 +11,6 @@ const PERIODS = [
   { key: 'hk2', label: 'Học kỳ 2' },
   { key: 'year', label: 'Cả năm' },
 ];
-
-function Avatar({ name, totalXp, size }) {
-  const tier = getRankTier(totalXp);
-  const core = size - 8;
-  return (
-    <div className={`avatar-frame ${tier.className}`} style={{ width: size, height: size }}>
-      <div className="core" style={{ width: core, height: core, fontSize: Math.max(10, size * 0.32) }}>
-        {getInitials(name)}
-      </div>
-      {tier.badge && <div className="rank-badge">{tier.badge}</div>}
-    </div>
-  );
-}
 
 export default function LeaderboardPage() {
   const { profile } = useStudent();
@@ -72,10 +60,10 @@ export default function LeaderboardPage() {
             {[1, 0, 2].filter((i) => rows[i]).map((i) => {
               const p = rows[i];
               const rank = i + 1;
-              const size = rank === 1 ? 74 : 58;
+              const size = rank === 1 ? 108 : 88;
               return (
                 <div className={`pod-slot rank${rank}`} key={p.student_id}>
-                  <Avatar name={p.full_name} totalXp={p.total_xp} size={size} />
+                  <AvatarFrame src={p.photo_url} name={p.full_name} xp={p.total_xp} size={size} />
                   <div className="pod-name" style={{ marginTop: 8 }}>{p.full_name}{p.student_id === profile.id ? ' (Em)' : ''}</div>
                   <div className="pod-class">Lớp {p.class_name}</div>
                   <div className="pod-base">
@@ -91,7 +79,7 @@ export default function LeaderboardPage() {
             {rows.slice(3).map((p, idx) => (
               <div className={`lb-row ${p.student_id === profile.id ? 'me' : ''}`} key={p.student_id}>
                 <div className="lb-rank">{idx + 4}</div>
-                <Avatar name={p.full_name} totalXp={p.total_xp} size={38} />
+                <AvatarFrame src={p.photo_url} name={p.full_name} xp={p.total_xp} size={52} />
                 <div className="lb-name-wrap">
                   <div className="lb-name">{p.full_name}{p.student_id === profile.id ? ' (Em)' : ''}</div>
                   <div className="lb-class">Lớp {p.class_name}</div>
@@ -111,21 +99,9 @@ export default function LeaderboardPage() {
 
       {showModal && (
         <div className="modal-bg" onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
-          <div className="modal">
+          <div className="modal" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
             <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
-            <h3>Cách tính điểm kinh nghiệm (KN)</h3>
-            <div className="rule">
-              <div><div className="rule-title">Làm bài tập</div><div className="rule-desc">Cộng KN theo tỉ lệ điểm số, tối đa 30 KN/bài. Chỉ tính ở lần chấm điểm đầu tiên.</div></div>
-            </div>
-            <div className="rule">
-              <div><div className="rule-title">Giữ chuỗi ngày học</div><div className="rule-desc">Có hoạt động được tính KN mỗi ngày sẽ giữ được chuỗi liên tục, hiện ở góc trên cùng.</div></div>
-            </div>
-            <div className="rule">
-              <div><div className="rule-title">Hỏi bài</div><div className="rule-desc">Đăng câu hỏi được +2 KN/ngày. Câu trả lời được đánh dấu hữu ích được +5 KN, tối đa 3 lần/ngày.</div></div>
-            </div>
-            <div className="rule">
-              <div><div className="rule-title">Khung avatar</div><div className="rule-desc">Dùng tổng KN tích luỹ từ trước tới nay nên không bao giờ mất, kể cả khi bảng xếp hạng theo kỳ được làm mới: Tân binh → Thủy thủ → Hoa tiêu → Thuyền trưởng → Đô đốc → Huyền thoại đại dương.</div></div>
-            </div>
+            <RankRules />
           </div>
         </div>
       )}
