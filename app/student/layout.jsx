@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
 import { getRankTier, getInitials } from '../../lib/rankTiers';
 import NotificationBell from '../../components/NotificationBell';
+import DutyNoticePopup from '../../components/DutyNoticePopup';
 import './student.css';
 import './ui.css';
 
@@ -302,6 +303,9 @@ export default function StudentLayout({ children }) {
             </div>
           </div>
         )}
+
+        {/* Hộp thông báo "Lớp bạn trực nhật tuần N" khi Tổng phụ trách đã công bố */}
+        {!isAdminViewing && <DutyNoticePopup href="/student/truc-nhat" />}
       </div>
     </StudentContext.Provider>
   );

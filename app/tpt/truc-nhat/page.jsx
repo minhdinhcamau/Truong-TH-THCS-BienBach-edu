@@ -13,10 +13,12 @@ import { autoAssign } from '@/lib/dutyAssign';
 //   - Khu vực và phân công lưu trong database (bảng duty_map_*), không còn lưu trong trình duyệt, không còn iframe.
 //   - Kéo các điểm của khu vực để chỉnh hình; chạm dấu + giữa hai điểm để thêm điểm.
 //   - "Tự phân công theo xếp hạng": lớp điểm thấp được phân trước, không trùng khu vực tuần trước.
-//   - "Công bố" để học sinh và giáo viên chủ nhiệm xem được bản đồ của tuần đó.
+//   - "Công bố kết quả": chốt kết quả tuần (không sửa được nữa), gửi thông báo popup cho học sinh và giáo viên chủ nhiệm
+//     của các lớp được phân công. Muốn sửa phải "Hủy công bố" rồi công bố lại.
 
 const PALETTE = ['#e11d48', '#0d9488', '#9333ea', '#ca8a04', '#2563eb', '#ea580c', '#16a34a', '#db2777'];
 const TOTAL_FALLBACK = 35;
+const LOCK_TEXT = 'Tuần này đã công bố và chốt kết quả. Bấm “Hủy công bố để chỉnh sửa” nếu cần thay đổi.';
 
 export default function TptTrucNhatPage() {
   const { profile, ready, logout } = useGuard('tpt');
@@ -33,6 +35,7 @@ export default function TptTrucNhatPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [pubConfirm, setPubConfirm] = useState(null); // { preview: {classes, students, teachers} } khi đang hỏi xác nhận công bố
 
   const [selectedId, setSelectedId] = useState(null);
   const [shapeEdit, setShapeEdit] = useState(false);
@@ -51,6 +54,7 @@ export default function TptTrucNhatPage() {
   const fileRef = useRef(null);
 
   const dirty = dirtyZ || dirtyA;
+  const locked = published; // đã công bố = đã chốt kết quả
   const weekInfo = sw.weeks.find((w) => w.week_no === weekNo);
   const classById = useMemo(() => new Map(classes.map((c) => [c.id, c])), [classes]);
   const grades = useMemo(() => {
@@ -75,6 +79,14 @@ export default function TptTrucNhatPage() {
   const assignedClassCount = useMemo(() => new Set(Object.values(assign).flat()).size, [assign]);
   const zoneCount = useMemo(() => zones.filter((z) => (assign[z.id] || []).length > 0).length, [zones, assign]);
   const sel = zones.find((z) => z.id === selectedId) || null;
+  const resultRows = useMemo(
+    () => zones.filter((z) => (labels[z.id] || []).length > 0).map((z) => ({ id: z.id, zone: z.name, color: z.color, classes: labels[z.id].join(', ') })),
+    [zones, labels]
+  );
+
+  function warnLocked() {
+    setMsg({ type: 'error', text: LOCK_TEXT });
+  }
 
   // ----- Tải dữ liệu -----
   const loadWeek = useCallback(async (w) => {
@@ -120,11 +132,13 @@ export default function TptTrucNhatPage() {
     setSelectedId(null);
     setShapeEdit(false);
     setDrawing(null);
+    setPubConfirm(null);
     setWeekNo(n);
   }
 
-  // ----- Lưu / công bố -----
+  // ----- Lưu -----
   async function saveAll() {
+    if (locked) { warnLocked(); return; }
     setBusy(true);
     try {
       if (dirtyZ) {
@@ -149,27 +163,63 @@ export default function TptTrucNhatPage() {
     setBusy(false);
   }
 
-  async function togglePublish() {
+  // ----- Công bố kết quả (chốt + thông báo) -----
+  async function openPublish() {
     if (dirty) {
-      setMsg({ type: 'error', text: 'Hãy bấm Lưu trước khi công bố.' });
+      setMsg({ type: 'error', text: 'Hãy bấm Lưu trước khi công bố kết quả.' });
       return;
     }
-    const next = !published;
-    if (next && assignedClassCount === 0 && !window.confirm('Tuần này chưa phân công lớp nào. Vẫn công bố?')) return;
-    if (!next && !window.confirm('Hủy công bố: học sinh và giáo viên sẽ không còn thấy bản đồ tuần này. Tiếp tục?')) return;
+    if (assignedClassCount === 0) {
+      setMsg({ type: 'error', text: 'Tuần này chưa phân công lớp nào, chưa thể công bố.' });
+      return;
+    }
     setBusy(true);
-    const { error } = await supabase.rpc('duty_map_publish', { p_week_no: weekNo, p_publish: next });
+    const { data, error } = await supabase.rpc('duty_map_publish_preview', { p_week_no: weekNo });
+    setBusy(false);
+    if (error) {
+      setMsg({ type: 'error', text: `${error.message} (Nếu chưa chạy file SQL gói P trong Supabase thì hãy chạy trước.)` });
+      return;
+    }
+    setPubConfirm({ preview: data || { classes: 0, students: 0, teachers: 0 } });
+  }
+
+  async function confirmPublish() {
+    setBusy(true);
+    const { data, error } = await supabase.rpc('duty_map_publish', { p_week_no: weekNo, p_publish: true });
     setBusy(false);
     if (error) {
       setMsg({ type: 'error', text: error.message });
       return;
     }
-    setPublished(next);
-    setMsg({ type: 'ok', text: next ? `Đã công bố tuần ${weekNo}: học sinh và giáo viên chủ nhiệm xem được bản đồ.` : `Đã hủy công bố tuần ${weekNo}.` });
+    setPubConfirm(null);
+    setPublished(true);
+    setSelectedId(null);
+    setShapeEdit(false);
+    setDrawing(null);
+    setMsg({
+      type: 'ok',
+      text: data?.already
+        ? `Tuần ${weekNo} đã được công bố từ trước.`
+        : `Đã chốt và công bố kết quả tuần ${weekNo}. Đã gửi thông báo cho ${data?.students ?? 0} học sinh và ${data?.teachers ?? 0} giáo viên.`,
+    });
+  }
+
+  async function unpublish() {
+    if (!window.confirm('Hủy công bố: học sinh và giáo viên sẽ không còn thấy bản đồ tuần này, và bạn sửa được phân công trở lại. Sau khi sửa phải công bố lại (sẽ gửi thông báo mới). Tiếp tục?')) return;
+    setBusy(true);
+    const { error } = await supabase.rpc('duty_map_publish', { p_week_no: weekNo, p_publish: false });
+    setBusy(false);
+    if (error) {
+      setMsg({ type: 'error', text: error.message });
+      return;
+    }
+    setPublished(false);
+    setMsg({ type: 'ok', text: `Đã hủy công bố tuần ${weekNo}. Bạn có thể chỉnh sửa phân công.` });
   }
 
   // ----- Phân công -----
   function toggleClass(zoneId, classId) {
+    if (locked) { warnLocked(); return; }
     setAssign((a) => {
       const cur = a[zoneId] || [];
       const next = cur.includes(classId) ? cur.filter((x) => x !== classId) : [...cur, classId];
@@ -179,6 +229,7 @@ export default function TptTrucNhatPage() {
   }
 
   function clearWeek() {
+    if (locked) { warnLocked(); return; }
     if (!window.confirm(`Xóa toàn bộ phân công của tuần ${weekNo}?`)) return;
     setAssign({});
     setDirtyA(true);
@@ -186,6 +237,7 @@ export default function TptTrucNhatPage() {
   }
 
   async function copyPrevWeek() {
+    if (locked) { warnLocked(); return; }
     if (weekNo <= 1) return;
     const { data, error } = await supabase.rpc('duty_map_assign_range', { p_from: weekNo - 1, p_to: weekNo - 1 });
     if (error) {
@@ -205,6 +257,7 @@ export default function TptTrucNhatPage() {
   }
 
   async function runAuto() {
+    if (locked) { warnLocked(); return; }
     if (zones.length === 0) {
       setMsg({ type: 'error', text: 'Chưa có khu vực nào. Hãy vẽ khu vực trước.' });
       return;
@@ -275,6 +328,7 @@ export default function TptTrucNhatPage() {
   }
 
   function startDraw(redrawZoneId = null) {
+    if (locked) { warnLocked(); return; }
     setRedrawId(redrawZoneId);
     setSelectedId(null);
     setShapeEdit(false);
@@ -343,6 +397,7 @@ export default function TptTrucNhatPage() {
 
   // ----- Nạp dữ liệu từ bản cũ (lưu trong trình duyệt hoặc file sao lưu) -----
   async function importOld(obj) {
+    if (locked) { warnLocked(); return; }
     try {
       const oldZones = Array.isArray(obj?.l) ? obj.l : [];
       const oldData = obj?.d && typeof obj.d === 'object' ? obj.d : {};
@@ -447,6 +502,7 @@ export default function TptTrucNhatPage() {
         .dm-zc.on { outline: 2px solid var(--red); font-weight: 700; }
         .dm-kg { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 8px; margin-top: 6px; }
         .dm-cb { font: inherit; font-weight: 700; height: 42px; border: 1px solid var(--line); background: #fff; border-radius: 10px; cursor: pointer; }
+        .dm-cb:disabled { cursor: default; }
         .dm-sw { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
         .dm-sw button { width: 34px; height: 34px; border-radius: 10px; border: 3px solid #fff; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
         .dm-sw button.on { box-shadow: 0 0 0 3px var(--ink); }
@@ -454,10 +510,34 @@ export default function TptTrucNhatPage() {
         .dm-note.warn { background: #fff7e6; border-color: #f0d28a; }
         .dm-draw { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; font-size: 13.5px; }
         .dm-ok { color: #15803d; font-weight: 700; }
+
+        /* Khối Công bố kết quả */
+        .dm-pub { margin-top: 14px; border: 1.5px solid #f3c6c9; background: linear-gradient(180deg, #fff 0%, #fff7f7 100%); }
+        .dm-pub.done { border-color: #a7dcc0; background: linear-gradient(180deg, #fff 0%, #f1fbf6 100%); }
+        .dm-pub-h { display: flex; gap: 12px; align-items: flex-start; }
+        .dm-pub-ic { width: 46px; height: 46px; border-radius: 14px; background: #fde8ea; display: grid; place-items: center; font-size: 22px; flex: none; }
+        .dm-pub.done .dm-pub-ic { background: #d9f3e5; }
+        .dm-pub-h h3 { margin: 0 0 3px; font-size: 17px; }
+        .dm-pub-h p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
+        .dm-pub-act { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+        .dm-pub-why { font-size: 12.5px; color: #b45309; }
+
+        /* Hộp xác nhận công bố */
+        .dm-mbg { position: fixed; inset: 0; z-index: 400; background: rgba(15, 23, 42, .5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+        .dm-modal { width: 520px; max-width: 100%; max-height: 90vh; overflow-y: auto; background: #fff; border-radius: 20px; padding: 20px; box-shadow: 0 30px 70px -20px rgba(0, 0, 0, .5); }
+        .dm-modal h3 { margin: 0 0 6px; font-size: 19px; }
+        .dm-modal p { margin: 0 0 10px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+        .dm-mres { display: grid; gap: 6px; margin: 8px 0 12px; }
+        .dm-mres div { display: flex; gap: 8px; align-items: baseline; border: 1px solid var(--line); border-left: 6px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 14px; }
+        .dm-mres b { flex: none; }
+        .dm-mstat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+        .dm-mstat div { background: #f3f5f8; border-radius: 12px; padding: 8px; text-align: center; }
+        .dm-mstat b { display: block; font-size: 20px; }
+        .dm-mstat span { font-size: 12px; color: var(--muted); }
       `}</style>
 
       <h1 className="pg-title">Trực nhật</h1>
-      <p className="pg-sub">Vẽ khu vực trên bản đồ trường, phân công lớp trực theo tuần (tự động theo xếp hạng Sao đỏ hoặc tự chọn), rồi công bố cho học sinh và giáo viên chủ nhiệm xem.</p>
+      <p className="pg-sub">Vẽ khu vực trên bản đồ trường, phân công lớp trực theo tuần (tự động theo xếp hạng Sao đỏ hoặc tự chọn), rồi công bố kết quả để học sinh và giáo viên chủ nhiệm biết.</p>
 
       <div className="card">
         <div className="dm-week">
@@ -471,7 +551,7 @@ export default function TptTrucNhatPage() {
         <div className="dm-tools" style={{ justifyContent: 'center' }}>
           {sw.currentNo && sw.currentNo !== weekNo && <button className="btn btn-sm" onClick={() => goWeek(sw.currentNo)}>↩ Về tuần hiện tại</button>}
           <button className="btn btn-sm" onClick={() => setShowWeekGrid((v) => !v)}>{showWeekGrid ? '✕ Đóng' : 'Chọn tuần khác'}</button>
-          <span className={`pill ${published ? 'ok' : 'mute'}`}>{published ? 'Đã công bố' : 'Chưa công bố'}</span>
+          <span className={`pill ${published ? 'ok' : 'mute'}`}>{published ? 'Đã công bố · đã chốt' : 'Chưa công bố'}</span>
           {dirty && <span className="pill warn">Chưa lưu</span>}
         </div>
         {showWeekGrid && (
@@ -486,9 +566,33 @@ export default function TptTrucNhatPage() {
           <div><b>{assignedClassCount}/{classes.length}</b><span>Lớp đã phân công</span></div>
         </div>
         <div className="dm-tools" style={{ justifyContent: 'center' }}>
-          <button className="btn btn-red" disabled={busy || !dirty} onClick={saveAll}>{busy ? 'Đang lưu…' : '💾 Lưu'}</button>
-          <button className="btn" disabled={busy} onClick={togglePublish}>{published ? 'Hủy công bố' : '📢 Công bố cho học sinh và giáo viên'}</button>
+          <button className="btn btn-red" disabled={busy || !dirty || locked} onClick={saveAll}>{busy ? 'Đang xử lý…' : '💾 Lưu'}</button>
           <button className="btn" onClick={doPrint}>🖨️ In sơ đồ</button>
+        </div>
+      </div>
+
+      <div className={`card dm-pub ${published ? 'done' : ''}`}>
+        <div className="dm-pub-h">
+          <span className="dm-pub-ic" aria-hidden="true">{published ? '✅' : '📢'}</span>
+          <div>
+            <h3>{published ? `Đã chốt kết quả tuần ${weekNo}` : `Công bố kết quả tuần ${weekNo}`}</h3>
+            {published ? (
+              <p>Học sinh và giáo viên chủ nhiệm của các lớp được phân công đã nhận thông báo popup và xem được bản đồ. Kết quả đã chốt, không sửa được. Muốn thay đổi, bấm “Hủy công bố để chỉnh sửa” (sau khi sửa phải công bố lại).</p>
+            ) : (
+              <p>Khi công bố, kết quả phân công được <b>chốt</b> (không sửa được nữa) và hệ thống <b>gửi thông báo popup</b> cho học sinh và giáo viên chủ nhiệm của các lớp được phân công trực. Lớp không trực không nhận thông báo.</p>
+            )}
+          </div>
+        </div>
+        <div className="dm-pub-act">
+          {published ? (
+            <button className="btn btn-danger" disabled={busy} onClick={unpublish}>↩ Hủy công bố để chỉnh sửa</button>
+          ) : (
+            <>
+              <button className="btn btn-red" disabled={busy || dirty || assignedClassCount === 0} onClick={openPublish}>📢 Công bố kết quả</button>
+              {dirty && <span className="dm-pub-why">Hãy bấm Lưu trước khi công bố.</span>}
+              {!dirty && assignedClassCount === 0 && <span className="dm-pub-why">Tuần này chưa phân công lớp nào.</span>}
+            </>
+          )}
         </div>
       </div>
 
@@ -506,7 +610,7 @@ export default function TptTrucNhatPage() {
                 onSelect={selectZone}
                 edit
                 showEmpty
-                editShapeId={shapeEdit ? selectedId : null}
+                editShapeId={shapeEdit && !locked ? selectedId : null}
                 onVertexMove={onVertexMove}
                 onVertexInsert={onVertexInsert}
                 selVertex={selVertex}
@@ -528,6 +632,10 @@ export default function TptTrucNhatPage() {
                 <input className="input" style={{ maxWidth: 260 }} value={newName} maxLength={40} onChange={(e) => setNewName(e.target.value)} placeholder="Tên khu vực, VD: Hành lang dãy trái" autoFocus />
                 <button className="btn btn-sm btn-red" onClick={saveNewZone}>Thêm khu vực</button>
                 <button className="btn btn-sm" onClick={() => setPendingShape(null)}>Hủy</button>
+              </div>
+            ) : locked ? (
+              <div className="dm-tools">
+                <span className="hint" style={{ margin: 0 }}>Kết quả tuần này đã chốt. Chạm vào khu vực để xem lớp trực.</span>
               </div>
             ) : (
               <div className="dm-tools">
@@ -562,66 +670,72 @@ export default function TptTrucNhatPage() {
                     const on = (assign[sel.id] || []).includes(c.id);
                     const other = !on && zones.some((z) => z.id !== sel.id && (assign[z.id] || []).includes(c.id));
                     return (
-                      <button key={c.id} className="dm-cb" style={on ? { background: sel.color, color: '#fff', borderColor: sel.color } : other ? { opacity: 0.55 } : undefined} onClick={() => toggleClass(sel.id, c.id)} title={other ? 'Lớp này đang trực khu vực khác' : ''}>{c.name}</button>
+                      <button key={c.id} className="dm-cb" disabled={locked} style={on ? { background: sel.color, color: '#fff', borderColor: sel.color } : other ? { opacity: 0.55 } : undefined} onClick={() => toggleClass(sel.id, c.id)} title={other ? 'Lớp này đang trực khu vực khác' : ''}>{c.name}</button>
                     );
                   })}
                 </div>
               ))}
 
-              <div className="dm-kh">Hình và tên khu vực</div>
-              <label className="lbl" htmlFor="zn" style={{ marginTop: 0 }}>Tên khu vực</label>
-              <input id="zn" className="input" maxLength={40} value={sel.name} onChange={(e) => patchZone(sel.id, { name: e.target.value })} />
-              <div className="lbl">Màu</div>
-              <div className="dm-sw">
-                {PALETTE.map((c) => <button key={c} style={{ background: c }} className={sel.color === c ? 'on' : ''} onClick={() => patchZone(sel.id, { color: c })} aria-label={`Màu ${c}`} />)}
-              </div>
-              <div className="dm-tools">
-                <button className={`btn btn-sm ${shapeEdit ? 'btn-red' : ''}`} onClick={() => { setShapeEdit((v) => !v); setSelVertex(null); }}>{shapeEdit ? '✔ Xong chỉnh hình' : '🔧 Chỉnh hình (kéo điểm)'}</button>
-                <button className="btn btn-sm" onClick={() => startDraw(sel.id)}>✏️ Vẽ lại hình</button>
-                <button className="btn btn-sm" onClick={() => moveZone(-1)} aria-label="Lên trước">↑</button>
-                <button className="btn btn-sm" onClick={() => moveZone(1)} aria-label="Xuống sau">↓</button>
-                <button className="btn btn-sm btn-danger" onClick={deleteZone}>🗑 Xóa khu vực</button>
-              </div>
-              {shapeEdit && (
-                <div className="dm-note">
-                  Kéo các chấm cam để chỉnh hình. Chạm dấu <b>+</b> giữa hai điểm để thêm điểm mới.
-                  {selVertex !== null && <> Đang chọn điểm {selVertex + 1}: <button className="btn btn-sm btn-danger" style={{ marginLeft: 6 }} onClick={removeVertex}>Xóa điểm này</button></>}
-                </div>
+              {!locked && (
+                <>
+                  <div className="dm-kh">Hình và tên khu vực</div>
+                  <label className="lbl" htmlFor="zn" style={{ marginTop: 0 }}>Tên khu vực</label>
+                  <input id="zn" className="input" maxLength={40} value={sel.name} onChange={(e) => patchZone(sel.id, { name: e.target.value })} />
+                  <div className="lbl">Màu</div>
+                  <div className="dm-sw">
+                    {PALETTE.map((c) => <button key={c} style={{ background: c }} className={sel.color === c ? 'on' : ''} onClick={() => patchZone(sel.id, { color: c })} aria-label={`Màu ${c}`} />)}
+                  </div>
+                  <div className="dm-tools">
+                    <button className={`btn btn-sm ${shapeEdit ? 'btn-red' : ''}`} onClick={() => { setShapeEdit((v) => !v); setSelVertex(null); }}>{shapeEdit ? '✔ Xong chỉnh hình' : '🔧 Chỉnh hình (kéo điểm)'}</button>
+                    <button className="btn btn-sm" onClick={() => startDraw(sel.id)}>✏️ Vẽ lại hình</button>
+                    <button className="btn btn-sm" onClick={() => moveZone(-1)} aria-label="Lên trước">↑</button>
+                    <button className="btn btn-sm" onClick={() => moveZone(1)} aria-label="Xuống sau">↓</button>
+                    <button className="btn btn-sm btn-danger" onClick={deleteZone}>🗑 Xóa khu vực</button>
+                  </div>
+                  {shapeEdit && (
+                    <div className="dm-note">
+                      Kéo các chấm cam để chỉnh hình. Chạm dấu <b>+</b> giữa hai điểm để thêm điểm mới.
+                      {selVertex !== null && <> Đang chọn điểm {selVertex + 1}: <button className="btn btn-sm btn-danger" style={{ marginLeft: 6 }} onClick={removeVertex}>Xóa điểm này</button></>}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
 
-          <div className="card">
-            <div className="card-h"><h3>Phân công</h3></div>
-            <div className="row" style={{ alignItems: 'flex-end', gap: 10 }}>
-              <div>
-                <label className="lbl" htmlFor="rk" style={{ marginTop: 0 }}>Lấy xếp hạng của tuần</label>
-                <select id="rk" className="input" style={{ width: 120 }} value={rankWeek} onChange={(e) => setRankWeek(Number(e.target.value))}>
-                  {(rankOptions.length ? rankOptions : [1]).map((n) => <option key={n} value={n}>Tuần {n}</option>)}
-                </select>
+          {!locked && (
+            <div className="card">
+              <div className="card-h"><h3>Phân công</h3></div>
+              <div className="row" style={{ alignItems: 'flex-end', gap: 10 }}>
+                <div>
+                  <label className="lbl" htmlFor="rk" style={{ marginTop: 0 }}>Lấy xếp hạng của tuần</label>
+                  <select id="rk" className="input" style={{ width: 120 }} value={rankWeek} onChange={(e) => setRankWeek(Number(e.target.value))}>
+                    {(rankOptions.length ? rankOptions : [1]).map((n) => <option key={n} value={n}>Tuần {n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="lbl" htmlFor="pz" style={{ marginTop: 0 }}>Số lớp / khu vực</label>
+                  <select id="pz" className="input" style={{ width: 90 }} value={perZone} onChange={(e) => setPerZone(Number(e.target.value))}>
+                    {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="lbl" htmlFor="pz" style={{ marginTop: 0 }}>Số lớp / khu vực</label>
-                <select id="pz" className="input" style={{ width: 90 }} value={perZone} onChange={(e) => setPerZone(Number(e.target.value))}>
-                  {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
+              <div className="dm-tools">
+                <button className="btn btn-red" disabled={busy || zones.length === 0} onClick={runAuto}>⚡ Tự phân công theo xếp hạng</button>
+                {weekNo > 1 && <button className="btn btn-sm" onClick={copyPrevWeek}>📋 Chép tuần trước</button>}
+                {assignedClassCount > 0 && <button className="btn btn-sm btn-danger" onClick={clearWeek}>🗑 Xóa phân công tuần</button>}
               </div>
+              <p className="hint" style={{ marginTop: 8 }}>Lớp điểm thấp được phân trước, đủ khu vực thì dừng; lớp không trực lại khu vực của tuần trước. Sau khi tự phân, vẫn bấm vào khu vực để đổi lớp cho đúng ý rồi bấm Lưu, sau đó bấm “Công bố kết quả”.</p>
+              {autoNote && (
+                <div className={`dm-note ${autoNote.repeats.length || autoNote.noHistory ? 'warn' : ''}`}>
+                  Đã phân <b>{autoNote.picked.length}</b> lớp điểm thấp nhất (theo xếp hạng tuần {autoNote.rankWeek}): {autoNote.picked.join(', ')}.
+                  {autoNote.skipped.length > 0 && <> Chưa có khu vực cho: {autoNote.skipped.join(', ')}.</>}
+                  {autoNote.repeats.length > 0 && <> <b>Lưu ý:</b> {autoNote.repeats.join(', ')} phải trực lại khu vực tuần trước vì không còn chỗ khác.</>}
+                  {autoNote.noHistory && <> Tuần trước chưa có phân công nào lưu trong hệ thống nên chưa kiểm tra được việc trùng khu vực.</>}
+                </div>
+              )}
             </div>
-            <div className="dm-tools">
-              <button className="btn btn-red" disabled={busy || zones.length === 0} onClick={runAuto}>⚡ Tự phân công theo xếp hạng</button>
-              {weekNo > 1 && <button className="btn btn-sm" onClick={copyPrevWeek}>📋 Chép tuần trước</button>}
-              {assignedClassCount > 0 && <button className="btn btn-sm btn-danger" onClick={clearWeek}>🗑 Xóa phân công tuần</button>}
-            </div>
-            <p className="hint" style={{ marginTop: 8 }}>Lớp điểm thấp được phân trước, đủ khu vực thì dừng; lớp không trực lại khu vực của tuần trước. Sau khi tự phân, vẫn bấm vào khu vực để đổi lớp cho đúng ý rồi bấm Lưu.</p>
-            {autoNote && (
-              <div className={`dm-note ${autoNote.repeats.length || autoNote.noHistory ? 'warn' : ''}`}>
-                Đã phân <b>{autoNote.picked.length}</b> lớp điểm thấp nhất (theo xếp hạng tuần {autoNote.rankWeek}): {autoNote.picked.join(', ')}.
-                {autoNote.skipped.length > 0 && <> Chưa có khu vực cho: {autoNote.skipped.join(', ')}.</>}
-                {autoNote.repeats.length > 0 && <> <b>Lưu ý:</b> {autoNote.repeats.join(', ')} phải trực lại khu vực tuần trước vì không còn chỗ khác.</>}
-                {autoNote.noHistory && <> Tuần trước chưa có phân công nào lưu trong hệ thống nên chưa kiểm tra được việc trùng khu vực.</>}
-              </div>
-            )}
-          </div>
+          )}
 
           <div className="card">
             <div className="card-h"><h3>Khu vực</h3></div>
@@ -658,7 +772,7 @@ export default function TptTrucNhatPage() {
             ))}
           </div>
 
-          {zones.length > 0 && (
+          {zones.length > 0 && !locked && (
             <details className="card">
               <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Nạp dữ liệu từ bản cũ</summary>
               <p className="hint">Chỉ dùng khi cần chuyển dữ liệu từ công cụ bản đồ cũ. Khu vực hiện có sẽ được thay bằng danh sách trong bản cũ.</p>
@@ -671,6 +785,30 @@ export default function TptTrucNhatPage() {
           )}
         </div>
       </div>
+
+      {pubConfirm && (
+        <div className="dm-mbg" onClick={() => !busy && setPubConfirm(null)}>
+          <div className="dm-modal" role="dialog" aria-modal="true" aria-label="Xác nhận công bố kết quả" onClick={(e) => e.stopPropagation()}>
+            <h3>📢 Công bố kết quả tuần {weekNo}?</h3>
+            <p>Kết quả dưới đây sẽ được chốt và gửi thông báo popup:</p>
+            <div className="dm-mres">
+              {resultRows.map((r) => (
+                <div key={r.id} style={{ borderLeftColor: r.color }}><b>{r.zone}:</b> <span>{r.classes}</span></div>
+              ))}
+            </div>
+            <div className="dm-mstat">
+              <div><b>{pubConfirm.preview.classes}</b><span>Lớp trực</span></div>
+              <div><b>{pubConfirm.preview.students}</b><span>Học sinh nhận thông báo</span></div>
+              <div><b>{pubConfirm.preview.teachers}</b><span>Giáo viên nhận thông báo</span></div>
+            </div>
+            <p style={{ fontSize: 13 }}>Sau khi công bố, bạn không sửa được phân công tuần này nữa trừ khi bấm “Hủy công bố”.</p>
+            <div className="dm-tools" style={{ justifyContent: 'flex-end', marginTop: 4 }}>
+              <button className="btn" disabled={busy} onClick={() => setPubConfirm(null)}>Quay lại</button>
+              <button className="btn btn-red" disabled={busy} onClick={confirmPublish}>{busy ? 'Đang gửi…' : '✔ Công bố và gửi thông báo'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Toast msg={msg} onDone={() => setMsg(null)} />
     </AppShell>

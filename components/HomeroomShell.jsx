@@ -1,5 +1,7 @@
 'use client';
 import Link from 'next/link';
+import TeacherBell from '@/components/TeacherBell';
+import DutyNoticePopup from '@/components/DutyNoticePopup';
 
 function initialsOf(name) {
   if (!name) return '?';
@@ -9,6 +11,7 @@ function initialsOf(name) {
 
 // Khung giao diện RIÊNG của khu vực giáo viên chủ nhiệm (màu xanh lá của khối giáo viên,
 // không dùng giao diện Đội TNTP của Tổng phụ trách).
+// Có chuông thông báo (popup khi Tổng phụ trách công bố trực nhật...) và hộp "Lớp chủ nhiệm trực nhật tuần N".
 export default function HomeroomShell({ profile, roleLabel, active, showHomeroom, onLogout, children }) {
   return (
     <div className="hr-root">
@@ -76,6 +79,7 @@ export default function HomeroomShell({ profile, roleLabel, active, showHomeroom
             {showHomeroom && <Link href="/teacher/chu-nhiem" className={active === 'chu-nhiem' ? 'on' : ''}>Chủ nhiệm lớp</Link>}
           </nav>
           <div className="hr-who">
+            <TeacherBell />
             <div className="hr-avatar">{initialsOf(profile?.full_name)}</div>
             <div>
               <div className="hr-who-n">{profile?.full_name}</div>
@@ -86,6 +90,7 @@ export default function HomeroomShell({ profile, roleLabel, active, showHomeroom
         </div>
       </header>
       <main className="hr-main">{children}</main>
+      <DutyNoticePopup href="/teacher/truc-nhat" />
     </div>
   );
 }

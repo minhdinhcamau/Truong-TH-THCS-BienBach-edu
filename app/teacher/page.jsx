@@ -7,6 +7,8 @@ import { ENGLISH_SUBJECT_ID } from '../../lib/englishXp';
 import { MUSIC_SUBJECT_ID } from '../../lib/musicXp';
 import { isoToUTC, vnTodayIso } from '../../lib/dates';
 import { norm } from '../../lib/tkb';
+import TeacherBell from '../../components/TeacherBell';
+import DutyNoticePopup from '../../components/DutyNoticePopup';
 
 const DAY_MS = 86400000;
 
@@ -34,6 +36,7 @@ const ICON_PATHS = {
   class: 'M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 20v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1M15 15h3a4 4 0 0 1 4 4v1',
   cup: 'M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a2 2 0 0 0 2 4M17 6h3a2 2 0 0 1-2 4',
   star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',
+  map: 'M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14',
 };
 function Ico({ k }) {
   return (
@@ -73,6 +76,7 @@ export default function TeacherDashboard() {
   const [subjects, setSubjects] = useState([]); // các môn giáo viên này đang dạy
   const [homeroom, setHomeroom] = useState([]); // các lớp được phân công chủ nhiệm
   const [ranking, setRanking] = useState([]);
+  const [dutyNow, setDutyNow] = useState(null); // { week, zones: [] } khi lớp chủ nhiệm có khu vực trực tuần này
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
 
@@ -108,6 +112,26 @@ export default function TeacherDashboard() {
         const [hr, lb] = await Promise.all([supabase.rpc('my_homeroom_classes'), supabase.rpc('get_class_leaderboard')]);
         setHomeroom(hr.data || []);
         setRanking(lb.data || []);
+
+        // Tuần này lớp chủ nhiệm có trực nhật không (chỉ khi Tổng phụ trách đã công bố tuần hiện tại)
+        try {
+          const dm = await supabase.rpc('duty_map_get', { p_week_no: 0 });
+          const cur = dm.data?.current_week;
+          if (!dm.error && cur && (dm.data.published_weeks || []).includes(cur)) {
+            const mine = new Set(dm.data.my_class_ids || []);
+            const d = await supabase.rpc('duty_map_get', { p_week_no: cur });
+            if (!d.error && d.data) {
+              const zoneName = new Map((d.data.zones || []).map((z) => [z.id, z.name]));
+              const names = [];
+              (d.data.assign || []).forEach((r) => {
+                if (mine.has(r.class_id) && zoneName.has(r.zone_id) && !names.includes(zoneName.get(r.zone_id))) names.push(zoneName.get(r.zone_id));
+              });
+              setDutyNow({ week: cur, zones: names });
+            }
+          }
+        } catch (e) {
+          // Không có thông tin trực nhật thì thẻ lối tắt vẫn hiện bình thường
+        }
       }
 
       const { data } = await supabase
@@ -195,6 +219,7 @@ export default function TeacherDashboard() {
         .tp-q-ic { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--acc-bg, var(--tp-sky)); color: var(--acc, var(--tp-blue)); flex: none; }
         .tp-q b { display: block; font-size: 15px; color: var(--tp-navy); }
         .tp-q span { font-size: 12.5px; color: var(--tp-muted); }
+        .tp-q .tp-duty { color: #2f6f5e; font-weight: 700; }
         .tp-q-go { margin-left: auto; color: var(--acc, var(--tp-blue)); font-weight: 800; font-size: 18px; }
 
         .tp-class-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
@@ -265,13 +290,16 @@ export default function TeacherDashboard() {
             {isAdminViewing ? (
               <Link href="/admin" className="tp-pill">← Quay về trang quản trị</Link>
             ) : (
-              <div className="tp-chip">
-                <div className="tp-avatar">{initialsOf(profile?.full_name)}</div>
-                <div>
-                  <div className="tp-name">{profile?.full_name || 'Giáo viên'}</div>
-                  <div className="tp-role">{homeroom.length > 0 ? 'Giáo viên chủ nhiệm' : 'Giáo viên'}</div>
+              <>
+                <TeacherBell />
+                <div className="tp-chip">
+                  <div className="tp-avatar">{initialsOf(profile?.full_name)}</div>
+                  <div>
+                    <div className="tp-name">{profile?.full_name || 'Giáo viên'}</div>
+                    <div className="tp-role">{homeroom.length > 0 ? 'Giáo viên chủ nhiệm' : 'Giáo viên'}</div>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
             <button className="tp-pill out" onClick={handleLogout}>Đăng xuất</button>
           </div>
@@ -318,6 +346,16 @@ export default function TeacherDashboard() {
             <Link href="/teacher/tkb" className="tp-q" style={{ '--acc': '#225da3', '--acc-bg': '#e9f2fc' }}>
               <div className="tp-q-ic" aria-hidden="true"><Ico k="tasks" /></div>
               <div><b>Thời khóa biểu của tôi</b><span>Các tiết dạy theo tên thầy cô, có giờ vào ra</span></div>
+              <div className="tp-q-go" aria-hidden="true">›</div>
+            </Link>
+            <Link href="/teacher/truc-nhat" className="tp-q" style={{ '--acc': '#2f6f5e', '--acc-bg': '#e6f2ed' }}>
+              <div className="tp-q-ic" aria-hidden="true"><Ico k="map" /></div>
+              <div>
+                <b>Trực nhật</b>
+                {dutyNow && dutyNow.zones.length > 0
+                  ? <span className="tp-duty">Tuần {dutyNow.week}: lớp chủ nhiệm trực {dutyNow.zones.join(', ')}</span>
+                  : <span>Bản đồ khu vực trực nhật của các lớp theo tuần</span>}
+              </div>
               <div className="tp-q-go" aria-hidden="true">›</div>
             </Link>
             {!isAdminViewing && profile?.is_tpt && (
@@ -437,6 +475,8 @@ export default function TeacherDashboard() {
           </div>
         </section>
       </main>
+
+      {!isAdminViewing && <DutyNoticePopup href="/teacher/truc-nhat" />}
     </div>
   );
 }

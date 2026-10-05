@@ -7,6 +7,10 @@ import DutyMap, { printDutyMap } from '@/components/DutyMap';
 // Bản đồ trực nhật CHỈ XEM, dùng cho học sinh (/student/truc-nhat) và giáo viên (/teacher/truc-nhat).
 // Chỉ thấy các tuần Tổng phụ trách đã công bố. Lớp của mình (học sinh: lớp mình; giáo viên: lớp chủ nhiệm) được tô nổi bật.
 // accent: màu nhấn của khu vực người dùng (xanh dương cho học sinh, xanh lá cho giáo viên).
+//
+// Bố cục:
+//   - Điện thoại: một cột (tuần, thông báo lớp mình, bản đồ, danh sách lớp).
+//   - Máy tính (từ 960px): thông báo lớp mình ở trên cùng; bên trái là bản đồ; bên phải là chọn tuần, chú giải khu vực và danh sách lớp.
 export default function DutyMapView({ accent = '#2563eb', title = 'Bản đồ trực nhật' }) {
   const [meta, setMeta] = useState(null); // { published_weeks, current_week, my_class_ids }
   const [weekNo, setWeekNo] = useState(null);
@@ -39,6 +43,7 @@ export default function DutyMapView({ accent = '#2563eb', title = 'Bản đồ t
 
   const load = useCallback(async (w) => {
     setData(null);
+    setSelectedId(null);
     const { data: d, error } = await supabase.rpc('duty_map_get', { p_week_no: w });
     if (error) { setErr(error.message); return; }
     setData(d);
@@ -63,6 +68,7 @@ export default function DutyMapView({ accent = '#2563eb', title = 'Bản đồ t
   }, [data, mineIds]);
   const zones = data?.zones || [];
   const myZoneNames = zones.filter((z) => mineZones.has(z.id)).map((z) => z.name);
+  const usedZones = zones.filter((z) => (labels[z.id] || []).length > 0);
   const classRows = useMemo(() => {
     const m = new Map();
     (data?.assign || []).forEach((r) => {
@@ -80,25 +86,55 @@ export default function DutyMapView({ accent = '#2563eb', title = 'Bản đồ t
         .dmv { font-family: inherit; }
         .dmv h1 { margin: 0 0 4px; font-size: 24px; }
         .dmv .sub { color: #5b6b7a; font-size: 13.5px; margin: 0 0 14px; }
-        .dmv .c { background: #fff; border: 1px solid #dbe3ec; border-radius: 16px; padding: 14px; margin-bottom: 14px; }
+        .dmv .c { background: #fff; border: 1px solid #dbe3ec; border-radius: 16px; padding: 14px; min-width: 0; }
+        .dmv .grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
         .dmv .wk { display: flex; align-items: center; gap: 8px; }
-        .dmv .wk button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid #dbe3ec; background: #fff; font-size: 22px; cursor: pointer; }
+        .dmv .wk button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid #dbe3ec; background: #fff; font-size: 22px; cursor: pointer; flex: none; }
+        .dmv .wk button:hover:not(:disabled) { background: #f3f6fa; }
         .dmv .wk button:disabled { opacity: .35; cursor: default; }
-        .dmv .wt { flex: 1; text-align: center; }
+        .dmv .wt { flex: 1; text-align: center; min-width: 0; }
         .dmv .wt b { display: block; font-size: 20px; line-height: 1.2; }
         .dmv .wt span { font-size: 12.5px; color: #5b6b7a; }
-        .dmv .me { background: var(--dmv); color: #fff; border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; font-size: 14.5px; line-height: 1.45; }
-        .dmv .me b { font-size: 16px; }
+        .dmv .me { display: flex; align-items: center; gap: 12px; background: var(--dmv); color: #fff; border-radius: 16px; padding: 14px 16px; font-size: 14.5px; line-height: 1.45; }
+        .dmv .me .ic { width: 44px; height: 44px; border-radius: 14px; background: rgba(255,255,255,.22); display: grid; place-items: center; font-size: 22px; flex: none; }
+        .dmv .me b { font-size: 17px; }
         .dmv .me.none { background: #eef2f6; color: #3d4b59; }
+        .dmv .me.none .ic { background: #e1e8ef; }
         .dmv .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
         .dmv .cc { border: 1px solid #dbe3ec; border-left: 6px solid #dbe3ec; border-radius: 12px; padding: 9px 11px; background: #fff; }
         .dmv .cc.mine { box-shadow: 0 0 0 2px var(--dmv) inset; }
         .dmv .cc b { display: block; font-size: 15px; }
         .dmv .cc span { display: block; font-size: 13px; color: #3d4b59; margin-top: 2px; }
         .dmv .btn { font: inherit; font-size: 14px; padding: 10px 14px; border: 1px solid #dbe3ec; background: #fff; border-radius: 10px; cursor: pointer; min-height: 44px; }
+        .dmv .btn:hover { background: #f3f6fa; }
         .dmv .empty { color: #5b6b7a; text-align: center; padding: 26px 8px; font-size: 14px; }
         .dmv .h { font-size: 15px; margin: 0 0 8px; }
         .dmv .zinfo { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #f3f6fa; font-size: 14px; }
+        .dmv .legend { display: flex; flex-wrap: wrap; gap: 8px; }
+        .dmv .lg { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #dbe3ec; background: #fff; border-radius: 999px; padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer; min-height: 38px; text-align: left; }
+        .dmv .lg i { width: 12px; height: 12px; border-radius: 4px; flex: none; }
+        .dmv .lg em { font-style: normal; color: #5b6b7a; }
+        .dmv .lg.on { outline: 2px solid var(--dmv); font-weight: 700; }
+        .dmv .lg.mine { background: #f1f6ff; }
+        .dmv .mapc { padding: 10px; }
+        .dmv .tools { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+        @media (min-width: 960px) {
+          .dmv h1 { font-size: 28px; }
+          .dmv .grid {
+            grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+            grid-template-areas: 'banner banner' 'map week' 'map legend' 'map list';
+            grid-template-rows: auto auto auto 1fr;
+            align-items: start;
+          }
+          .dmv .g-banner { grid-area: banner; }
+          .dmv .g-map { grid-area: map; position: sticky; top: 76px; }
+          .dmv .g-week { grid-area: week; }
+          .dmv .g-legend { grid-area: legend; }
+          .dmv .g-list { grid-area: list; }
+          .dmv .mapc { padding: 14px; }
+          .dmv .cards { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+        }
       `}</style>
 
       <h1>{title}</h1>
@@ -113,8 +149,8 @@ export default function DutyMapView({ accent = '#2563eb', title = 'Bản đồ t
       )}
 
       {!err && meta && pubs.length > 0 && weekNo && (
-        <>
-          <div className="c">
+        <div className="grid">
+          <div className="c g-week">
             <div className="wk">
               <button onClick={() => idx > 0 && setWeekNo(pubs[idx - 1])} disabled={idx <= 0} aria-label="Tuần trước">‹</button>
               <div className="wt">
@@ -125,11 +161,23 @@ export default function DutyMapView({ accent = '#2563eb', title = 'Bản đồ t
             </div>
           </div>
 
-          {data && (myZoneNames.length > 0
-            ? <div className="me"><b>Lớp của bạn trực: {myZoneNames.join(', ')}</b><br />Khu vực này được tô nổi bật trên bản đồ.</div>
-            : <div className="me none">Tuần này lớp của bạn không có khu vực trực nhật trên bản đồ.</div>)}
+          <div className="g-banner">
+            {!data ? (
+              <div className="me none"><span className="ic" aria-hidden="true">⏳</span><span>Đang tải…</span></div>
+            ) : myZoneNames.length > 0 ? (
+              <div className="me">
+                <span className="ic" aria-hidden="true">🧹</span>
+                <span><b>Lớp của bạn trực: {myZoneNames.join(', ')}</b><br />Khu vực này được tô nổi bật trên bản đồ.</span>
+              </div>
+            ) : (
+              <div className="me none">
+                <span className="ic" aria-hidden="true">✓</span>
+                <span>Tuần này lớp của bạn không có khu vực trực nhật trên bản đồ.</span>
+              </div>
+            )}
+          </div>
 
-          <div className="c" style={{ padding: 10 }}>
+          <div className="c mapc g-map">
             {!data ? <div className="empty">Đang tải bản đồ…</div> : (
               <DutyMap svgRef={svgRef} zones={zones} labels={labels} mine={mineZones} selectedId={selectedId} onSelect={(id) => setSelectedId(id === selectedId ? null : id)} />
             )}
@@ -139,14 +187,28 @@ export default function DutyMapView({ accent = '#2563eb', title = 'Bản đồ t
               </div>
             )}
             {data && (
-              <div style={{ marginTop: 10 }}>
+              <div className="tools">
                 <button className="btn" onClick={() => printDutyMap(svgRef.current, `Sơ đồ phân công trực nhật · Tuần ${weekNo}`, zones.filter((z) => (labels[z.id] || []).length).map((z) => ({ zone: z.name, classes: labels[z.id].join(', ') })))}>🖨️ In sơ đồ</button>
               </div>
             )}
           </div>
 
+          {data && usedZones.length > 0 && (
+            <div className="c g-legend">
+              <h2 className="h">Khu vực và lớp trực</h2>
+              <div className="legend">
+                {usedZones.map((z) => (
+                  <button key={z.id} className={`lg ${z.id === selectedId ? 'on' : ''} ${mineZones.has(z.id) ? 'mine' : ''}`} onClick={() => setSelectedId(z.id === selectedId ? null : z.id)}>
+                    <i style={{ background: z.color }} />
+                    <span><b>{z.name}</b> <em>{(labels[z.id] || []).join(', ')}</em></span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {data && (
-            <div className="c">
+            <div className="c g-list">
               <h2 className="h">Các lớp trực tuần {weekNo}</h2>
               {classRows.length === 0 ? <div className="empty">Tuần này chưa có lớp nào được phân công.</div> : (
                 <div className="cards">
@@ -160,7 +222,7 @@ export default function DutyMapView({ accent = '#2563eb', title = 'Bản đồ t
               )}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
