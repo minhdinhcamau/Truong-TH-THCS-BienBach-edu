@@ -8,8 +8,8 @@ import { DUTY_MAP_BASE, DUTY_VIEWBOX } from '@/lib/tpt/dutyMapBase';
 // labels    : { [zoneId]: ["6A1", "7A2"] }  lớp trực của khu vực trong tuần đang xem
 // mine      : Set các zoneId có lớp của người xem (được tô nổi bật)
 // selectedId, onSelect(zoneId)
-// Nút "Ẩn màu / Hiện màu" (góc phải trên bản đồ): ẩn màu tô thì chỉ còn nét vạch đứt có màu của từng khu vực
-// để nhìn rõ bản đồ nhưng vẫn nhận ra khu vực của lớp mình.
+// Công tắc "Hiện màu / Chỉ viền" nằm trong THANH CÔNG CỤ phía TRÊN bản đồ (không còn nổi đè lên bản đồ, nên không che
+// tên Nhà vệ sinh nữ). Chọn "Chỉ viền" thì ẩn màu tô, chỉ còn nét vạch đứt có màu của từng khu vực.
 // Chế độ sửa (edit = true):
 //   showEmpty      : vẽ viền các khu vực chưa có lớp
 //   editShapeId    : khu vực đang được sửa hình (hiện các điểm kéo được)
@@ -23,6 +23,12 @@ export const centerOf = (arr) => {
   const ys = arr.map((q) => q[1]);
   return [Math.round((Math.min(...xs) + Math.max(...xs)) / 2), Math.round((Math.min(...ys) + Math.max(...ys)) / 2)];
 };
+
+const segBtn = (on) => ({
+  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 13px', minHeight: 32, border: 0, borderRadius: 999,
+  background: on ? '#fff' : 'transparent', color: on ? '#1f2937' : '#6b7280', font: 'inherit', fontWeight: 700, fontSize: 12.5,
+  cursor: 'pointer', boxShadow: on ? '0 1px 3px rgba(0,0,0,0.18)' : 'none', whiteSpace: 'nowrap',
+});
 
 export default function DutyMap({
   svgRef, zones, labels = {}, mine, selectedId, onSelect, edit = false, showEmpty = false,
@@ -72,7 +78,20 @@ export default function DutyMap({
   const shapePts = shape ? parsePts(shape.points) : [];
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div>
+      {/* Thanh công cụ phía trên bản đồ: công tắc Hiện màu / Chỉ viền */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280' }}>Hiển thị khu vực</span>
+        <div role="group" aria-label="Cách hiển thị khu vực" style={{ display: 'inline-flex', padding: 3, gap: 2, borderRadius: 999, background: '#eceff4', border: '1px solid rgba(0,0,0,0.08)' }}>
+          <button type="button" onClick={() => setOutline(false)} aria-pressed={!outline} style={segBtn(!outline)}>
+            <span aria-hidden="true">🎨</span> Hiện màu
+          </button>
+          <button type="button" onClick={() => setOutline(true)} aria-pressed={outline} style={segBtn(outline)}>
+            <span aria-hidden="true">▭</span> Chỉ viền
+          </button>
+        </div>
+      </div>
+
       <svg
         ref={ref}
         viewBox={DUTY_VIEWBOX}
@@ -204,19 +223,6 @@ export default function DutyMap({
           </g>
         )}
       </svg>
-
-      <button
-        type="button"
-        onClick={() => setOutline((v) => !v)}
-        aria-pressed={outline}
-        style={{
-          position: 'absolute', top: 8, right: 8, zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '7px 12px', minHeight: 36, borderRadius: 999, border: '1px solid rgba(0,0,0,0.18)', background: 'rgba(255,255,255,0.94)',
-          color: '#1f2937', font: 'inherit', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
-        }}
-      >
-        {outline ? '🎨 Hiện màu khu vực' : '👁 Ẩn màu (chỉ viền)'}
-      </button>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
@@ -16,11 +16,13 @@ export function useStudent() {
 
 // Các mục chuyển trang. "Học tập" là trang tổng hợp các môn (Ngữ văn, Tiếng Anh, Âm nhạc...).
 // bottom: hiện ở thanh menu dưới cùng trên điện thoại; các mục còn lại nằm trong menu "Thêm".
+// main  : hiện thẳng trên thanh menu ngang của máy tính; các mục còn lại gom vào ô "Khác" để thanh luôn gọn MỘT hàng.
 const TABS = [
   {
     href: '/student',
     label: 'Học tập',
     bottom: true,
+    main: true,
     match: (p) => p === '/student' || p.startsWith('/student/english') || p.startsWith('/student/music') || p.startsWith('/student/ngu-van'),
     icon: <path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" />,
   },
@@ -29,6 +31,7 @@ const TABS = [
     label: 'Thi đua lớp',
     short: 'Thi đua',
     bottom: true,
+    main: true,
     match: (p) => p.startsWith('/student/thi-dua'),
     icon: <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />,
   },
@@ -37,6 +40,7 @@ const TABS = [
     label: 'Thời khóa biểu',
     short: 'Lịch học',
     bottom: true,
+    main: true,
     match: (p) => p.startsWith('/student/thoi-khoa-bieu'),
     icon: <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 10h16M9 4v3M15 4v3M8 14h3M13 14h3M8 17h3" />,
   },
@@ -44,18 +48,21 @@ const TABS = [
     href: '/student/bang-tin',
     label: 'Bảng tin',
     bottom: true,
+    main: true,
     match: (p) => p.startsWith('/student/bang-tin'),
     icon: <path d="M4 5h13v14H6a2 2 0 0 1-2-2V5zM17 9h3v8a2 2 0 0 1-2 2M8 9h6M8 13h6" />,
   },
   {
     href: '/student/truc-nhat',
     label: 'Trực nhật',
+    main: true,
     match: (p) => p.startsWith('/student/truc-nhat'),
     icon: <path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2zM9 4v14M15 6v14" />,
   },
   {
     href: '/student/leaderboard',
     label: 'Xếp hạng',
+    main: true,
     match: (p) => p.startsWith('/student/leaderboard'),
     icon: <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a2 2 0 0 0 2 4M17 6h3a2 2 0 0 1-2 4" />,
   },
@@ -90,12 +97,15 @@ const Icon = ({ d }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>
 );
 const DOTS = <path d="M5 12h.01M12 12h.01M19 12h.01" strokeWidth="3.4" />;
+const GRID = <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" />;
 
 export default function StudentLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const [state, setState] = useState({ loading: true, profile: null, stats: null, classRole: null });
   const [moreOpen, setMoreOpen] = useState(false);
+  const [deskMoreOpen, setDeskMoreOpen] = useState(false); // ô "Khác" trên thanh menu máy tính
+  const deskMoreRef = useRef(null);
 
   async function loadAll() {
     const { data: userRes } = await supabase.auth.getUser();
@@ -139,8 +149,25 @@ export default function StudentLayout({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Đổi trang thì đóng menu "Thêm"
-  useEffect(() => { setMoreOpen(false); }, [pathname]);
+  // Đổi trang thì đóng các menu
+  useEffect(() => { setMoreOpen(false); setDeskMoreOpen(false); }, [pathname]);
+
+  // Ô "Khác" (máy tính): bấm ra ngoài hoặc nhấn Esc thì đóng
+  useEffect(() => {
+    if (!deskMoreOpen) return undefined;
+    const onDown = (e) => {
+      if (deskMoreRef.current && !deskMoreRef.current.contains(e.target)) setDeskMoreOpen(false);
+    };
+    const onKey = (e) => e.key === 'Escape' && setDeskMoreOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [deskMoreOpen]);
 
   // Mở menu thì khóa cuộn nền; bấm Esc để đóng
   useEffect(() => {
@@ -172,6 +199,10 @@ export default function StudentLayout({ children }) {
   const bottomTabs = tabs.filter((t) => t.bottom);
   const moreTabs = tabs.filter((t) => !t.bottom);
   const moreActive = moreTabs.some((t) => t.match(pathname));
+  // Thanh menu máy tính: mục chính hiện thẳng, mục còn lại gom vào ô "Khác"
+  const deskMain = tabs.filter((t) => t.main);
+  const deskExtra = tabs.filter((t) => !t.main);
+  const deskExtraActive = deskExtra.some((t) => t.match(pathname));
   // Quản trị viên bấm "Xem trang Học sinh" từ trang admin -> hiện nút quay về thay vì các tính năng của học sinh
   const isAdminViewing = profile.role === 'admin';
   const tier = getRankTier(stats.total_xp);
@@ -228,14 +259,39 @@ export default function StudentLayout({ children }) {
         </header>
 
         <div className="sx-wrap student-wrap">
-          {/* Máy tính: thanh chuyển mục ngang */}
+          {/* Máy tính: thanh chuyển mục ngang, luôn MỘT hàng; mục ít dùng nằm trong ô "Khác" */}
           <nav className="sx-tabs" aria-label="Chuyển mục">
-            {tabs.map((t) => (
-              <Link key={t.href} href={t.href} className={`sx-tab ${t.match(pathname) ? 'active' : ''}`}>
+            {deskMain.map((t) => (
+              <Link key={t.href} href={t.href} className={`sx-tab ${t.match(pathname) ? 'active' : ''}`} aria-current={t.match(pathname) ? 'page' : undefined}>
                 <Icon d={t.icon} />
                 {t.label}
               </Link>
             ))}
+            {deskExtra.length > 0 && (
+              <div className="sx-more" ref={deskMoreRef}>
+                <button
+                  type="button"
+                  className={`sx-tab sx-more-btn ${deskExtraActive ? 'active' : ''}`}
+                  onClick={() => setDeskMoreOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={deskMoreOpen}
+                >
+                  <Icon d={GRID} />
+                  Khác
+                  <svg className="sx-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+                </button>
+                {deskMoreOpen && (
+                  <div className="sx-menu" role="menu">
+                    {deskExtra.map((t) => (
+                      <Link key={t.href} href={t.href} role="menuitem" className={t.match(pathname) ? 'active' : ''}>
+                        <Icon d={t.icon} />
+                        {t.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
 
           {children}
