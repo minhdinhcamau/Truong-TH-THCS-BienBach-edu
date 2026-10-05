@@ -112,6 +112,8 @@ function Trend({ d }) {
   return <span className="pm-badge">■ Giữ nguyên hạng</span>;
 }
 
+const shortD = (iso) => { const [, m, d] = String(iso).split('-'); return `${Number(d)}/${Number(m)}`; };
+
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 // Trình chiếu sinh hoạt lớp toàn màn hình: mũi tên / phím cách / vuốt để chuyển trang, F = toàn màn hình, Esc = thoát.
@@ -148,6 +150,18 @@ export default function PresentationMode({ v, advice, className, weekLabel, onCl
           <AnimBars items={v.reasons} emptyText="Tuần này Sao đỏ chưa trừ điểm lớp — cả lớp làm rất tốt! 🎉" />
           {v.days.length > 0 && <AnimColumns items={v.days} height={120} />}
         </div>) },
+      ...(v.detail ? [{ key: 'detail', title: 'Chi tiết các lượt bị trừ điểm', body: v.detail.length === 0 ? <div className="pm-empty">Tuần này Sao đỏ chưa trừ điểm lớp — cả lớp làm rất tốt! 🎉</div> : (
+        <div style={{ display: 'grid', gap: 12, maxWidth: 1000, margin: '0 auto' }}>
+          <Rise d={0} style={{ fontSize: 'clamp(20px, 2.6vw, 32px)' }}>Có <b style={{ color: '#ff9b8f', fontSize: '1.3em' }}><Count value={v.detail.length} /></b> lượt bị trừ, tổng <b style={{ color: '#f2c94c' }}>{n1(v.detail.reduce((a, x) => a + Number(x.points || 0), 0))}</b> điểm.</Rise>
+          {v.detail.slice(0, 10).map((x, k) => (
+            <Rise key={x.id} d={120 + k * 90} className="pm-name-row" style={{ gap: 14, alignItems: 'center' }}>
+              <span style={{ color: '#b9d6cb', minWidth: 64 }}>{shortD(x.date)}</span>
+              <span style={{ flex: 1 }}><b>{x.label}</b>{names ? <span style={{ color: '#d7e9e1' }}> · {x.student_name || 'Cả lớp'}</span> : null}</span>
+              <span style={{ color: '#ff9b8f', fontWeight: 800 }}>{n1(x.points)}</span>
+            </Rise>
+          ))}
+          {v.detail.length > 10 && <Rise d={1100} style={{ textAlign: 'center', color: '#b9d6cb', fontSize: 'clamp(15px, 1.8vw, 22px)' }}>… và {v.detail.length - 10} lượt khác (xem trong Báo cáo tuần)</Rise>}
+        </div>) }] : []),
       { key: 'praise', title: '🏅 Tuyên dương', confetti: v.top.length > 0, body: v.top.length === 0 ? <div className="pm-empty">Chưa có điểm cộng trong tuần. Tuần sau cùng phát biểu xây dựng bài nhé!</div> : (
         <div style={{ display: 'grid', gap: 16, maxWidth: 980, margin: '0 auto' }}>
           {v.top.map((s, k) => (
@@ -293,7 +307,7 @@ export default function PresentationMode({ v, advice, className, weekLabel, onCl
           {slides.map((sl, k) => <button key={sl.key} className={k === i ? 'on' : ''} onClick={() => go(k)} aria-label={`Trang ${k + 1}: ${sl.title}`} />)}
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {s.key === 'warn' && v.repeat.length > 0 && <button className="pm-btn" onClick={() => setNames((x) => !x)}>{names ? '🙈 Ẩn tên' : '👁 Hiện tên'}</button>}
+          {((s.key === 'warn' && v.repeat.length > 0) || (s.key === 'detail' && v.detail?.length > 0)) && <button className="pm-btn" onClick={() => setNames((x) => !x)}>{names ? '🙈 Ẩn tên' : '👁 Hiện tên'}</button>}
           <button className="pm-btn" onClick={() => (document.fullscreenElement ? document.exitFullscreen?.() : document.documentElement.requestFullscreen?.())}>⛶ Toàn màn hình (F)</button>
           <button className="pm-btn" onClick={onClose}>Thoát (Esc)</button>
           <button className="pm-btn" disabled={i === 0} onClick={() => go(i - 1)}>‹ Trước</button>
