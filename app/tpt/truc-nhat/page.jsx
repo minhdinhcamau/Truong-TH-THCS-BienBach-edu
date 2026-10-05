@@ -8,7 +8,7 @@ import { fmtDate } from '@/lib/dates';
 import AppShell, { Toast } from '@/components/AppShell';
 import DutyMap, { centerOf, parsePts, printDutyMap, ptsToStr } from '@/components/DutyMap';
 import { autoAssign } from '@/lib/dutyAssign';
-import { ZONE_COLORS, STAGE_POINTS, pickZoneColor } from '@/lib/tpt/dutyMapBase';
+import { ZONE_COLORS, pickZoneColor } from '@/lib/tpt/dutyMapBase';
 
 // Trang /tpt/truc-nhat - Bản đồ phân công trực nhật.
 //   - Khu vực và phân công lưu trong database (bảng duty_map_*), không còn lưu trong trình duyệt, không còn iframe.
@@ -16,6 +16,7 @@ import { ZONE_COLORS, STAGE_POINTS, pickZoneColor } from '@/lib/tpt/dutyMapBase'
 //   - "Tự phân công theo xếp hạng": lớp điểm thấp được phân trước, không trùng khu vực tuần trước.
 //   - "Công bố kết quả": chốt kết quả tuần (không sửa được nữa), gửi thông báo popup cho học sinh và giáo viên chủ nhiệm
 //     của các lớp được phân công. Muốn sửa phải "Hủy công bố" rồi công bố lại.
+//   - Mọi khu vực (kể cả Sân khấu) đều do Tổng phụ trách tự vẽ bằng nút "Vẽ khu vực mới".
 
 const PALETTE = ZONE_COLORS; // 12 màu khác nhau cho 12 lớp
 const TOTAL_FALLBACK = 35;
@@ -366,20 +367,6 @@ export default function TptTrucNhatPage() {
     setSelectedId(id);
     setShapeEdit(false);
   }
-  function addStageZone() {
-    if (locked) { warnLocked(); return; }
-    if (zones.some((z) => z.name.trim().toLowerCase() === 'sân khấu')) {
-      setMsg({ type: 'error', text: 'Đã có khu vực Sân khấu rồi.' });
-      return;
-    }
-    const pts = parsePts(STAGE_POINTS);
-    const [x, y] = centerOf(pts);
-    const id = `u${Date.now()}`;
-    setZones((zs) => [...zs, { id, name: 'Sân khấu', color: pickZoneColor(zs.map((q) => q.color)), points: STAGE_POINTS, x, y }]);
-    setDirtyZ(true);
-    setSelectedId(id);
-    setShapeEdit(false);
-  }
   function recolorAll() {
     if (locked) { warnLocked(); return; }
     setZones((zs) => zs.map((z, i) => ({ ...z, color: PALETTE[i % PALETTE.length] })));
@@ -649,7 +636,7 @@ export default function TptTrucNhatPage() {
               </div>
             ) : pendingShape ? (
               <div className="dm-draw">
-                <input className="input" style={{ maxWidth: 260 }} value={newName} maxLength={40} onChange={(e) => setNewName(e.target.value)} placeholder="Tên khu vực, VD: Hành lang dãy trái" autoFocus />
+                <input className="input" style={{ maxWidth: 260 }} value={newName} maxLength={40} onChange={(e) => setNewName(e.target.value)} placeholder="Tên khu vực, VD: Sân khấu, Hành lang dãy trái" autoFocus />
                 <button className="btn btn-sm btn-red" onClick={saveNewZone}>Thêm khu vực</button>
                 <button className="btn btn-sm" onClick={() => setPendingShape(null)}>Hủy</button>
               </div>
@@ -660,7 +647,6 @@ export default function TptTrucNhatPage() {
             ) : (
               <div className="dm-tools">
                 <button className="btn btn-sm btn-red" onClick={() => startDraw()}>✏️ Vẽ khu vực mới</button>
-                <button className="btn btn-sm" onClick={addStageZone}>🎭 Thêm khu Sân khấu</button>
                 {zones.length > 1 && <button className="btn btn-sm" onClick={recolorAll} title="Mỗi khu vực một màu khác nhau (tối đa 12 màu)">🎨 Tô lại 12 màu</button>}
                 <span className="hint" style={{ margin: 0 }}>Chạm vào khu vực trên bản đồ để chọn lớp trực hoặc chỉnh hình.</span>
               </div>
