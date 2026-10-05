@@ -1,0 +1,22 @@
+/* Sửa menu bị che / bị cuộn lệch: cho các mục menu xuống dòng để luôn hiện đủ, không còn thanh cuộn ngang ẩn. */
+
+/* Menu ngang trang học sinh (máy tính) */
+html body .sx-tabs {
+  flex-wrap: wrap;
+  overflow: visible;
+  row-gap: 4px;
+}
+html body .sx-tabs .sx-tab {
+  flex: 0 1 auto;
+}
+
+/* Menu ngang các trang Tổng phụ trách / quản trị (AppShell) */
+html body .app .nav-in {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  overflow: visible;
+  row-gap: 4px;
+}
+html body .app .nav-in > * {
+  flex-shrink: 0;
+}

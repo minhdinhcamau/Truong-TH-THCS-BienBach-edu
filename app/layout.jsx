@@ -1,3 +1,5 @@
+import './nav-fix.css';
+
 export const metadata = {
   title: 'LMS Trường học',
   description: 'Nền tảng học tập của trường',
