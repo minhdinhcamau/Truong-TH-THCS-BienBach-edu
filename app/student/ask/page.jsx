@@ -14,17 +14,37 @@ const REPORT_REASONS = [
 ];
 const MAX_PHOTOS = 8;
 
-function Avatar({ name, totalXp, photoUrl, size = 38 }) {
-  // Khung có cả dải ruy băng nên cần vẽ lớn hơn avatar cũ; margin âm giữ nguyên bố cục dòng.
-  const big = Math.round(size * 1.7);
+// Avatar có khung theo hạng. Khung (có cả dải ruy băng) lớn hơn ảnh tròn nên được đặt
+// vào một "ô" cố định ở giữa: ô giữ đúng chỗ trong bố cục, khung vẽ đè ra ngoài nhẹ nhàng
+// nên không đẩy chữ bên cạnh và không bị lệch dòng.
+//   burstKey: đổi giá trị thì bắn pháo sao một lần (hạng 5, 6)
+//   boost   : chế độ rực rỡ (đang soạn câu hỏi, vừa đăng bài)
+function Avatar({ name, totalXp, photoUrl, size = 38, burstKey = 0, boost = false }) {
+  const frame = Math.round(size * 1.75);
+  const slot = Math.round(size * 1.3);
   return (
-    <AvatarFrame
-      src={photoUrl}
-      name={name}
-      xp={totalXp}
-      size={big}
-      style={{ margin: `${-Math.round((big - size) / 2)}px` }}
-    />
+    <span
+      style={{
+        position: 'relative',
+        display: 'inline-flex',
+        flex: 'none',
+        width: slot,
+        height: slot,
+        marginRight: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <AvatarFrame
+        src={photoUrl}
+        name={name}
+        xp={totalXp}
+        size={frame}
+        boost={boost}
+        burstKey={burstKey}
+        style={{ position: 'absolute', left: '50%', top: '52%', transform: 'translate(-50%, -50%)' }}
+      />
+    </span>
   );
 }
 
@@ -348,6 +368,12 @@ export default function AskPage() {
   const [lightbox, setLightbox] = useState(null); // { photos, index }
   const [classFilterId, setClassFilterId] = useState('');
   const [sortMode, setSortMode] = useState('newest'); // 'newest' | 'liked'
+  const [fx, setFx] = useState({ key: 0, on: false }); // pháo sao khi vừa đăng câu hỏi / bình luận
+
+  function celebrate() {
+    setFx({ key: Date.now(), on: true });
+    setTimeout(() => setFx((f) => ({ ...f, on: false })), 3500);
+  }
 
   function showToast(msg) {
     setToast(msg);
@@ -507,6 +533,7 @@ export default function AskPage() {
       setPhotoFiles([]);
       setPhotoPreviews([]);
       await loadFeed();
+      celebrate();
       showToast('Đã đăng câu hỏi của em! +2 KN');
     } catch (err) {
       alert(err.message || 'Có lỗi khi đăng câu hỏi');
@@ -528,6 +555,7 @@ export default function AskPage() {
       return;
     }
     setReplyDrafts({ ...replyDrafts, [postId]: '' });
+    celebrate();
     loadFeed();
   }
 
@@ -621,7 +649,7 @@ export default function AskPage() {
 
       <div className="compose">
         <div className="compose-top">
-          <Avatar name={profile.full_name} totalXp={stats.total_xp} photoUrl={profile.photo_url} size={38} />
+          <Avatar name={profile.full_name} totalXp={stats.total_xp} photoUrl={profile.photo_url} size={38} boost={fx.on || !!text.trim()} burstKey={fx.key} />
           <textarea
             placeholder="Em đang vướng câu hỏi nào? Mô tả ngắn gọn để mọi người dễ giúp…"
             value={text}
@@ -692,7 +720,7 @@ export default function AskPage() {
           <div className="post" key={p.id}>
             {p.is_pinned && <div className="pin-badge">📌 Đã ghim</div>}
             <div className="post-head">
-              <Avatar name={p.author?.full_name} totalXp={p.authorXp} photoUrl={p.author?.photo_url} size={38} />
+              <Avatar name={p.author?.full_name} totalXp={p.authorXp} photoUrl={p.author?.photo_url} size={38} boost={isOwnPost && fx.on} burstKey={isOwnPost ? fx.key : 0} />
               <div>
                 <div className="post-author">{p.author?.full_name || 'Học sinh'}</div>
                 <div className="post-meta">{new Date(p.created_at).toLocaleString('vi-VN')}</div>
@@ -739,7 +767,7 @@ export default function AskPage() {
                 const isTeacher = r.author?.role === 'teacher';
                 return (
                   <div className={`reply ${isTeacher ? 'teacher' : ''}`} key={r.id}>
-                    <Avatar name={r.author?.full_name} totalXp={r.authorXp} photoUrl={r.author?.photo_url} size={30} />
+                    <Avatar name={r.author?.full_name} totalXp={r.authorXp} photoUrl={r.author?.photo_url} size={30} boost={r.author_id === profile.id && fx.on} burstKey={r.author_id === profile.id ? fx.key : 0} />
                     <div style={{ flex: 1 }}>
                       <div className="reply-bubble">
                         <div className="reply-author">
