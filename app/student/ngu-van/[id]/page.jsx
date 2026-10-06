@@ -152,19 +152,19 @@ export default function StudentLitPage() {
         .paper { background: #fff; border: 1px solid #e5eeec; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 10px rgba(23,48,45,0.05); }
         .bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; border-bottom: 1px solid #eef3f2; background: #fafcfd; font-size: 13px; color: #4b5563; }
         .tools { display: flex; gap: 6px; align-items: center; }
-        .tbtn { border: 1.5px solid #e2e8f0; background: #fff; border-radius: 8px; padding: 4px 10px; font-weight: 700; font-size: 13px; cursor: pointer; color: #374151; }
+        .tbtn { font-family: 'Be Vietnam Pro', system-ui, sans-serif; border: 1.5px solid #e2e8f0; background: #fff; border-radius: 8px; padding: 4px 10px; font-weight: 700; font-size: 13px; cursor: pointer; color: #374151; }
         .tbtn.on { border-color: #225da3; color: #225da3; background: #f5faff; }
         .state { font-weight: 600; }
         .state.error { color: #a3374a; }
         .state.dirty, .state.saving { color: #b45309; }
         textarea { display: block; width: 100%; box-sizing: border-box; border: none; outline: none; resize: vertical; min-height: 62vh;
-          font-family: 'Noto Serif', Georgia, 'Times New Roman', serif; color: #1f2937; padding: 0 28px 0 76px;
+          font-family: 'Noto Serif', 'Be Vietnam Pro', 'Times New Roman', serif; font-variant-ligatures: none; text-rendering: optimizeLegibility; color: #1f2937; padding: 0 28px 0 76px;
           background-color: #fff; background-attachment: local; }
         .foot { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; justify-content: space-between; padding: 12px 16px; border-top: 1px solid #eef3f2; background: #fafcfd; font-size: 13px; }
         .count b { color: #17302d; }
         .meter { flex: 1; min-width: 160px; max-width: 280px; height: 8px; background: #eef3f2; border-radius: 999px; overflow: hidden; }
         .meter i { display: block; height: 100%; border-radius: 999px; transition: width 0.2s; }
-        .submit { background: #c0392b; color: #fff; border: none; border-radius: 999px; padding: 11px 26px; font-weight: 800; font-size: 14.5px; cursor: pointer; box-shadow: 0 3px 0 #8e2a20; }
+        .submit { font-family: 'Be Vietnam Pro', system-ui, sans-serif; background: #c0392b; color: #fff; border: none; border-radius: 999px; padding: 11px 26px; font-weight: 800; font-size: 14.5px; cursor: pointer; box-shadow: 0 3px 0 #8e2a20; }
         .submit:disabled { background: #9ca3af; box-shadow: none; cursor: not-allowed; }
         .side { display: grid; gap: 14px; position: sticky; top: 12px; }
         .card { background: #fff; border: 1px solid #e5eeec; border-radius: 14px; padding: 16px 18px; }
@@ -201,7 +201,7 @@ export default function StudentLitPage() {
           </div>
 
           <textarea
-            lang="vi" spellCheck="true" value={content} onChange={onChange} onBlur={() => { clearTimeout(timer.current); save(content); }}
+            lang="vi" spellCheck={false} autoCorrect="off" autoCapitalize="off" value={content} onChange={onChange} onBlur={() => { clearTimeout(timer.current); save(content); }}
             placeholder="Em bắt đầu viết bài ở đây..." maxLength={MAX_ESSAY_CHARS}
             style={{
               fontSize, lineHeight: `${lh}px`,

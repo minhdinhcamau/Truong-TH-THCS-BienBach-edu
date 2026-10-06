@@ -12,6 +12,10 @@ import './student.css';
 import './ui.css';
 import './rank-fx.css';
 
+// Lựa chọn giao diện (cũ hoặc Ngôi sao): lưu trên thiết bị này, mặc định là Ngôi sao khi đủ hạng.
+export function themePref(uid) {
+  try { return localStorage.getItem('ui_theme_' + uid) === 'classic' ? 'classic' : 'star'; } catch (e) { return 'star'; }
+}
 export const StudentContext = createContext(null);
 export function useStudent() {
   return useContext(StudentContext);
@@ -114,6 +118,15 @@ export default function StudentLayout({ children }) {
   const router = useRouter();
   const [state, setState] = useState({ loading: true, profile: null, stats: null, classRole: null, cosPref: null });
   const [moreOpen, setMoreOpen] = useState(false);
+  const [uiTheme, setUiTheme] = useState('star');
+  const themeUid = state.profile?.id;
+  useEffect(() => {
+    if (!themeUid) return undefined;
+    const sync = () => setUiTheme(themePref(themeUid));
+    sync();
+    window.addEventListener('ui-theme-change', sync);
+    return () => window.removeEventListener('ui-theme-change', sync);
+  }, [themeUid]);
   const [deskMoreOpen, setDeskMoreOpen] = useState(false); // ô "Khác" trên thanh menu máy tính
   const deskMoreRef = useRef(null);
 
@@ -235,8 +248,8 @@ export default function StudentLayout({ children }) {
   );
 
   return (
-    <StudentContext.Provider value={{ profile, stats, classRole, cosPref, refresh: loadAll }}>
-      <div className="student-shell sx-shell" data-theme={rankLevel >= 6 ? 'star' : undefined}>
+    <StudentContext.Provider value={{ profile, stats, classRole, cosPref, uiTheme, refresh: loadAll }}>
+      <div className="student-shell sx-shell" data-theme={rankLevel >= 6 && uiTheme === 'star' ? 'star' : undefined}>
         <header className="sx-top">
           <div className="sx-top-in">
             <Link href="/student" className="sx-brand" aria-label="Về trang chủ">
@@ -250,7 +263,7 @@ export default function StudentLayout({ children }) {
             {/* Một chuông duy nhất (tránh kêu 2 lần); phần còn lại ẩn/hiện theo cỡ màn hình */}
             <div className="sx-actions">
               {!isAdminViewing && (
-                <div className="sx-chip sx-desk-only" data-vip={rankLevel >= 6 ? 1 : 0}>
+                <div className="sx-chip sx-desk-only" data-vip={rankLevel >= 6 && uiTheme === 'star' ? 1 : 0}>
                   {avatar(60)}
                   <div>
                     <div className="sx-name">{profile.full_name} · Lớp {profile.classes?.name || '—'}</div>

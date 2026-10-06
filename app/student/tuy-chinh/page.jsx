@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import AvatarFrame from '../../../components/AvatarFrame';
 import { AVATAR_FRAMES, CHAT_FRAMES, levelOfXp, rankNameOfLevel, resolveAvatar, resolveChat } from '../../../lib/cosmetics';
-import { useStudent } from '../layout';
+import { useStudent, themePref } from '../layout';
 
 const Lock = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -20,6 +20,13 @@ export default function TuyChinhPage() {
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [theme, setTheme] = useState('star');
+  useEffect(() => { setTheme(themePref(profile.id)); }, [profile.id]);
+  function pickTheme(v) {
+    setTheme(v);
+    try { localStorage.setItem('ui_theme_' + profile.id, v); } catch (e) { /* bỏ qua */ }
+    window.dispatchEvent(new Event('ui-theme-change'));
+  }
 
   useEffect(() => {
     (async () => {
@@ -47,6 +54,25 @@ export default function TuyChinhPage() {
         <h2>Tùy chỉnh khung</h2>
         <p>Hạng hiện tại của em: <b>{rankNameOfLevel(level)}</b>. Lên hạng cao hơn để mở thêm khung đẹp hơn.</p>
       </header>
+
+      {level >= 6 && (
+        <section className="tc-card" aria-label="Giao diện">
+          <h3>Giao diện</h3>
+          <div className="tc-themes">
+            <button type="button" className={`tc-th ${theme === 'classic' ? 'on' : ''}`} onClick={() => pickTheme('classic')} aria-pressed={theme === 'classic'}>
+              <span className="tc-sw" style={{ background: 'linear-gradient(135deg,#dbe9fb,#7fb2e8)' }} />
+              <b>Giao diện cũ</b><small>Xanh nước biển nhạt</small>
+              <span className="tc-ok">{theme === 'classic' ? 'Đang dùng' : 'Bấm để dùng'}</span>
+            </button>
+            <button type="button" className={`tc-th ${theme === 'star' ? 'on' : ''}`} onClick={() => pickTheme('star')} aria-pressed={theme === 'star'}>
+              <span className="tc-sw" style={{ background: 'linear-gradient(135deg,#2a1a66,#8a7cff 55%,#ffd45a)' }} />
+              <b>Ngôi sao lớp học</b><small>Chàm, tím và vàng</small>
+              <span className="tc-ok">{theme === 'star' ? 'Đang dùng' : 'Bấm để dùng'}</span>
+            </button>
+          </div>
+          <p style={{ margin: '10px 0 0', fontSize: 12.5, color: '#6a86a4' }}>Giao diện được đổi ngay, lưu trên thiết bị này.</p>
+        </section>
+      )}
 
       <section className="tc-card tc-preview" aria-label="Xem trước">
         <div className="tc-pv-h">Xem trước</div>
@@ -127,7 +153,12 @@ export default function TuyChinhPage() {
         .tc-mini i { display: block; height: 5px; border-radius: 3px; background: #dbe5f1; }
         .tc-mini i:nth-child(2) { width: 70%; } .tc-mini i:nth-child(3) { width: 45%; }
         .tc-bar { position: fixed; left: 0; right: 0; bottom: calc(68px + env(safe-area-inset-bottom)); z-index: 20; display: flex; gap: 10px; align-items: center; justify-content: flex-end; padding: 10px 14px; background: rgba(255, 255, 255, .92); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-top: 1px solid #d3e4f6; }
-        .tc-save { min-height: 44px; padding: 0 22px; border: 0; border-radius: 999px; background: linear-gradient(135deg, #2f7fd1, #1f5a96); color: #fff; font-weight: 800; font-size: 15px; cursor: pointer; }
+        .tc-themes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .tc-th { display: grid; justify-items: center; gap: 4px; padding: 14px 8px; background: #f6faff; border: 2px solid #d3e4f6; border-radius: 16px; cursor: pointer; font: inherit; color: #173f6b; min-height: 44px; }
+        .tc-th.on { border-color: #2f7fd1; background: #eaf2fc; }
+        .tc-th small { font-size: 11.5px; color: #6a86a4; }
+        .tc-sw { width: 100%; max-width: 120px; height: 34px; border-radius: 10px; margin-bottom: 4px; }
+        .tc-save { font-family: inherit; min-height: 44px; padding: 0 22px; border: 0; border-radius: 999px; background: linear-gradient(135deg, #2f7fd1, #1f5a96); color: #fff; font-weight: 800; font-size: 15px; cursor: pointer; }
         .tc-save:disabled { opacity: .6; }
         .tc-msg { flex: 1; font-size: 13px; line-height: 1.3; }
         .tc-msg.ok { color: #1d7a4d; } .tc-msg.bad { color: #c0392b; }

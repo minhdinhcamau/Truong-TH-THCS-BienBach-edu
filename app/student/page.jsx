@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { getRank } from '@/lib/rank';
 import { addDays, vnTodayIso } from '@/lib/dates';
 import './home.css';
+import { useStudent } from './layout';
 
 const SESS = { sang: 'Buổi sáng', chieu: 'Buổi chiều' };
 
@@ -301,7 +302,8 @@ export default function StudentHome() {
   }
 
   const rk = useMemo(() => (stats ? getRank(stats.xp).rank : null), [stats]);
-  const vip = (rk?.level || 0) >= 6;
+  const ctxTheme = useStudent()?.uiTheme;
+  const vip = (rk?.level || 0) >= 6 && ctxTheme !== 'classic';
 
   const overall = useMemo(() => {
     if (!prog) return null;
