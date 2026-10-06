@@ -1,19 +1,25 @@
 'use client';
-// Trang Học tập của học sinh: lịch học hôm nay + ngày mai, việc cần làm, các môn học.
-import { useEffect, useState } from 'react';
+// Trang Học tập của học sinh: tổng quan, lịch học hôm nay/ngày mai, việc cần làm, tiến độ từng môn.
+// CSS nằm ở app/student/home.css (tiền tố hm-) để áp được cho cả component con.
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
-import { getRankForXp } from '@/lib/englishXp';
+import { getRank } from '@/lib/rank';
 import { addDays, vnTodayIso } from '@/lib/dates';
+import './home.css';
 
-const SUBJECTS = [
-  { slug: 'ngu-van', title: 'Ngữ văn', href: '/student/ngu-van', desc: 'Viết bài văn trên web, AI chấm theo barem và nhận xét chi tiết.' },
-  { slug: 'tieng-anh', title: 'Tiếng Anh', href: '/student/english', desc: 'Lộ trình học từ vựng theo chủ đề, mở khóa từng bài.' },
-  { slug: 'am-nhac', title: 'Âm nhạc', href: '/student/music', desc: 'Luyện bài hát và bài đọc nhạc theo từng chủ đề.' },
-  { slug: 'lich-su', title: 'Lịch sử', soon: true, desc: 'Đang được thầy cô chuẩn bị.' },
-  { slug: 'dia-li', title: 'Địa lí', soon: true, desc: 'Đang được thầy cô chuẩn bị.' },
-];
 const SESS = { sang: 'Buổi sáng', chieu: 'Buổi chiều' };
+
+// Màu nhấn riêng từng môn (pastel, chữ đủ tương phản)
+const SUBJECT_DEFS = [
+  { slug: 'ngu-van', title: 'Ngữ văn', href: '/student/ngu-van', ac: '#b8374f', bg: '#fde9ed', key: 'lit' },
+  { slug: 'tieng-anh', title: 'Tiếng Anh', href: '/student/english', ac: '#2a68ad', bg: '#e4effc', key: 'eng' },
+  { slug: 'am-nhac', title: 'Âm nhạc', href: '/student/music', ac: '#6d47bd', bg: '#f0e9fc', key: 'mus' },
+];
+const SOON = [
+  { slug: 'lich-su', title: 'Lịch sử' },
+  { slug: 'dia-li', title: 'Địa lí' },
+];
 
 const firstName = (n) => (n || '').trim().split(/\s+/).slice(-1)[0] || 'em';
 const wdOf = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
@@ -34,8 +40,19 @@ function dueText(due) {
   if (d >= 1) return `Còn ${d} ngày · ${new Date(due).toLocaleDateString('vi-VN')}`;
   return `Còn ${Math.max(1, Math.floor(ms / 3600000))} giờ`;
 }
+const pctOf = (done, total) => (total > 0 ? Math.round((done / total) * 100) : 0);
+function stageOf(pct, total) {
+  if (!total) return 'Chưa có bài';
+  if (pct === 0) return 'Chưa bắt đầu';
+  if (pct < 25) return 'Khởi động';
+  if (pct < 50) return 'Đang tiến bộ';
+  if (pct < 75) return 'Tăng tốc';
+  if (pct < 100) return 'Sắp về đích';
+  return 'Hoàn thành';
+}
+const segFill = (i, pct) => Math.max(0, Math.min(100, (pct - i * 25) * 4));
 
-// Lấy tiết học của một ngày; ưu tiên hàm dành cho mọi học sinh, dự phòng hàm cũ
+// ---------- Lấy dữ liệu ----------
 async function fetchDay(classId, iso) {
   const a = await supabase.rpc('student_day_schedule', { p_date: iso });
   if (!a.error) return a.data || [];
@@ -43,49 +60,199 @@ async function fetchDay(classId, iso) {
   return b.data || [];
 }
 
-function DayCard({ title, sub, rows, active, emptyText, now, isToday }) {
-  const groups = ['sang', 'chieu'].map((s) => ({ s, list: rows.filter((r) => r.session === s) })).filter((g) => g.list.length);
+const EMPTY = { total: 0, done: 0, groups: 0, avg: null, next: null, failed: false };
+
+async function loadLit(userId) {
+  try {
+    const { data: asg } = await supabase.from('lit_assignments').select('id, title, due_date');
+    const { data: sb } = await supabase.from('lit_submissions').select('assignment_id, status').eq('student_id', userId);
+    const doneSet = new Set((sb || []).filter((s) => s.status !== 'draft').map((s) => s.assignment_id));
+    const all = asg || [];
+    const open = all
+      .filter((a) => !doneSet.has(a.id) && (!a.due_date || new Date(a.due_date) > new Date()))
+      .sort((a, b) => (a.due_date ? new Date(a.due_date) : Infinity) - (b.due_date ? new Date(b.due_date) : Infinity));
+    return {
+      total: all.length,
+      done: all.filter((a) => doneSet.has(a.id)).length,
+      groups: 0,
+      avg: null,
+      next: open[0] ? { href: `/student/ngu-van/${open[0].id}`, label: open[0].title, verb: 'Viết bài' } : null,
+      open,
+      failed: false,
+    };
+  } catch (e) {
+    return { ...EMPTY, open: [], failed: true };
+  }
+}
+
+async function loadEng(userId, grade) {
+  try {
+    if (grade == null) return { ...EMPTY };
+    const { data: courses } = await supabase
+      .from('eng_courses').select('id').eq('grade', grade).order('created_at', { ascending: false }).limit(1);
+    const c = courses?.[0];
+    if (!c) return { ...EMPTY };
+    const { data: unitRows } = await supabase
+      .from('eng_units')
+      .select('id, order_index, eng_lessons(id, title, order_index)')
+      .eq('course_id', c.id)
+      .order('order_index', { ascending: true });
+    const { data: pr } = await supabase
+      .from('eng_lesson_progress').select('lesson_id, is_unlocked, is_completed, best_score').eq('student_id', userId);
+    const map = Object.fromEntries((pr || []).map((p) => [p.lesson_id, p]));
+    let isFirst = true;
+    let total = 0; let done = 0; let sum = 0; let next = null;
+    (unitRows || []).forEach((u) => {
+      [...(u.eng_lessons || [])].sort((a, b) => a.order_index - b.order_index).forEach((l) => {
+        const p = map[l.id];
+        const unlocked = p?.is_unlocked || isFirst;
+        isFirst = false;
+        total += 1;
+        if (p?.is_completed) { done += 1; sum += p.best_score || 0; }
+        else if (unlocked && !next) next = { href: `/student/english/lessons/${l.id}`, label: l.title, verb: 'Học tiếp' };
+      });
+    });
+    return { total, done, groups: (unitRows || []).length, avg: done ? Math.round(sum / done) : null, next, failed: false };
+  } catch (e) {
+    return { ...EMPTY, failed: true };
+  }
+}
+
+async function loadMusic(userId, grade) {
+  try {
+    const { data: units } = await supabase
+      .from('music_units')
+      .select('id, order_index, music_lessons(id, title, order_index)')
+      .or(grade != null ? `grade.is.null,grade.eq.${grade}` : 'grade.is.null')
+      .order('order_index', { ascending: true });
+    const { data: pr } = await supabase
+      .from('music_lesson_progress').select('lesson_id, is_unlocked, is_completed, best_score').eq('student_id', userId);
+    const map = Object.fromEntries((pr || []).map((p) => [p.lesson_id, p]));
+    let total = 0; let done = 0; let sum = 0; let next = null;
+    (units || []).forEach((u) => {
+      let isFirst = true; // bài đầu mỗi chủ đề luôn mở
+      [...(u.music_lessons || [])].sort((a, b) => a.order_index - b.order_index).forEach((l) => {
+        const p = map[l.id];
+        const unlocked = p?.is_unlocked || isFirst;
+        isFirst = false;
+        total += 1;
+        if (p?.is_completed) { done += 1; sum += p.best_score || 0; }
+        else if (unlocked && !next) next = { href: `/student/music/lessons/${l.id}`, label: l.title, verb: 'Học tiếp' };
+      });
+    });
+    return { total, done, groups: (units || []).length, avg: done ? Math.round(sum / done) : null, next, failed: false };
+  } catch (e) {
+    return { ...EMPTY, failed: true };
+  }
+}
+
+// ---------- Thành phần giao diện ----------
+function Ring({ pct }) {
+  const R = 22;
+  const C = 2 * Math.PI * R;
   return (
-    <section className={`day ${active ? 'on' : ''}`} aria-label={title}>
-      <header className="day-h">
-        <b>{title}</b>
-        <span>{sub}</span>
-      </header>
-      {rows.length === 0 ? (
-        <p className="none">{emptyText}</p>
-      ) : (
-        groups.map((g) => (
-          <div key={g.s}>
-            <div className="sess">{SESS[g.s]}</div>
-            {g.list.map((r) => {
-              const live = isToday && r.start_time && r.end_time && now >= hm(r.start_time) && now < hm(r.end_time);
-              return (
-                <div key={`${r.session}-${r.period}`} className={`tp ${live ? 'live' : ''}`}>
-                  <span className="tp-n">{r.period}</span>
-                  <div className="tp-m">
-                    <b>{r.subject}</b>
-                    {r.teacher ? <small>{r.teacher}</small> : null}
-                  </div>
-                  <div className="tp-t">
-                    {live && <em>Đang học</em>}
-                    {r.start_time ? <span>{hm(r.start_time)}–{hm(r.end_time)}</span> : null}
-                  </div>
+    <svg className="hm-ring" viewBox="0 0 52 52" width="52" height="52" aria-hidden="true">
+      <circle className="trk" cx="26" cy="26" r={R} fill="none" strokeWidth="5" />
+      <circle className="val" cx="26" cy="26" r={R} fill="none" strokeWidth="5" strokeLinecap="round"
+        strokeDasharray={`${(C * pct) / 100} ${C}`} transform="rotate(-90 26 26)" />
+      <text x="26" y="30.5" textAnchor="middle">{pct}%</text>
+    </svg>
+  );
+}
+
+function StageBar({ pct }) {
+  return (
+    <div className="hm-stage" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Tiến độ hoàn thành">
+      {[0, 1, 2, 3].map((i) => (<i key={i}><b style={{ width: `${segFill(i, pct)}%` }} /></i>))}
+    </div>
+  );
+}
+
+function SubjectCard({ def, p }) {
+  const loading = p === null;
+  const total = p?.total || 0;
+  const done = p?.done || 0;
+  const pct = pctOf(done, total);
+  const unit = def.key === 'lit' ? 'đề' : 'bài';
+  const chip = (() => {
+    if (!p || !total) return null;
+    if (def.key === 'lit') {
+      const left = total - done;
+      return left > 0 ? { t: `${left} đề chưa nộp`, warn: true } : { t: 'Đã nộp đủ', ok: true };
+    }
+    return p.avg != null ? { t: `Điểm trung bình ${p.avg}%` } : null;
+  })();
+  const meta = loading
+    ? 'Đang tải tiến độ…'
+    : !total
+      ? 'Chưa có bài học nào'
+      : def.key === 'lit'
+        ? `${done}/${total} đề đã nộp`
+        : `${done}/${total} bài · ${p.groups} ${def.key === 'eng' ? 'unit' : 'chủ đề'}`;
+  const finished = total > 0 && done === total;
+  const cta = p?.next
+    ? { href: p.next.href, text: `${p.next.verb}: ${p.next.label}` }
+    : { href: def.href, text: finished ? 'Đã hoàn thành · Ôn lại' : 'Vào môn học' };
+
+  return (
+    <article className={`hm-sub ${loading ? 'is-loading' : ''}`} style={{ '--ac': def.ac, '--ac-bg': def.bg }}>
+      <Link href={def.href} className="hm-sub-top" aria-label={`Mở môn ${def.title}`}>
+        <span className="hm-ico"><img src={`/mon-hoc/${def.slug}.png`} alt="" width="44" height="44" /></span>
+        <span className="hm-sub-t">
+          <h3>{def.title}</h3>
+          <span className="hm-meta">{meta}</span>
+          {chip && <span className={`hm-chip ${chip.warn ? 'warn' : chip.ok ? 'ok' : ''}`}>{chip.t}</span>}
+        </span>
+        {total > 0 ? <Ring pct={pct} /> : <span className="hm-ring-empty" aria-hidden="true">—</span>}
+      </Link>
+      <div>
+        <StageBar pct={pct} />
+        <div className="hm-stage-l">
+          <span>{loading ? '' : stageOf(pct, total)}</span>
+          <span>{total > 0 ? `Còn ${total - done} ${unit}` : ''}</span>
+        </div>
+      </div>
+      <Link href={cta.href} className="hm-cta"><span>{cta.text}</span><i aria-hidden="true">›</i></Link>
+    </article>
+  );
+}
+
+function DayList({ rows, now, isToday, emptyText }) {
+  const groups = ['sang', 'chieu'].map((s) => ({ s, list: rows.filter((r) => r.session === s) })).filter((g) => g.list.length);
+  if (rows.length === 0) return <p className="hm-none">{emptyText}</p>;
+  return (
+    <div>
+      {groups.map((g) => (
+        <div key={g.s}>
+          <div className="hm-sess">{SESS[g.s]}</div>
+          {g.list.map((r) => {
+            const live = isToday && r.start_time && r.end_time && now >= hm(r.start_time) && now < hm(r.end_time);
+            const past = isToday && r.end_time && now >= hm(r.end_time);
+            return (
+              <div key={`${r.session}-${r.period}`} className={`hm-tp ${live ? 'live' : ''} ${past ? 'past' : ''}`}>
+                <span className="hm-tp-n">{r.period}</span>
+                <div className="hm-tp-m">
+                  <b>{r.subject}</b>
+                  {r.teacher ? <small>{r.teacher}</small> : null}
                 </div>
-              );
-            })}
-          </div>
-        ))
-      )}
-    </section>
+                <div className="hm-tp-t">
+                  {live && <em>Đang học</em>}
+                  {r.start_time ? <span>{hm(r.start_time)}–{hm(r.end_time)}</span> : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
   );
 }
 
 export default function StudentHome() {
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState(null);
-  const [rank, setRank] = useState(null);
-  const [todo, setTodo] = useState([]);
-  const [days, setDays] = useState(null); // { today: {iso, rows}, next: {iso, rows, skipped} }
+  const [days, setDays] = useState(undefined); // undefined: đang tải, null: lớp chưa có, object: có
+  const [prog, setProg] = useState(null); // { lit, eng, mus }
   const [tab, setTab] = useState('today');
   const [now, setNow] = useState(nowHm());
 
@@ -100,15 +267,25 @@ export default function StudentHome() {
     if (!user) return;
     const { data: p } = await supabase.from('profiles').select('id, full_name, class_id').eq('id', user.id).single();
     const { data: st } = await supabase.from('student_stats').select('total_xp, current_streak').eq('student_id', user.id).maybeSingle();
-    const xp = st?.total_xp || 0;
     setProfile(p);
-    setStats({ xp, streak: st?.current_streak || 0 });
-    setRank(await getRankForXp(xp));
+    setStats({ xp: st?.total_xp || 0, streak: st?.current_streak || 0 });
 
-    if (p?.class_id) {
+    // Tiến độ các môn (chạy song song với lịch học)
+    const progressTask = (async () => {
+      let grade = null;
+      if (p?.class_id) {
+        const { data: cls } = await supabase.from('classes').select('grade').eq('id', p.class_id).single();
+        grade = cls?.grade ?? null;
+      }
+      const [lit, eng, mus] = await Promise.all([loadLit(user.id), loadEng(user.id, grade), loadMusic(user.id, grade)]);
+      setProg({ lit, eng, mus });
+    })();
+
+    const dayTask = (async () => {
+      if (!p?.class_id) { setDays(null); return; }
       const iso = vnTodayIso();
       const todayRows = await fetchDay(p.class_id, iso);
-      // Ngày mai; nếu không có tiết (thứ 7, chủ nhật...) thì lấy ngày học kế tiếp trong 4 ngày tới
+      // Ngày mai; nếu không có tiết (thứ 7, chủ nhật...) thì lấy ngày học kế tiếp trong 5 ngày tới
       let nextIso = addDays(iso, 1);
       let nextRows = await fetchDay(p.class_id, nextIso);
       let skipped = false;
@@ -117,188 +294,125 @@ export default function StudentHome() {
         const r = await fetchDay(p.class_id, d);
         if (r.length) { nextIso = d; nextRows = r; skipped = true; }
       }
-      setDays({ today: { iso, rows: todayRows }, next: { iso: nextIso, rows: nextRows, skipped, tomorrow: addDays(iso, 1) } });
-    }
+      setDays({ today: { iso, rows: todayRows }, next: { iso: nextIso, rows: nextRows, skipped } });
+    })();
 
-    const { data: asg } = await supabase.from('lit_assignments').select('id, title, due_date');
-    const { data: sb } = await supabase.from('lit_submissions').select('assignment_id, status').eq('student_id', user.id);
-    const done = new Set((sb || []).filter((s) => s.status !== 'draft').map((s) => s.assignment_id));
-    const open = (asg || [])
-      .filter((a) => !done.has(a.id) && (!a.due_date || new Date(a.due_date) > new Date()))
-      .sort((a, b) => (a.due_date ? new Date(a.due_date) : Infinity) - (b.due_date ? new Date(b.due_date) : Infinity));
-    setTodo(open);
+    await Promise.all([progressTask, dayTask]);
   }
 
-  const nextTitle = days
-    ? days.next.rows.length === 0
-      ? 'Ngày mai học gì'
-      : days.next.skipped ? `${wdName(days.next.iso)} học gì` : 'Ngày mai học gì'
-    : '';
+  const rk = useMemo(() => (stats ? getRank(stats.xp).rank : null), [stats]);
+  const vip = (rk?.level || 0) >= 6;
+
+  const overall = useMemo(() => {
+    if (!prog) return null;
+    const list = [prog.lit, prog.eng, prog.mus];
+    const total = list.reduce((n, x) => n + x.total, 0);
+    const done = list.reduce((n, x) => n + x.done, 0);
+    return { total, done, pct: pctOf(done, total) };
+  }, [prog]);
+
+  const todo = prog?.lit?.open || [];
+  const nextTitle = days && days.next.rows.length > 0 && days.next.skipped ? `${wdName(days.next.iso)} học gì` : 'Ngày mai học gì';
+  const cur = days ? (tab === 'today' ? days.today : days.next) : null;
 
   return (
-    <div className="home">
-      <style jsx>{`
-        .home { font-family: 'Be Vietnam Pro', system-ui, sans-serif; color: #16324f; display: flex; flex-direction: column; gap: 18px; }
-        .hero { background: linear-gradient(135deg, #eaf4ff, #d8eafc); border: 1px solid #cfe2f6; border-radius: 24px; padding: 18px 20px; }
-        .hero small { color: #52708f; font-size: 13px; font-weight: 600; }
-        .hero h1 { margin: 2px 0 0; font-size: clamp(23px, 6vw, 32px); line-height: 1.15; font-weight: 800; color: #173f6b; }
-        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
-        .stat { background: rgba(255, 255, 255, 0.88); border-radius: 14px; padding: 9px 11px; min-width: 0; }
-        .stat b { display: block; font-size: 19px; line-height: 1.2; color: #1f5a96; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .stat span { font-size: 11.5px; color: #52708f; font-weight: 600; }
-
-        .sec-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; }
-        .sec-h h2 { margin: 0; font-size: 18px; font-weight: 800; color: #173f6b; }
-        .sec-h a { font-size: 13px; color: #3478b8; text-decoration: none; font-weight: 800; padding: 6px 2px; }
-        .sec-h span { font-size: 13px; color: #52708f; font-weight: 600; }
-
-        .seg { display: none; background: #e6f0fb; border-radius: 14px; padding: 4px; gap: 4px; margin-bottom: 10px; }
-        .seg button { flex: 1; border: 0; background: transparent; border-radius: 11px; padding: 11px 8px; font: inherit; font-weight: 800; font-size: 14px; color: #52708f; cursor: pointer; min-height: 44px; }
-        .seg button.on { background: #fff; color: #173f6b; box-shadow: 0 2px 8px -3px rgba(31, 90, 150, 0.4); }
-        .days { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-        .day { background: #fff; border: 1px solid #d7e6f6; border-radius: 20px; padding: 6px 12px 10px; }
-        .day-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 10px 4px 6px; }
-        .day-h b { font-size: 15.5px; color: #173f6b; }
-        .day-h span { font-size: 12.5px; color: #6a86a6; font-weight: 600; }
-        .sess { font-size: 12px; font-weight: 800; color: #3478b8; background: #eef5fd; border-radius: 8px; padding: 4px 9px; margin: 8px 0 4px; display: inline-block; }
-        .tp { display: flex; align-items: center; gap: 11px; padding: 9px 8px; border-radius: 14px; }
-        .tp + .tp { border-top: 1px dashed #e3edf8; }
-        .tp.live { background: #e8f6ee; border-top-color: transparent; }
-        .tp-n { flex: none; width: 34px; height: 34px; border-radius: 12px; background: #e6f1fd; color: #1f5a96; display: grid; place-items: center; font-weight: 800; font-size: 14px; }
-        .tp.live .tp-n { background: #2e9d63; color: #fff; }
-        .tp-m { flex: 1; min-width: 0; }
-        .tp-m b { display: block; font-size: 14.5px; line-height: 1.25; }
-        .tp-m small { color: #6a86a6; font-size: 12px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .tp-t { flex: none; text-align: right; font-size: 12px; color: #52708f; font-weight: 700; display: flex; flex-direction: column; gap: 2px; }
-        .tp-t em { font-style: normal; color: #1d7a49; font-size: 11.5px; }
-        .none { text-align: center; color: #6a86a6; font-size: 13.5px; padding: 18px 6px; margin: 0; }
-
-        .todo { background: #fff; border: 1px solid #d7e6f6; border-radius: 20px; padding: 6px 8px; }
-        .item { display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 14px; text-decoration: none; color: inherit; min-height: 56px; }
-        .item:hover { background: #f1f7fe; }
-        .item + .item { border-top: 1px solid #eaf1f9; }
-        .item img { width: 42px; height: 42px; object-fit: contain; flex: none; }
-        .item b { display: block; font-size: 14.5px; }
-        .item small { color: #52708f; font-size: 12.5px; }
-        .item .arrow { margin-left: auto; color: #3478b8; font-weight: 800; }
-
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
-        .card { position: relative; display: flex; flex-direction: column; background: #fff; border: 1px solid #d7e6f6; border-radius: 22px; overflow: hidden; text-decoration: none; color: inherit; transition: transform 0.18s ease, box-shadow 0.18s ease; }
-        a.card:hover { transform: translateY(-3px); box-shadow: 0 18px 30px -22px rgba(52, 120, 184, 0.7); }
-        a.card:focus-visible { outline: 3px solid #4a8fd6; outline-offset: 3px; }
-        .art { background: radial-gradient(circle at 50% 18%, #fff 0%, #e6f1fd 80%); padding: 18px 18px 10px; display: grid; place-items: center; }
-        .art img { width: 80%; max-width: 170px; height: auto; display: block; }
-        .meta { padding: 10px 16px 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
-        .meta p { margin: 0; font-size: 13.5px; line-height: 1.5; color: #4a6585; flex: 1; }
-        .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-        .go { font-weight: 800; font-size: 13.5px; color: #3478b8; }
-        .badge { background: #ffe1de; color: #b3261e; font-weight: 800; font-size: 12px; border-radius: 999px; padding: 4px 11px; }
-        .card.soon { background: #f7fbff; border-style: dashed; }
-        .card.soon .art { background: #f0f5fb; }
-        .card.soon .art img { filter: grayscale(1); opacity: 0.45; }
-        .card.soon .go { color: #8aa0b8; }
-        .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-
-        @media (max-width: 720px) {
-          .home { gap: 14px; }
-          .hero { padding: 15px; border-radius: 22px; }
-          .seg { display: flex; }
-          .days { grid-template-columns: 1fr; }
-          .day { display: none; }
-          .day.on { display: block; }
-          .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-          .card { border-radius: 18px; }
-          .art { padding: 12px 10px 6px; }
-          .art img { width: 68%; max-width: 104px; }
-          .meta { padding: 8px 12px 12px; gap: 6px; }
-          .meta p { display: none; }
-          .go { font-size: 13px; }
-          .badge { font-size: 11px; padding: 3px 8px; }
-        }
-        @media (prefers-reduced-motion: reduce) { .card { transition: none; } a.card:hover { transform: none; } }
-      `}</style>
-
-      <section className="hero">
-        <small>{greeting()}</small>
-        <h1>Xin chào, {firstName(profile?.full_name)}</h1>
-        {stats && (
-          <div className="stats" aria-label="Thành tích của em">
-            <div className="stat"><b>{stats.xp.toLocaleString('vi-VN')}</b><span>Điểm kinh nghiệm</span></div>
-            <div className="stat"><b>{stats.streak}</b><span>Ngày liên tiếp</span></div>
-            <div className="stat"><b style={{ fontSize: 15, paddingTop: 3, color: rank?.badge_color || '#1f5a96' }}>{rank?.name || '—'}</b><span>Cấp bậc</span></div>
+    <div className="hm">
+      {/* ===== Chào + thành tích ===== */}
+      <section className="welcome hm-hero" data-vip={vip ? '1' : undefined}>
+        {vip && (
+          <div className="vip-ribbon">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.1 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z" /></svg>
+            Ngôi sao lớp học
           </div>
+        )}
+        <small>{greeting()}</small>
+        <h1>Xin chào, <em>{firstName(profile?.full_name)}</em></h1>
+        {stats && (
+          <>
+            <div className="hm-stats" aria-label="Thành tích của em">
+              <div className="stat"><b>{stats.xp.toLocaleString('vi-VN')}</b><span>Điểm kinh nghiệm</span></div>
+              <div className="stat"><b>{stats.streak}</b><span>Ngày liên tiếp</span></div>
+              <div className="stat rk"><b>{rk?.name || '—'}</b><span>Cấp bậc</span></div>
+            </div>
+            {overall && overall.total > 0 && (
+              <div className="hm-ov">
+                <div className="hm-ov-h"><span>Tiến độ chung các môn</span><b>{overall.pct}%</b></div>
+                <div className="hm-ov-bar" role="progressbar" aria-valuenow={overall.pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${overall.pct}%` }} /></div>
+                <div className="hm-ov-f">Đã hoàn thành {overall.done}/{overall.total} bài và đề</div>
+              </div>
+            )}
+          </>
         )}
       </section>
 
-      {days && (
-        <section>
-          <div className="sec-h"><h2>Lịch học</h2><Link href="/student/thoi-khoa-bieu">Xem cả tuần ›</Link></div>
-          <div className="seg" role="tablist">
-            <button type="button" role="tab" aria-selected={tab === 'today'} className={tab === 'today' ? 'on' : ''} onClick={() => setTab('today')}>Hôm nay học gì</button>
-            <button type="button" role="tab" aria-selected={tab === 'next'} className={tab === 'next' ? 'on' : ''} onClick={() => setTab('next')}>{nextTitle}</button>
+      <div className="hm-layout">
+        {/* ===== Cột chính: các môn ===== */}
+        <div className="hm-main">
+          <div className="hm-sec-h">
+            <h2>Môn học của em</h2>
+            <span>Tiến độ theo từng giai đoạn</span>
           </div>
-          <div className="days">
-            <DayCard
-              title="Hôm nay học gì"
-              sub={`${wdName(days.today.iso)}, ${dm(days.today.iso)}`}
-              rows={days.today.rows}
-              active={tab === 'today'}
-              now={now}
-              isToday
-              emptyText="Hôm nay lớp em không có tiết nào."
-            />
-            <DayCard
-              title={nextTitle}
-              sub={`${wdName(days.next.iso)}, ${dm(days.next.iso)}`}
-              rows={days.next.rows}
-              active={tab === 'next'}
-              now={now}
-              emptyText="Chưa có thời khóa biểu cho những ngày tới."
-            />
+          <div className="hm-subjects">
+            {SUBJECT_DEFS.map((d) => (<SubjectCard key={d.slug} def={d} p={prog ? prog[d.key] : null} />))}
           </div>
-        </section>
-      )}
-
-      {todo.length > 0 && (
-        <section>
-          <div className="sec-h"><h2>Việc cần làm</h2><span>{todo.length} đề văn chưa nộp</span></div>
-          <div className="todo">
-            {todo.slice(0, 3).map((a) => (
-              <Link key={a.id} href={`/student/ngu-van/${a.id}`} className="item">
-                <img src="/mon-hoc/ngu-van.png" alt="" />
-                <div><b>{a.title}</b><small>{dueText(a.due_date)}</small></div>
-                <span className="arrow" aria-hidden="true">›</span>
-              </Link>
+          <div className="hm-soon" aria-label="Các môn sắp ra mắt">
+            {SOON.map((s) => (
+              <div key={s.slug} className="hm-soon-i">
+                <span className="hm-soon-ic"><img src={`/mon-hoc/${s.slug}.png`} alt="" width="30" height="30" /></span>
+                <b>{s.title}</b>
+                <small>Sắp ra mắt</small>
+              </div>
             ))}
           </div>
-        </section>
-      )}
-
-      <section>
-        <div className="sec-h"><h2>Môn học của em</h2></div>
-        <div className="grid">
-          {SUBJECTS.map((s) => {
-            const body = (
-              <>
-                <h3 className="sr">{s.title}</h3>
-                <div className="art"><img src={`/mon-hoc/${s.slug}.png`} alt={s.title} width="170" height="170" /></div>
-                <div className="meta">
-                  <p>{s.desc}</p>
-                  <div className="foot">
-                    <span className="go">{s.soon ? 'Sắp ra mắt' : `${s.title} ›`}</span>
-                    {s.slug === 'ngu-van' && todo.length > 0 && <span className="badge">{todo.length} đề</span>}
-                  </div>
-                </div>
-              </>
-            );
-            return s.soon ? (
-              <div key={s.slug} className="card soon">{body}</div>
-            ) : (
-              <Link key={s.slug} href={s.href} className="card">{body}</Link>
-            );
-          })}
         </div>
-      </section>
+
+        {/* ===== Cột phụ: lịch học + việc cần làm ===== */}
+        <aside className="hm-aside">
+          {days !== null && (
+            <section className="hm-card">
+              <div className="hm-sec-h in">
+                <h2>Lịch học</h2>
+                <Link href="/student/thoi-khoa-bieu">Xem cả tuần ›</Link>
+              </div>
+              {days === undefined ? (
+                <p className="hm-none">Đang tải lịch học…</p>
+              ) : (
+                <>
+                  <div className="hm-seg" role="tablist">
+                    <button type="button" role="tab" aria-selected={tab === 'today'} className={tab === 'today' ? 'on' : ''} onClick={() => setTab('today')}>Hôm nay học gì</button>
+                    <button type="button" role="tab" aria-selected={tab === 'next'} className={tab === 'next' ? 'on' : ''} onClick={() => setTab('next')}>{nextTitle}</button>
+                  </div>
+                  <div className="hm-day-h">
+                    <b>{wdName(cur.iso)}, {dm(cur.iso)}</b>
+                    <span>{cur.rows.length ? `${cur.rows.length} tiết` : ''}</span>
+                  </div>
+                  <DayList
+                    rows={cur.rows}
+                    now={now}
+                    isToday={tab === 'today'}
+                    emptyText={tab === 'today' ? 'Hôm nay lớp em không có tiết nào.' : 'Chưa có thời khóa biểu cho những ngày tới.'}
+                  />
+                </>
+              )}
+            </section>
+          )}
+
+          {todo.length > 0 && (
+            <section className="hm-card">
+              <div className="hm-sec-h in"><h2>Việc cần làm</h2><span>{todo.length} đề văn chưa nộp</span></div>
+              <div className="hm-todo">
+                {todo.slice(0, 3).map((a) => (
+                  <Link key={a.id} href={`/student/ngu-van/${a.id}`} className="hm-item">
+                    <span className="hm-item-ic"><img src="/mon-hoc/ngu-van.png" alt="" width="30" height="30" /></span>
+                    <span className="hm-item-t"><b>{a.title}</b><small>{dueText(a.due_date)}</small></span>
+                    <i aria-hidden="true">›</i>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

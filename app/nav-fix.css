@@ -1,5 +1,5 @@
 /* Thanh menu: thiết kế lại gọn, đẹp, không bị che, không có thanh cuộn ngang.
-   - Trang học sinh (.sx-tabs): MỘT hàng; mục ít dùng nằm trong ô "Khác".
+   - Trang học sinh (.sx-tabs): MỘT hàng; mục ít dùng nằm trong ô "Khác". Điện thoại (<= 900px) ẨN thanh này, dùng thanh menu dưới.
    - Trang Tổng phụ trách / quản trị (.app .nav-in): lưới các ô đều nhau, tự chia hàng cân đối.
    File này nạp ở layout gốc; dùng tiền tố "html body" để thắng các luật cũ trong ui.css và AppShell. */
 
@@ -48,6 +48,15 @@ html body .sx-menu a.active { background: #d7e8fb; color: #1a4f87; }
 @media (max-width: 1040px) {
   html body .sx-tabs .sx-tab { padding: 11px 10px; font-size: 13px; }
   html body .sx-tabs .sx-tab > svg:not(.sx-chev) { display: none; }
+}
+
+/* ĐIỆN THOẠI / MÁY TÍNH BẢNG DỌC: ẩn hẳn thanh tab máy tính (đã có thanh menu dưới cùng).
+   Trước đây luật "html body .sx-tabs { display: flex }" ở trên thắng luật ẩn trong ui.css nên thanh này
+   hiện lên trên điện thoại, kéo trang rộng hơn màn hình và làm lệch cả giao diện. */
+@media (max-width: 900px) {
+  html body .sx-tabs { display: none; }
+  html body .student-shell.sx-shell { overflow-x: clip; max-width: 100vw; }
+  html body .student-shell .sx-wrap { min-width: 0; max-width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   html body .sx-menu { animation: none; }
