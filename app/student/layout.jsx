@@ -3,7 +3,8 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
-import { getRankTier, getInitials } from '../../lib/rankTiers';
+import { getRank } from '../../lib/rank';
+import AvatarFrame from '../../components/AvatarFrame';
 import NotificationBell from '../../components/NotificationBell';
 import DutyNoticePopup from '../../components/DutyNoticePopup';
 import './student.css';
@@ -205,16 +206,18 @@ export default function StudentLayout({ children }) {
   const deskExtraActive = deskExtra.some((t) => t.match(pathname));
   // Quản trị viên bấm "Xem trang Học sinh" từ trang admin -> hiện nút quay về thay vì các tính năng của học sinh
   const isAdminViewing = profile.role === 'admin';
-  const tier = getRankTier(stats.total_xp);
-  const initials = getInitials(profile.full_name);
+  // Hạng theo tổng KN tích luỹ (lib/rank.js)
+  const rankName = getRank(stats.total_xp).rank.name;
 
-  const avatar = (size, core, font) => (
-    <div className={`avatar-frame ${tier.className}`} style={{ width: size, height: size }}>
-      <div className="core" style={{ width: core, height: core, fontSize: font }}>
-        {profile.photo_url ? <img src={profile.photo_url} alt="" /> : initials}
-      </div>
-      {tier.badge && <div className="rank-badge">{tier.badge}</div>}
-    </div>
+  // Khung avatar theo hạng. Margin âm để khung lớn hơn không làm thanh đầu trang cao thêm.
+  const avatar = (size) => (
+    <AvatarFrame
+      src={profile.photo_url}
+      name={profile.full_name}
+      xp={stats.total_xp}
+      size={size}
+      style={{ margin: `${-Math.round(size * 0.1)}px` }}
+    />
   );
 
   return (
@@ -234,11 +237,11 @@ export default function StudentLayout({ children }) {
             <div className="sx-actions">
               {!isAdminViewing && (
                 <div className="sx-chip sx-desk-only">
-                  {avatar(46, 38, 14)}
+                  {avatar(64)}
                   <div>
                     <div className="sx-name">{profile.full_name} · Lớp {profile.classes?.name || '—'}</div>
                     <div className="sx-sub">
-                      <span>{tier.name}</span>
+                      <span>{rankName}</span>
                       <span className="sx-tag">{stats.current_streak} ngày liên tiếp</span>
                       <span className="sx-tag">{stats.total_xp.toLocaleString('vi-VN')} KN</span>
                     </div>
@@ -252,7 +255,7 @@ export default function StudentLayout({ children }) {
               <button className="sx-pill solid sx-desk-only" onClick={handleLogout}>Đăng xuất</button>
               {/* Điện thoại: ảnh đại diện, bấm mở menu Thêm */}
               <button className="sx-avatar-btn sx-mob-only" onClick={() => setMoreOpen(true)} aria-label="Mở menu tài khoản">
-                {avatar(42, 34, 12)}
+                {avatar(56)}
               </button>
             </div>
           </div>
@@ -320,10 +323,10 @@ export default function StudentLayout({ children }) {
               <div className="sx-sheet-grip" aria-hidden="true" />
               {!isAdminViewing && (
                 <div className="sx-sheet-me">
-                  {avatar(54, 44, 15)}
+                  {avatar(76)}
                   <div className="sx-sheet-me-t">
                     <b>{profile.full_name}</b>
-                    <span>Lớp {profile.classes?.name || '—'} · {tier.name}</span>
+                    <span>Lớp {profile.classes?.name || '—'} · {rankName}</span>
                     <span>{stats.total_xp.toLocaleString('vi-VN')} KN · {stats.current_streak} ngày liên tiếp</span>
                   </div>
                   <button className="sx-sheet-x" onClick={() => setMoreOpen(false)} aria-label="Đóng">✕</button>
