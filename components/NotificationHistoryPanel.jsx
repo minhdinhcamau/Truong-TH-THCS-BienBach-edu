@@ -25,6 +25,28 @@ export default function NotificationHistoryPanel({ onClose }) {
     load();
   }, [load]);
 
+  async function deleteOld(days, label) {
+    const ok = window.confirm(
+      `Xóa các thông báo CŨ HƠN ${label} (của học sinh và giáo viên)?\n\nThông báo mới hơn vẫn được giữ. Không thể hoàn tác.`
+    );
+    if (!ok) return;
+    setDeleting(true);
+    setErr(null);
+    setMsg(null);
+    const { data, error } = await supabase.rpc("admin_delete_old_notifications", { p_days: days });
+    setDeleting(false);
+    if (error) {
+      setErr(
+        error.message.includes("admin_delete_old_notifications")
+          ? "Chưa chạy file SQL gói T2 trong Supabase nên chưa xóa được."
+          : error.message
+      );
+      return;
+    }
+    setMsg(`Đã xóa ${data ?? 0} thông báo cũ hơn ${label}.`);
+    load();
+  }
+
   async function deleteAll() {
     const ok = window.confirm(
       "XÓA TẤT CẢ thông báo của học sinh và giáo viên?\n\nHành động này không thể hoàn tác."
@@ -86,6 +108,36 @@ export default function NotificationHistoryPanel({ onClose }) {
             ✕
           </button>
         </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <span style={{ fontSize: 12.5, color: "#52708f", fontWeight: 600 }}>Xóa thông báo cũ hơn:</span>
+        {[
+          { d: 7, t: "1 tuần" },
+          { d: 14, t: "2 tuần" },
+          { d: 21, t: "3 tuần" },
+          { d: 30, t: "1 tháng" },
+        ].map((o) => (
+          <button
+            key={o.d}
+            onClick={() => deleteOld(o.d, o.t)}
+            disabled={deleting}
+            style={{
+              border: "1px solid #cfe2f7",
+              background: "#fff",
+              color: "#b3261e",
+              borderRadius: 8,
+              padding: "8px 12px",
+              fontWeight: 700,
+              fontSize: 13,
+              minHeight: 38,
+              cursor: deleting ? "default" : "pointer",
+              opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            🗑 {o.t}
+          </button>
+        ))}
       </div>
 
       {msg && <div style={{ fontSize: 13, color: "#1f7a4d", marginBottom: 8, fontWeight: 600 }}>{msg}</div>}
