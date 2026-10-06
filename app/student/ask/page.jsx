@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { compressImage } from '../../../lib/compressImage';
-import { getRankTier, getInitials } from '../../../lib/rankTiers';
+import AvatarFrame from '../../../components/AvatarFrame';
 import { useStudent } from '../layout';
 
 const DELETE_REASONS = ['Nội dung không phù hợp', 'Spam', 'Sai môn học', 'Khác'];
@@ -15,15 +15,16 @@ const REPORT_REASONS = [
 const MAX_PHOTOS = 8;
 
 function Avatar({ name, totalXp, photoUrl, size = 38 }) {
-  const tier = getRankTier(totalXp);
-  const core = size - 8;
+  // Khung có cả dải ruy băng nên cần vẽ lớn hơn avatar cũ; margin âm giữ nguyên bố cục dòng.
+  const big = Math.round(size * 1.7);
   return (
-    <div className={`avatar-frame ${tier.className}`} style={{ width: size, height: size }}>
-      <div className="core" style={{ width: core, height: core, fontSize: Math.max(10, size * 0.32) }}>
-        {photoUrl ? <img src={photoUrl} alt="" /> : getInitials(name)}
-      </div>
-      {tier.badge && <div className="rank-badge">{tier.badge}</div>}
-    </div>
+    <AvatarFrame
+      src={photoUrl}
+      name={name}
+      xp={totalXp}
+      size={big}
+      style={{ margin: `${-Math.round((big - size) / 2)}px` }}
+    />
   );
 }
 
