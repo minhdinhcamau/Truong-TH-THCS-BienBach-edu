@@ -18,6 +18,7 @@ const SUBJECT_DEFS = [
   { slug: 'am-nhac', title: 'Âm nhạc', href: '/student/music', ac: '#6d47bd', bg: '#f0e9fc', key: 'mus' },
 ];
 const SOON = [
+  { slug: 'my-thuat', title: 'Mỹ thuật' },
   { slug: 'lich-su', title: 'Lịch sử' },
   { slug: 'dia-li', title: 'Địa lí' },
 ];

@@ -21,7 +21,7 @@ function initialsOf(name) {
 // Ảnh huy hiệu môn học (nhận diện theo tên môn không dấu); môn chưa có ảnh dùng chữ cái đầu
 const SUBJECT_IMG = [
   [/ngu van/, 'ngu-van'], [/tieng anh|anh van/, 'tieng-anh'], [/lich su/, 'lich-su'],
-  [/dia li|dia ly/, 'dia-li'], [/am nhac/, 'am-nhac'],
+  [/dia li|dia ly/, 'dia-li'], [/am nhac/, 'am-nhac'], [/my thuat/, 'my-thuat'],
 ];
 const imgOf = (name) => (SUBJECT_IMG.find(([re]) => re.test(norm(name))) || [null, null])[1];
 function SubjIcon({ name }) {
@@ -423,6 +423,14 @@ export default function TeacherDashboard() {
                     <Link key={s.id} href="/teacher/ngu-van" className="tp-subj on">
                       <div className="tp-subj-ic" aria-hidden="true"><SubjIcon name={s.name} /></div>
                       <div><b>{s.name}</b><span className="ready">Giao đề văn, soạn barem & AI chấm bài</span></div>
+                    </Link>
+                  );
+                }
+                if (/(^|\s)my thuat(\s|$)/.test(norm(s.name))) {
+                  return (
+                    <Link key={s.id} href="/teacher/my-thuat" className="tp-subj on">
+                      <div className="tp-subj-ic" aria-hidden="true"><SubjIcon name={s.name} /></div>
+                      <div><b>{s.name}</b><span className="ready">Giao bài vẽ & soạn barem cùng AI</span></div>
                     </Link>
                   );
                 }
