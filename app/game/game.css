@@ -1,0 +1,165 @@
+/* GAME (tách riêng): CSS riêng cho /game, tiền tố gm-. Xóa cùng thư mục app/game khi gỡ game. */
+.gm-root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: radial-gradient(1200px 600px at 50% -10%, #2b3a7a 0%, #161a3a 55%, #0d0f24 100%);
+  color: #eef1ff;
+  font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+  padding: 14px 16px 40px;
+  overflow-x: clip;
+}
+.gm-top {
+  max-width: 980px;
+  margin: 0 auto 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.gm-back {
+  color: #cdd5ff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 8px 12px;
+  border: 2px solid #3c4690;
+  border-radius: 10px;
+  background: #1a2050;
+}
+.gm-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #ffe08a;
+  text-shadow: 0 2px 0 #5b3b00;
+}
+.gm-wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 760px) {
+  .gm-wrap { grid-template-columns: 1fr; }
+}
+.gm-stage {
+  position: sticky;
+  top: 10px;
+  border: 3px solid #3c4690;
+  border-radius: 16px;
+  background:
+    linear-gradient(#0000 0 0),
+    repeating-conic-gradient(#222a5e 0% 25%, #1c2352 0% 50%) 0 0 / 32px 32px;
+  padding: 16px 12px 14px;
+  text-align: center;
+  box-shadow: 0 8px 0 #0a0c20;
+  z-index: 2;
+}
+@media (max-width: 760px) {
+  .gm-stage { position: static; padding: 10px; }
+}
+.gm-spot {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: 420px;
+  background: radial-gradient(closest-side, #5568c4 0%, #00000000 75%);
+}
+@media (max-width: 760px) {
+  .gm-spot { height: 300px; }
+}
+.gm-canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.35));
+}
+.gm-name {
+  margin-top: 8px;
+  font-weight: 700;
+  color: #ffe08a;
+}
+.gm-panel {
+  border: 3px solid #3c4690;
+  border-radius: 16px;
+  background: #151a42;
+  padding: 14px;
+  box-shadow: 0 8px 0 #0a0c20;
+}
+.gm-sec { margin-bottom: 16px; }
+.gm-sec:last-of-type { margin-bottom: 8px; }
+.gm-lbl {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #8f9bea;
+  margin-bottom: 8px;
+}
+.gm-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.gm-chip {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: #dfe4ff;
+  background: #212962;
+  border: 2px solid #3c4690;
+  border-radius: 10px;
+  padding: 9px 13px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.gm-chip:hover { background: #2b3580; }
+.gm-chip[aria-pressed='true'] {
+  background: #ffd45c;
+  border-color: #fff2b8;
+  color: #3a2600;
+  box-shadow: 0 3px 0 #a87400;
+}
+.gm-sw {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 3px solid #3c4690;
+  cursor: pointer;
+  padding: 0;
+}
+.gm-sw[aria-pressed='true'] {
+  border-color: #fff2b8;
+  box-shadow: 0 0 0 3px #ffd45c;
+}
+.gm-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.gm-btn {
+  font: inherit;
+  font-weight: 800;
+  font-size: 15px;
+  border-radius: 12px;
+  padding: 12px 18px;
+  min-height: 48px;
+  cursor: pointer;
+  border: 2px solid #3c4690;
+  background: #212962;
+  color: #eef1ff;
+}
+.gm-btn.main {
+  flex: 1;
+  background: #38c172;
+  border-color: #b9f5d0;
+  color: #04301a;
+  box-shadow: 0 4px 0 #1b7a45;
+}
+.gm-btn:disabled { opacity: 0.55; cursor: default; }
+.gm-msg { margin-top: 10px; font-size: 14px; font-weight: 600; }
+.gm-msg.ok { color: #7dffb0; }
+.gm-msg.err { color: #ff9a9a; }
+.gm-center { text-align: center; padding: 60px 16px; color: #cdd5ff; }
+.gm-done {
+  max-width: 560px;
+  margin: 30px auto 0;
+  text-align: center;
+}
+.gm-done .gm-panel { padding: 18px; }

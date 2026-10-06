@@ -1,101 +1,104 @@
-'use client'
-import { useEffect, useRef, useState } from 'react'
-import {
-  W, H, SKINS, HAIR_COLORS, OPTIONS, defaultConfig, sanitize, drawCharacter,
-} from '@/lib/game/sprites'
+'use client';
+// GAME (tách riêng): màn hình tạo nhân vật. Xóa cùng thư mục components/game khi gỡ game.
+import { useEffect, useRef, useState } from 'react';
+import { DEFAULT_CFG, HAIRS, OPTIONS, SKINS, SIZE, renderCharacter, sanitize, randomCfg } from '../../lib/game/sprites';
 
-const SCALE = 12
-
-export default function CharacterCreator({ initial, onSave }) {
-  const [cfg, setCfg] = useState(() => sanitize(initial || defaultConfig('nam')))
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState(null)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const ctx = ref.current.getContext('2d')
-    ctx.clearRect(0, 0, W * SCALE, H * SCALE)
-    drawCharacter(ctx, cfg, SCALE)
-  }, [cfg])
-
-  const set = (patch) => { setMsg(null); setCfg((c) => sanitize({ ...c, ...patch })) }
-  const setGender = (g) => { setMsg(null); setCfg((c) => sanitize({ ...defaultConfig(g), skin: c.skin, hairColor: c.hairColor })) }
-
-  async function save() {
-    setSaving(true); setMsg(null)
-    try { await onSave(cfg); setMsg({ ok: true, text: 'Đã lưu nhân vật' }) }
-    catch (e) { setMsg({ ok: false, text: 'Chưa lưu được: ' + (e?.message || 'lỗi không rõ') }) }
-    setSaving(false)
-  }
-
-  const Chips = ({ list, value, onPick }) => (
+function Chips({ list, value, onPick }) {
+  return (
     <div className="gm-row">
       {list.map((o) => (
-        <button key={o.id} type="button" className={'gm-chip' + (value === o.id ? ' on' : '')} onClick={() => onPick(o.id)}>
+        <button key={o.id} type="button" className="gm-chip" aria-pressed={value === o.id} onClick={() => onPick(o.id)}>
           {o.label}
         </button>
       ))}
     </div>
-  )
-  const Swatches = ({ colors, value, onPick, label }) => (
+  );
+}
+
+function Swatches({ list, value, onPick }) {
+  return (
     <div className="gm-row">
-      {colors.map((col, i) => (
-        <button key={col} type="button" aria-label={label + ' ' + (i + 1)} className={'gm-sw' + (value === i ? ' on' : '')} style={{ background: col }} onClick={() => onPick(i)} />
+      {list.map((o, i) => (
+        <button
+          key={o.name}
+          type="button"
+          className="gm-sw"
+          title={o.name}
+          aria-label={o.name}
+          aria-pressed={value === i}
+          style={{ background: o.base }}
+          onClick={() => onPick(i)}
+        />
       ))}
     </div>
-  )
+  );
+}
+
+export default function CharacterCreator({ initial, saving, message, onSave }) {
+  const [cfg, setCfg] = useState(() => sanitize(initial || DEFAULT_CFG));
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    renderCharacter(canvasRef.current, cfg, 10);
+  }, [cfg]);
+
+  const set = (patch) => setCfg((c) => sanitize({ ...c, ...patch }));
+  const pants = OPTIONS.pants.filter((o) => !o.onlyFemale || cfg.gender === 'nu');
 
   return (
     <div className="gm-wrap">
-      <style>{css}</style>
       <div className="gm-stage">
-        <canvas ref={ref} width={W * SCALE} height={H * SCALE} className="gm-canvas" />
+        <div className="gm-spot">
+          <canvas ref={canvasRef} className="gm-canvas" width={SIZE.w * 10} height={SIZE.h * 10} aria-label="Nhân vật của bạn" />
+        </div>
+        <div className="gm-name">Nhân vật của bạn</div>
       </div>
+
       <div className="gm-panel">
-        <h2>Tạo nhân vật</h2>
-        <label>Giới tính</label>
-        <Chips list={[{ id: 'nam', label: 'Nam' }, { id: 'nu', label: 'Nữ' }]} value={cfg.gender} onPick={setGender} />
-        <label>Màu da</label>
-        <Swatches colors={SKINS} value={cfg.skin} onPick={(i) => set({ skin: i })} label="Màu da" />
-        <label>Kiểu tóc</label>
-        <Chips list={OPTIONS.hair[cfg.gender]} value={cfg.hair} onPick={(id) => set({ hair: id })} />
-        <label>Màu tóc</label>
-        <Swatches colors={HAIR_COLORS} value={cfg.hairColor} onPick={(i) => set({ hairColor: i })} label="Màu tóc" />
-        <label>Áo</label>
-        <Chips list={OPTIONS.shirt} value={cfg.shirt} onPick={(id) => set({ shirt: id })} />
-        {cfg.shirt === 'dong_phuc' && (
-          <button type="button" className={'gm-chip' + (cfg.scarf ? ' on' : '')} onClick={() => set({ scarf: !cfg.scarf })}>
-            {cfg.scarf ? 'Đang đeo khăn quàng đỏ' : 'Đeo khăn quàng đỏ'}
-          </button>
+        <div className="gm-sec">
+          <div className="gm-lbl">Giới tính</div>
+          <Chips list={OPTIONS.gender} value={cfg.gender} onPick={(id) => set({ gender: id })} />
+        </div>
+        <div className="gm-sec">
+          <div className="gm-lbl">Màu da</div>
+          <Swatches list={SKINS} value={cfg.skin} onPick={(i) => set({ skin: i })} />
+        </div>
+        <div className="gm-sec">
+          <div className="gm-lbl">Kiểu tóc</div>
+          <Chips list={OPTIONS.hair[cfg.gender]} value={cfg.hair} onPick={(id) => set({ hair: id })} />
+        </div>
+        {cfg.hair !== 'troc' && (
+          <div className="gm-sec">
+            <div className="gm-lbl">Màu tóc</div>
+            <Swatches list={HAIRS} value={cfg.hairColor} onPick={(i) => set({ hairColor: i })} />
+          </div>
         )}
-        <label>Quần, váy</label>
-        <Chips list={OPTIONS.pants[cfg.gender]} value={cfg.pants} onPick={(id) => set({ pants: id })} />
-        <label>Giày dép</label>
-        <Chips list={OPTIONS.shoes} value={cfg.shoes} onPick={(id) => set({ shoes: id })} />
-        <button type="button" className="gm-save" onClick={save} disabled={saving}>
-          {saving ? 'Đang lưu...' : 'Lưu nhân vật'}
-        </button>
-        {msg && <p className={'gm-msg ' + (msg.ok ? 'ok' : 'bad')}>{msg.text}</p>}
+        <div className="gm-sec">
+          <div className="gm-lbl">Áo</div>
+          <Chips list={OPTIONS.shirt} value={cfg.shirt} onPick={(id) => set({ shirt: id })} />
+          <div className="gm-row" style={{ marginTop: 8 }}>
+            <button type="button" className="gm-chip" aria-pressed={cfg.scarf} onClick={() => set({ scarf: !cfg.scarf })}>
+              Khăn quàng đỏ
+            </button>
+          </div>
+        </div>
+        <div className="gm-sec">
+          <div className="gm-lbl">Quần, váy</div>
+          <Chips list={pants} value={cfg.pants} onPick={(id) => set({ pants: id })} />
+        </div>
+        <div className="gm-sec">
+          <div className="gm-lbl">Giày dép</div>
+          <Chips list={OPTIONS.shoes} value={cfg.shoes} onPick={(id) => set({ shoes: id })} />
+        </div>
+
+        <div className="gm-actions">
+          <button type="button" className="gm-btn" onClick={() => setCfg(randomCfg())}>Ngẫu nhiên</button>
+          <button type="button" className="gm-btn main" disabled={saving} onClick={() => onSave(cfg)}>
+            {saving ? 'Đang lưu…' : 'Lưu nhân vật'}
+          </button>
+        </div>
+        {message && <div className={`gm-msg ${message.type}`}>{message.text}</div>}
       </div>
     </div>
-  )
+  );
 }
-
-const css = `
-.gm-wrap{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;max-width:760px;margin:0 auto;padding:16px;font-family:inherit;color:#16324f}
-.gm-wrap button{font-family:inherit}
-.gm-stage{flex:0 0 auto;display:flex;align-items:center;justify-content:center;padding:20px;border-radius:16px;background:linear-gradient(#cfe8ff 0 70%,#9fd18b 70% 100%);border:2px solid #16324f}
-.gm-canvas{width:192px;height:288px;image-rendering:pixelated;display:block}
-.gm-panel{flex:1 1 280px;min-width:260px}
-.gm-panel h2{margin:0 0 4px;font-size:20px}
-.gm-panel label{display:block;margin:12px 0 6px;font-size:14px;font-weight:600}
-.gm-row{display:flex;flex-wrap:wrap;gap:8px}
-.gm-chip{padding:8px 12px;border-radius:8px;border:2px solid #b8c7d9;background:#fff;color:#16324f;font-size:14px;cursor:pointer}
-.gm-chip.on{border-color:#1a6fd4;background:#e6f0fd;font-weight:700}
-.gm-sw{width:34px;height:34px;border-radius:8px;border:2px solid #b8c7d9;cursor:pointer}
-.gm-sw.on{border-color:#1a6fd4;outline:2px solid #1a6fd4;outline-offset:2px}
-.gm-chip:focus-visible,.gm-sw:focus-visible,.gm-save:focus-visible{outline:3px solid #1a6fd4;outline-offset:2px}
-.gm-save{margin-top:18px;width:100%;padding:12px;border:0;border-radius:10px;background:#1a6fd4;color:#fff;font-size:16px;font-weight:700;cursor:pointer}
-.gm-save:disabled{opacity:.6}
-.gm-msg{margin:10px 0 0;font-size:14px}.gm-msg.ok{color:#14803c}.gm-msg.bad{color:#b3261e}
-`
