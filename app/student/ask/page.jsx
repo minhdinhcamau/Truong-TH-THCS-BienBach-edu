@@ -712,7 +712,7 @@ export default function AskPage() {
         const authorClassName = classNameById[p.author?.class_id];
         const isOwnPost = p.student_id === profile.id;
         return (
-          <div className="post" key={p.id} data-cf={chatOf(p.authorXp, cosMap[p.student_id])} data-pop={isOwnPost && fx.on ? 1 : 0}>
+          <div className="post" key={p.id} data-cf={chatOf(p.authorXp, cosMap[p.student_id])}>
             {p.is_pinned && <div className="pin-badge">📌 Đã ghim</div>}
             <div className="post-head">
               <Avatar name={p.author?.full_name} totalXp={p.authorXp} photoUrl={p.author?.photo_url} size={38} pref={cosMap[p.student_id]} />
@@ -764,7 +764,7 @@ export default function AskPage() {
                   <div className={`reply ${isTeacher ? 'teacher' : ''}`} key={r.id}>
                     <Avatar name={r.author?.full_name} totalXp={r.authorXp} photoUrl={r.author?.photo_url} size={30} pref={cosMap[r.author_id]} />
                     <div style={{ flex: 1 }}>
-                      <div className="reply-bubble" data-cf={chatOf(r.authorXp, cosMap[r.author_id])} data-pop={r.author_id === profile.id && fx.on ? 1 : 0}>
+                      <div className="reply-bubble" data-cf={chatOf(r.authorXp, cosMap[r.author_id])}>
                         <div className="reply-author">
                           {r.author?.full_name || '—'} {isTeacher && <span className="teacher-tag">GIÁO VIÊN</span>}
                         </div>

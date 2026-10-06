@@ -236,7 +236,7 @@ export default function StudentLayout({ children }) {
 
   return (
     <StudentContext.Provider value={{ profile, stats, classRole, cosPref, refresh: loadAll }}>
-      <div className="student-shell sx-shell">
+      <div className="student-shell sx-shell" data-theme={rankLevel >= 6 ? 'star' : undefined}>
         <header className="sx-top">
           <div className="sx-top-in">
             <Link href="/student" className="sx-brand" aria-label="Về trang chủ">
