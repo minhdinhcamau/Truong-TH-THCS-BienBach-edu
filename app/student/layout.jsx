@@ -100,6 +100,15 @@ const COSMETIC_TAB = {
   icon: <path d="M12 3l2.4 5 5.6.8-4 3.9.9 5.6-4.9-2.6-4.9 2.6.9-5.6-4-3.9 5.6-.8z" />,
 };
 
+// GAME (tách riêng, xóa mục này + biến GAME_TAB + 1 chỗ dùng ở dưới là gỡ được nút vào game)
+const GAME_TAB = {
+  href: '/game',
+  label: 'Game',
+  main: true,
+  match: (p) => p.startsWith('/game'),
+  icon: <path d="M6 12h4M8 10v4M15 12h.01M18 11h.01M17.3 5H6.7a4 4 0 0 0-3.9 3.3l-1.3 6.2a2.4 2.4 0 0 0 4.4 1.7L7 15h10l1.2 1.2a2.4 2.4 0 0 0 4.4-1.7l-1.3-6.2A4 4 0 0 0 17.3 5z" />,
+};
+
 const BCS_TAB = {
   href: '/student/ban-can-su',
   label: 'Ban cán sự',
@@ -221,7 +230,7 @@ export default function StudentLayout({ children }) {
   }
 
   const { profile, stats, classRole, cosPref } = state;
-  const baseTabs = profile.role === 'admin' ? TABS : [...TABS, COSMETIC_TAB];
+  const baseTabs = [...(profile.role === 'admin' ? TABS : [...TABS, COSMETIC_TAB]), GAME_TAB];
   const tabs = classRole && profile.role !== 'admin' ? [...baseTabs, BCS_TAB] : baseTabs;
   const bottomTabs = tabs.filter((t) => t.bottom);
   const moreTabs = tabs.filter((t) => !t.bottom);
