@@ -1,30 +1,51 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function NotificationHistoryPanel({ onClose }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("id, title, content, xp_amount, is_read, created_at, profiles:student_id(full_name, class_id)")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) setErr(error.message);
+    else setRows(data || []);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("id, title, content, xp_amount, is_read, created_at, profiles:student_id(full_name, class_id)")
-        .order("created_at", { ascending: false })
-        .limit(100);
-      if (cancelled) return;
-      if (error) setErr(error.message);
-      else setRows(data || []);
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    load();
+  }, [load]);
+
+  async function deleteAll() {
+    const ok = window.confirm(
+      "XÓA TẤT CẢ thông báo của học sinh và giáo viên?\n\nHành động này không thể hoàn tác."
+    );
+    if (!ok) return;
+    setDeleting(true);
+    setErr(null);
+    setMsg(null);
+    const { data, error } = await supabase.rpc("admin_delete_all_notifications");
+    setDeleting(false);
+    if (error) {
+      setErr(
+        error.message.includes("admin_delete_all_notifications")
+          ? "Chưa chạy file SQL gói T trong Supabase nên chưa xóa được."
+          : error.message
+      );
+      return;
+    }
+    setRows([]);
+    setMsg(`Đã xóa ${data ?? 0} thông báo.`);
+  }
 
   return (
     <div
@@ -37,29 +58,49 @@ export default function NotificationHistoryPanel({ onClose }) {
         marginBottom: 16,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 15 }}>🕘 Lịch sử thông báo đã gửi (100 gần nhất)</div>
-        <button
-          onClick={onClose}
-          title="Đóng"
-          style={{ border: "none", background: "transparent", color: "#999", cursor: "pointer", fontSize: 14 }}
-        >
-          ✕
-        </button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>🕘 Lịch sử thông báo (100 gần nhất)</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={deleteAll}
+            disabled={deleting}
+            style={{
+              border: "1px solid #e8b4b0",
+              background: "#fff1f0",
+              color: "#b3261e",
+              borderRadius: 8,
+              padding: "7px 12px",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: deleting ? "default" : "pointer",
+              opacity: deleting ? 0.6 : 1,
+            }}
+          >
+            {deleting ? "Đang xóa…" : "🗑 Xóa tất cả thông báo"}
+          </button>
+          <button
+            onClick={onClose}
+            title="Đóng"
+            style={{ border: "none", background: "transparent", color: "#999", cursor: "pointer", fontSize: 14 }}
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
+      {msg && <div style={{ fontSize: 13, color: "#1f7a4d", marginBottom: 8, fontWeight: 600 }}>{msg}</div>}
       {loading && <div style={{ fontSize: 13, color: "#8aa39c" }}>Đang tải...</div>}
       {err && <div style={{ fontSize: 13, color: "#e63946" }}>Lỗi: {err}</div>}
       {!loading && !err && rows.length === 0 && (
-        <div style={{ fontSize: 13, color: "#8aa39c" }}>Chưa gửi thông báo nào.</div>
+        <div style={{ fontSize: 13, color: "#8aa39c" }}>Không có thông báo nào.</div>
       )}
 
       {!loading && rows.length > 0 && (
-        <div style={{ maxHeight: 420, overflowY: "auto" }}>
+        <div style={{ maxHeight: 420, overflow: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid #dce3e0" }}>
-                <th style={{ padding: "6px 8px" }}>Học sinh</th>
+                <th style={{ padding: "6px 8px" }}>Người nhận</th>
                 <th style={{ padding: "6px 8px" }}>Tiêu đề</th>
                 <th style={{ padding: "6px 8px" }}>Nội dung</th>
                 <th style={{ padding: "6px 8px" }}>KN</th>
@@ -70,15 +111,11 @@ export default function NotificationHistoryPanel({ onClose }) {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid #eef4fb" }}>
-                  <td style={{ padding: "6px 8px", fontWeight: 600 }}>
-                    {r.profiles?.full_name || "—"}
-                  </td>
+                  <td style={{ padding: "6px 8px", fontWeight: 600 }}>{r.profiles?.full_name || "—"}</td>
                   <td style={{ padding: "6px 8px" }}>{r.title}</td>
                   <td style={{ padding: "6px 8px", color: "#4e6a88" }}>{r.content || "—"}</td>
                   <td style={{ padding: "6px 8px" }}>
-                    {r.xp_amount === null || r.xp_amount === undefined
-                      ? "—"
-                      : `${r.xp_amount > 0 ? "+" : ""}${r.xp_amount}`}
+                    {r.xp_amount === null || r.xp_amount === undefined ? "—" : `${r.xp_amount > 0 ? "+" : ""}${r.xp_amount}`}
                   </td>
                   <td style={{ padding: "6px 8px" }}>{r.is_read ? "✓" : ""}</td>
                   <td style={{ padding: "6px 8px", color: "#8aa39c", whiteSpace: "nowrap" }}>
