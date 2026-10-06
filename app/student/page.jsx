@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 import { getRankForXp } from '@/lib/englishXp';
+import { getRank } from '@/lib/rank';
 import { vnTodayIso } from '@/lib/dates';
 
 const SUBJECTS = [
@@ -135,7 +136,10 @@ export default function StudentHome() {
         @media (prefers-reduced-motion: reduce) { .card { transition: none; } a.card:hover { transform: none; } }
       `}</style>
 
-      <section className="welcome">
+      <section className="welcome" data-vip={stats && getRank(stats.xp).rank.level >= 6 ? 1 : 0}>
+        {stats && getRank(stats.xp).rank.level >= 6 && (
+          <div className="vip-ribbon"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17l-6.1 3.6 1.4-6.8L2.2 9.1l6.9-.8z" /></svg>Ngôi sao lớp học</div>
+        )}
         <small>{greeting()}</small>
         <h1>Xin chào, <em>{firstName(profile?.full_name)}</em></h1>
         <p>Hôm nay em muốn học môn nào?</p>
@@ -143,7 +147,7 @@ export default function StudentHome() {
           <div className="stats" aria-label="Thành tích của em">
             <div className="stat"><b>{stats.xp.toLocaleString('vi-VN')}</b><span>Điểm kinh nghiệm</span></div>
             <div className="stat"><b>{stats.streak}</b><span>Ngày liên tiếp</span></div>
-            <div className="stat"><b style={{ fontSize: 15, paddingTop: 3, color: rank?.badge_color || '#1f5a96' }}>{rank?.name || '—'}</b><span>Cấp bậc</span></div>
+            <div className="stat rk"><b style={{ fontSize: 15, paddingTop: 3, whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip', lineHeight: 1.2, wordBreak: 'break-word', color: rank?.badge_color || '#1f5a96' }}>{rank?.name || '—'}</b><span>Cấp bậc</span></div>
           </div>
         )}
       </section>

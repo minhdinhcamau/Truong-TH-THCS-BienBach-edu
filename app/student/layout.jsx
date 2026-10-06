@@ -4,11 +4,13 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabaseClient';
 import { getRank } from '../../lib/rank';
+import { resolveAvatar } from '../../lib/cosmetics';
 import AvatarFrame from '../../components/AvatarFrame';
 import NotificationBell from '../../components/NotificationBell';
 import DutyNoticePopup from '../../components/DutyNoticePopup';
 import './student.css';
 import './ui.css';
+import './rank-fx.css';
 
 export const StudentContext = createContext(null);
 export function useStudent() {
@@ -87,6 +89,13 @@ const TABS = [
   },
 ];
 
+const COSMETIC_TAB = {
+  href: '/student/tuy-chinh',
+  label: 'Tùy chỉnh khung',
+  match: (p) => p.startsWith('/student/tuy-chinh'),
+  icon: <path d="M12 3l2.4 5 5.6.8-4 3.9.9 5.6-4.9-2.6-4.9 2.6.9-5.6-4-3.9 5.6-.8z" />,
+};
+
 const BCS_TAB = {
   href: '/student/ban-can-su',
   label: 'Ban cán sự',
@@ -103,7 +112,7 @@ const GRID = <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" />;
 export default function StudentLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [state, setState] = useState({ loading: true, profile: null, stats: null, classRole: null });
+  const [state, setState] = useState({ loading: true, profile: null, stats: null, classRole: null, cosPref: null });
   const [moreOpen, setMoreOpen] = useState(false);
   const [deskMoreOpen, setDeskMoreOpen] = useState(false); // ô "Khác" trên thanh menu máy tính
   const deskMoreRef = useRef(null);
@@ -137,8 +146,11 @@ export default function StudentLayout({ children }) {
     // Chức vụ ban cán sự (nếu có) -> hiện thêm mục "Ban cán sự"
     const { data: roleRows } = await supabase.rpc('my_class_role');
 
+    const { data: cosPref } = await supabase.from('student_cosmetics').select('avatar_frame, chat_frame').eq('student_id', user.id).maybeSingle();
+
     setState({
       loading: false,
+      cosPref: cosPref || null,
       classRole: roleRows && roleRows[0] ? roleRows[0] : null,
       profile,
       stats: stats || { total_xp: 0, current_streak: 0, longest_streak: 0 },
@@ -195,8 +207,9 @@ export default function StudentLayout({ children }) {
     return null;
   }
 
-  const { profile, stats, classRole } = state;
-  const tabs = classRole && profile.role !== 'admin' ? [...TABS, BCS_TAB] : TABS;
+  const { profile, stats, classRole, cosPref } = state;
+  const baseTabs = profile.role === 'admin' ? TABS : [...TABS, COSMETIC_TAB];
+  const tabs = classRole && profile.role !== 'admin' ? [...baseTabs, BCS_TAB] : baseTabs;
   const bottomTabs = tabs.filter((t) => t.bottom);
   const moreTabs = tabs.filter((t) => !t.bottom);
   const moreActive = moreTabs.some((t) => t.match(pathname));
@@ -210,18 +223,19 @@ export default function StudentLayout({ children }) {
   const rankName = getRank(stats.total_xp).rank.name;
 
   // Khung avatar theo hạng. Margin âm để khung lớn hơn không làm thanh đầu trang cao thêm.
+  const rankLevel = getRank(stats.total_xp).rank.level;
   const avatar = (size) => (
     <AvatarFrame
       src={profile.photo_url}
       name={profile.full_name}
       xp={stats.total_xp}
+      frame={resolveAvatar(rankLevel, cosPref?.avatar_frame)}
       size={size}
-      style={{ margin: `${-Math.round(size * 0.1)}px` }}
     />
   );
 
   return (
-    <StudentContext.Provider value={{ profile, stats, classRole, refresh: loadAll }}>
+    <StudentContext.Provider value={{ profile, stats, classRole, cosPref, refresh: loadAll }}>
       <div className="student-shell sx-shell">
         <header className="sx-top">
           <div className="sx-top-in">
@@ -236,8 +250,8 @@ export default function StudentLayout({ children }) {
             {/* Một chuông duy nhất (tránh kêu 2 lần); phần còn lại ẩn/hiện theo cỡ màn hình */}
             <div className="sx-actions">
               {!isAdminViewing && (
-                <div className="sx-chip sx-desk-only">
-                  {avatar(64)}
+                <div className="sx-chip sx-desk-only" data-vip={rankLevel >= 6 ? 1 : 0}>
+                  {avatar(60)}
                   <div>
                     <div className="sx-name">{profile.full_name} · Lớp {profile.classes?.name || '—'}</div>
                     <div className="sx-sub">
@@ -255,7 +269,7 @@ export default function StudentLayout({ children }) {
               <button className="sx-pill solid sx-desk-only" onClick={handleLogout}>Đăng xuất</button>
               {/* Điện thoại: ảnh đại diện, bấm mở menu Thêm */}
               <button className="sx-avatar-btn sx-mob-only" onClick={() => setMoreOpen(true)} aria-label="Mở menu tài khoản">
-                {avatar(56)}
+                {avatar(50)}
               </button>
             </div>
           </div>

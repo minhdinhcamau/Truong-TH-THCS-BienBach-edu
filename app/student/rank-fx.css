@@ -1,0 +1,66 @@
+/* app/student/rank-fx.css — Khung bài đăng/bình luận theo hạng, hiệu ứng khi vừa gửi, giao diện VIP Ngôi sao lớp học.
+   Dùng: thêm thuộc tính data-cf="silver|silver-fx|gold|star" vào bài đăng (.post) hoặc bong bóng bình luận (.reply-bubble). */
+@property --cf-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+[data-cf] { position: relative; border: 2px solid transparent !important; }
+[data-cf]::before { content: ''; position: absolute; inset: -2px; border-radius: inherit; padding: 2px; pointer-events: none; z-index: 1;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+
+/* Khá: bạc tĩnh */
+[data-cf='silver'] { background: linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg, #f5f8fc, #a9b5c6 38%, #eef3f9 60%, #8c99ae) border-box !important; box-shadow: 0 4px 14px -10px rgba(90, 105, 130, .6); }
+
+/* Giỏi: bạc + vệt sáng chạy */
+[data-cf='silver-fx'] { background: linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg, #f5f8fc, #a9b5c6 38%, #eef3f9 60%, #8c99ae) border-box !important; box-shadow: 0 6px 18px -10px rgba(90, 120, 170, .7); }
+[data-cf='silver-fx']::before { background: linear-gradient(110deg, transparent 35%, rgba(110, 170, 255, .95) 48%, #fff 52%, transparent 65%); background-size: 300% 100%; animation: cf-sweep 3.4s linear infinite; }
+
+/* Xuất sắc: vàng + ánh sáng + lấp lánh */
+[data-cf='gold'] { background: linear-gradient(#fffdf6, #fffdf6) padding-box, linear-gradient(135deg, #fff1b8, #e0a21a 35%, #ffe28a 55%, #b9780a) border-box !important; animation: cf-glow 2.6s ease-in-out infinite; }
+[data-cf='gold']::before { background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .95) 50%, transparent 65%); background-size: 300% 100%; animation: cf-sweep 2.8s linear infinite; }
+[data-cf='gold']::after { content: ''; position: absolute; top: 7px; right: 10px; width: 14px; height: 14px; background: #f3b81f; pointer-events: none; z-index: 2;
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%); animation: cf-twinkle 2.4s ease-in-out infinite; }
+
+/* Ngôi sao lớp học: viền cực quang xoay + nền ánh kim + huy hiệu sao */
+[data-cf='star'] { background: linear-gradient(135deg, #fffdf7, #f6f0ff 55%, #eefaff) padding-box, conic-gradient(from var(--cf-a), #ffd45a, #ff7ad1, #7a8cff, #4fd8ff, #7affc6, #ffd45a) border-box !important; animation: cf-rot 6s linear infinite, cf-glow-star 3s ease-in-out infinite; }
+[data-cf='star']::before { background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .9) 50%, transparent 65%); background-size: 300% 100%; animation: cf-sweep 3.2s linear infinite; }
+[data-cf='star']::after { content: ''; position: absolute; top: 6px; right: 9px; width: 18px; height: 18px; pointer-events: none; z-index: 2; background: linear-gradient(135deg, #ffe27a, #ff9ad5); clip-path: polygon(50% 0, 62% 36%, 100% 38%, 70% 60%, 80% 100%, 50% 76%, 20% 100%, 30% 60%, 0 38%, 38% 36%); animation: cf-twinkle 2.2s ease-in-out infinite; }
+.reply-bubble[data-cf]::after { top: 4px; right: 8px; width: 12px; height: 12px; }
+
+/* Hiệu ứng khi vừa đăng / bình luận (mọi hạng, nhẹ nhàng): nảy nhẹ + quầng sáng lan ra */
+[data-pop='1'] { animation: cf-pop .75s cubic-bezier(.2, .9, .3, 1.15); }
+[data-cf][data-pop='1'] { animation: cf-pop .75s cubic-bezier(.2, .9, .3, 1.15), cf-ring 1.1s ease-out; }
+
+@keyframes cf-sweep { 0% { background-position: 160% 0; } 100% { background-position: -60% 0; } }
+@keyframes cf-rot { to { --cf-a: 360deg; } }
+@keyframes cf-twinkle { 0%, 100% { opacity: .15; transform: scale(.5) rotate(0); } 50% { opacity: 1; transform: scale(1) rotate(20deg); } }
+@keyframes cf-glow { 0%, 100% { box-shadow: 0 4px 14px -8px rgba(224, 162, 26, .55); } 50% { box-shadow: 0 6px 20px -6px rgba(240, 190, 50, .85); } }
+@keyframes cf-glow-star { 0%, 100% { box-shadow: 0 6px 18px -10px rgba(122, 140, 255, .6); } 50% { box-shadow: 0 8px 24px -8px rgba(255, 122, 209, .65); } }
+@keyframes cf-pop { 0% { transform: translateY(8px) scale(.97); opacity: .4; } 60% { transform: translateY(-2px) scale(1.012); opacity: 1; } 100% { transform: none; } }
+@keyframes cf-ring { 0% { box-shadow: 0 0 0 0 rgba(60, 130, 220, .45); } 100% { box-shadow: 0 0 0 14px rgba(60, 130, 220, 0); } }
+
+/* Điện thoại: giảm hiệu ứng để mượt và đỡ tốn pin */
+@media (max-width: 640px) {
+  [data-cf='gold'], [data-cf='star'] { animation-duration: 8s, 4s; }
+  [data-cf]::after { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-cf], [data-cf]::before, [data-cf]::after, [data-pop] { animation: none !important; }
+}
+
+/* ===== Giao diện VIP riêng cho Ngôi sao lớp học ===== */
+section.welcome[data-vip='1'] { position: relative; overflow: hidden; border: 1px solid rgba(255, 215, 120, .55);
+  background: radial-gradient(120% 90% at 85% -10%, rgba(255, 210, 90, .28), transparent 55%), radial-gradient(90% 80% at 0% 110%, rgba(122, 140, 255, .35), transparent 60%), linear-gradient(135deg, #14264a, #1d3a6e 60%, #2a2f6e);
+  box-shadow: 0 18px 40px -22px rgba(20, 38, 74, .85), inset 0 0 0 1px rgba(255, 255, 255, .06); }
+section.welcome[data-vip='1']::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .13) 50%, transparent 60%); background-size: 280% 100%; animation: cf-sweep 6s ease-in-out infinite; }
+section.welcome[data-vip='1'] small, section.welcome[data-vip='1'] p { color: rgba(226, 236, 255, .85) !important; }
+section.welcome[data-vip='1'] h1 { color: #fff !important; }
+section.welcome[data-vip='1'] h1 em { color: #ffd45a !important; }
+section.welcome[data-vip='1'] .stat { background: rgba(255, 255, 255, .1) !important; border: 1px solid rgba(255, 255, 255, .16) !important; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+section.welcome[data-vip='1'] .stat b { color: #fff !important; }
+section.welcome[data-vip='1'] .stat span { color: rgba(226, 236, 255, .8) !important; }
+section.welcome[data-vip='1'] .stat.rk b { color: #ffd45a !important; }
+.vip-ribbon { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; padding: 4px 12px 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  color: #3b2a00; background: linear-gradient(135deg, #ffe9a0, #f2b92a 55%, #ffd873); box-shadow: 0 4px 14px -6px rgba(255, 200, 60, .9); }
+.vip-ribbon svg { width: 14px; height: 14px; }
+.sx-chip[data-vip='1'] { border: 1px solid rgba(240, 190, 60, .6); background: linear-gradient(135deg, #fffdf6, #f3f0ff); box-shadow: 0 6px 18px -10px rgba(122, 140, 255, .8); }
+@media (prefers-reduced-motion: reduce) { section.welcome[data-vip='1']::before { animation: none; } }

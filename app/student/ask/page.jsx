@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabaseClient';
 import { compressImage } from '../../../lib/compressImage';
 import AvatarFrame from '../../../components/AvatarFrame';
+import { levelOfXp, resolveAvatar, resolveChat } from '../../../lib/cosmetics';
 import { useStudent } from '../layout';
 
 const DELETE_REASONS = ['Nội dung không phù hợp', 'Spam', 'Sai môn học', 'Khác'];
@@ -14,38 +15,23 @@ const REPORT_REASONS = [
 ];
 const MAX_PHOTOS = 8;
 
-// Avatar có khung theo hạng. Khung (có cả dải ruy băng) lớn hơn ảnh tròn nên được đặt
-// vào một "ô" cố định ở giữa: ô giữ đúng chỗ trong bố cục, khung vẽ đè ra ngoài nhẹ nhàng
-// nên không đẩy chữ bên cạnh và không bị lệch dòng.
-//   burstKey: đổi giá trị thì bắn pháo sao một lần (hạng 5, 6)
-//   boost   : chế độ rực rỡ (đang soạn câu hỏi, vừa đăng bài)
-function Avatar({ name, totalXp, photoUrl, size = 38, burstKey = 0, boost = false }) {
-  const frame = Math.round(size * 1.75);
-  const slot = Math.round(size * 1.3);
+// Avatar có khung theo hạng. Hộp avatar có kích thước CỐ ĐỊNH và mọi hiệu ứng nằm trong hộp,
+// nên không tràn ra làm vỡ bố cục trên điện thoại. Không còn hiệu ứng riêng khi đăng bài/bình luận ở avatar.
+//   pref: dòng student_cosmetics của người đó (khung avatar tự chọn, nếu có)
+function Avatar({ name, totalXp, photoUrl, size = 38, pref }) {
+  const box = Math.round(size * 1.6);
+  const frame = resolveAvatar(levelOfXp(totalXp), pref?.avatar_frame);
   return (
-    <span
-      style={{
-        position: 'relative',
-        display: 'inline-flex',
-        flex: 'none',
-        width: slot,
-        height: slot,
-        marginRight: 4,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <AvatarFrame
-        src={photoUrl}
-        name={name}
-        xp={totalXp}
-        size={frame}
-        boost={boost}
-        burstKey={burstKey}
-        style={{ position: 'absolute', left: '50%', top: '52%', transform: 'translate(-50%, -50%)' }}
-      />
+    <span style={{ display: 'inline-flex', flex: 'none', width: box, height: box }}>
+      <AvatarFrame src={photoUrl} name={name} xp={totalXp} frame={frame} size={box} />
     </span>
   );
+}
+
+// Khung bài đăng/bình luận theo hạng + lựa chọn của chủ bài (undefined = không khung)
+function chatOf(xp, pref) {
+  const c = resolveChat(levelOfXp(xp), pref?.chat_frame);
+  return c === 'none' ? undefined : c;
 }
 
 // ---------------------------------------------------------------------------
@@ -368,7 +354,8 @@ export default function AskPage() {
   const [lightbox, setLightbox] = useState(null); // { photos, index }
   const [classFilterId, setClassFilterId] = useState('');
   const [sortMode, setSortMode] = useState('newest'); // 'newest' | 'liked'
-  const [fx, setFx] = useState({ key: 0, on: false }); // pháo sao khi vừa đăng câu hỏi / bình luận
+  const [fx, setFx] = useState({ key: 0, on: false }); // vừa đăng câu hỏi / bình luận: bài và bình luận của mình nảy nhẹ + quầng sáng
+  const [cosMap, setCosMap] = useState({}); // khung tự chọn của từng người
 
   function celebrate() {
     setFx({ key: Date.now(), on: true });
@@ -430,6 +417,7 @@ export default function AskPage() {
     const peopleIds = new Set();
     (posts || []).forEach((p) => peopleIds.add(p.student_id));
     (replies || []).forEach((r) => peopleIds.add(r.author_id));
+    peopleIds.add(profile.id);
 
     const { data: people } = peopleIds.size
       ? await supabase.from('public_profiles').select('id, full_name, role, photo_url, class_id').in('id', Array.from(peopleIds))
@@ -438,6 +426,13 @@ export default function AskPage() {
     const { data: statsRows } = peopleIds.size
       ? await supabase.from('student_stats').select('student_id, total_xp').in('student_id', Array.from(peopleIds))
       : { data: [] };
+
+    const { data: cosRows } = peopleIds.size
+      ? await supabase.from('student_cosmetics').select('student_id, avatar_frame, chat_frame').in('student_id', Array.from(peopleIds))
+      : { data: [] };
+    const cMap = {};
+    (cosRows || []).forEach((c) => { cMap[c.student_id] = c; });
+    setCosMap(cMap);
 
     const peopleMap = {};
     (people || []).forEach((p) => { peopleMap[p.id] = p; });
@@ -649,7 +644,7 @@ export default function AskPage() {
 
       <div className="compose">
         <div className="compose-top">
-          <Avatar name={profile.full_name} totalXp={stats.total_xp} photoUrl={profile.photo_url} size={38} boost={fx.on || !!text.trim()} burstKey={fx.key} />
+          <Avatar name={profile.full_name} totalXp={stats.total_xp} photoUrl={profile.photo_url} size={38} pref={cosMap[profile.id]} />
           <textarea
             placeholder="Em đang vướng câu hỏi nào? Mô tả ngắn gọn để mọi người dễ giúp…"
             value={text}
@@ -717,10 +712,10 @@ export default function AskPage() {
         const authorClassName = classNameById[p.author?.class_id];
         const isOwnPost = p.student_id === profile.id;
         return (
-          <div className="post" key={p.id}>
+          <div className="post" key={p.id} data-cf={chatOf(p.authorXp, cosMap[p.student_id])} data-pop={isOwnPost && fx.on ? 1 : 0}>
             {p.is_pinned && <div className="pin-badge">📌 Đã ghim</div>}
             <div className="post-head">
-              <Avatar name={p.author?.full_name} totalXp={p.authorXp} photoUrl={p.author?.photo_url} size={38} boost={isOwnPost && fx.on} burstKey={isOwnPost ? fx.key : 0} />
+              <Avatar name={p.author?.full_name} totalXp={p.authorXp} photoUrl={p.author?.photo_url} size={38} pref={cosMap[p.student_id]} />
               <div>
                 <div className="post-author">{p.author?.full_name || 'Học sinh'}</div>
                 <div className="post-meta">{new Date(p.created_at).toLocaleString('vi-VN')}</div>
@@ -767,9 +762,9 @@ export default function AskPage() {
                 const isTeacher = r.author?.role === 'teacher';
                 return (
                   <div className={`reply ${isTeacher ? 'teacher' : ''}`} key={r.id}>
-                    <Avatar name={r.author?.full_name} totalXp={r.authorXp} photoUrl={r.author?.photo_url} size={30} boost={r.author_id === profile.id && fx.on} burstKey={r.author_id === profile.id ? fx.key : 0} />
+                    <Avatar name={r.author?.full_name} totalXp={r.authorXp} photoUrl={r.author?.photo_url} size={30} pref={cosMap[r.author_id]} />
                     <div style={{ flex: 1 }}>
-                      <div className="reply-bubble">
+                      <div className="reply-bubble" data-cf={chatOf(r.authorXp, cosMap[r.author_id])} data-pop={r.author_id === profile.id && fx.on ? 1 : 0}>
                         <div className="reply-author">
                           {r.author?.full_name || '—'} {isTeacher && <span className="teacher-tag">GIÁO VIÊN</span>}
                         </div>
