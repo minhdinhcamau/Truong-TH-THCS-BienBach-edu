@@ -34,7 +34,7 @@ function Swatches({ list, value, onPick }) {
   );
 }
 
-export default function CharacterCreator({ initial, saving, message, onSave }) {
+export default function CharacterCreator({ initial, saving, message, onSave, onCancel }) {
   const [cfg, setCfg] = useState(() => sanitize(initial || DEFAULT_CFG));
   const canvasRef = useRef(null);
 
@@ -92,9 +92,10 @@ export default function CharacterCreator({ initial, saving, message, onSave }) {
         </div>
 
         <div className="gm-actions">
+          {onCancel && <button type="button" className="gm-btn" onClick={onCancel}>Quay lại nhà</button>}
           <button type="button" className="gm-btn" onClick={() => setCfg(randomCfg())}>Ngẫu nhiên</button>
           <button type="button" className="gm-btn main" disabled={saving} onClick={() => onSave(cfg)}>
-            {saving ? 'Đang lưu…' : 'Lưu nhân vật'}
+            {saving ? 'Đang lưu…' : onCancel ? 'Lưu và vào nhà' : 'Lưu và vào game'}
           </button>
         </div>
         {message && <div className={`gm-msg ${message.type}`}>{message.text}</div>}
