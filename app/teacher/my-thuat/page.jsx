@@ -20,15 +20,18 @@ const newBtnStyle = {
 export default function TeacherArtHome() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => { load(); }, []);
 
   async function load() {
     setLoading(true);
-    const { data } = await supabase
+    setError('');
+    const { data, error: err } = await supabase
       .from('art_assignments')
       .select('id, title, submit_mode, due_date, max_score, created_at, classes(name), art_criteria(id)')
       .order('created_at', { ascending: false });
+    if (err) setError(err.message);
     setItems(data || []);
     setLoading(false);
   }
@@ -47,6 +50,7 @@ export default function TeacherArtHome() {
         .pill { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #f3f6f5; color: #4b5563; }
         .pill.cls { background: #E9F2FC; color: #225da3; }
         .empty { text-align: center; padding: 48px 20px; color: #9ca3af; background: #fff; border-radius: 16px; border: 1px dashed #cfe2f7; }
+        .error { color: #a3374a; font-size: 13.5px; background: #fdeef0; padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; word-break: break-word; }
       `}</style>
 
       <Link href="/teacher" style={backBtnStyle}>← Trang giáo viên</Link>
@@ -58,6 +62,8 @@ export default function TeacherArtHome() {
         </div>
         <Link href="/teacher/my-thuat/new" style={newBtnStyle}>＋ Giao bài mới</Link>
       </div>
+
+      {error && <div className="error">Không tải được danh sách bài: {error}</div>}
 
       {loading ? (
         <div className="empty">Đang tải...</div>

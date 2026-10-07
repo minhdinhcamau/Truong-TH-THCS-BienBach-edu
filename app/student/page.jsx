@@ -16,9 +16,9 @@ const SUBJECT_DEFS = [
   { slug: 'ngu-van', title: 'Ngữ văn', href: '/student/ngu-van', ac: '#b8374f', bg: '#fde9ed', key: 'lit' },
   { slug: 'tieng-anh', title: 'Tiếng Anh', href: '/student/english', ac: '#2a68ad', bg: '#e4effc', key: 'eng' },
   { slug: 'am-nhac', title: 'Âm nhạc', href: '/student/music', ac: '#6d47bd', bg: '#f0e9fc', key: 'mus' },
+  { slug: 'my-thuat', title: 'Mỹ thuật', href: '/student/my-thuat', ac: '#0f6a85', bg: '#e0f4f8', key: 'art' },
 ];
 const SOON = [
-  { slug: 'my-thuat', title: 'Mỹ thuật' },
   { slug: 'lich-su', title: 'Lịch sử' },
   { slug: 'dia-li', title: 'Địa lí' },
 ];
@@ -84,6 +84,28 @@ async function loadLit(userId) {
     };
   } catch (e) {
     return { ...EMPTY, open: [], failed: true };
+  }
+}
+
+// Mỹ thuật: hiện số bài thầy cô đã giao cho lớp (phần nộp bài sẽ thêm ở gói sau)
+async function loadArt() {
+  try {
+    const { data: asg, error } = await supabase.from('art_assignments').select('id, title, due_date');
+    if (error) throw error;
+    const all = asg || [];
+    const open = all
+      .filter((a) => !a.due_date || new Date(a.due_date) > new Date())
+      .sort((a, b) => (a.due_date ? new Date(a.due_date) : Infinity) - (b.due_date ? new Date(b.due_date) : Infinity));
+    return {
+      total: all.length,
+      done: 0,
+      groups: 0,
+      avg: null,
+      next: open[0] ? { href: '/student/my-thuat', label: open[0].title, verb: 'Xem bài' } : null,
+      failed: false,
+    };
+  } catch (e) {
+    return { ...EMPTY, failed: true };
   }
 }
 
@@ -175,9 +197,10 @@ function SubjectCard({ def, p }) {
   const total = p?.total || 0;
   const done = p?.done || 0;
   const pct = pctOf(done, total);
+  const isArt = def.key === 'art';
   const unit = def.key === 'lit' ? 'đề' : 'bài';
   const chip = (() => {
-    if (!p || !total) return null;
+    if (!p || !total || isArt) return null;
     if (def.key === 'lit') {
       const left = total - done;
       return left > 0 ? { t: `${left} đề chưa nộp`, warn: true } : { t: 'Đã nộp đủ', ok: true };
@@ -187,10 +210,12 @@ function SubjectCard({ def, p }) {
   const meta = loading
     ? 'Đang tải tiến độ…'
     : !total
-      ? 'Chưa có bài học nào'
-      : def.key === 'lit'
-        ? `${done}/${total} đề đã nộp`
-        : `${done}/${total} bài · ${p.groups} ${def.key === 'eng' ? 'unit' : 'chủ đề'}`;
+      ? (isArt ? 'Chưa có bài vẽ nào được giao' : 'Chưa có bài học nào')
+      : isArt
+        ? `${total} bài vẽ được giao`
+        : def.key === 'lit'
+          ? `${done}/${total} đề đã nộp`
+          : `${done}/${total} bài · ${p.groups} ${def.key === 'eng' ? 'unit' : 'chủ đề'}`;
   const finished = total > 0 && done === total;
   const cta = p?.next
     ? { href: p.next.href, text: `${p.next.verb}: ${p.next.label}` }
@@ -205,15 +230,17 @@ function SubjectCard({ def, p }) {
           <span className="hm-meta">{meta}</span>
           {chip && <span className={`hm-chip ${chip.warn ? 'warn' : chip.ok ? 'ok' : ''}`}>{chip.t}</span>}
         </span>
-        {total > 0 ? <Ring pct={pct} /> : <span className="hm-ring-empty" aria-hidden="true">—</span>}
+        {total > 0 && !isArt ? <Ring pct={pct} /> : <span className="hm-ring-empty" aria-hidden="true">—</span>}
       </Link>
-      <div>
-        <StageBar pct={pct} />
-        <div className="hm-stage-l">
-          <span>{loading ? '' : stageOf(pct, total)}</span>
-          <span>{total > 0 ? `Còn ${total - done} ${unit}` : ''}</span>
+      {!isArt && (
+        <div>
+          <StageBar pct={pct} />
+          <div className="hm-stage-l">
+            <span>{loading ? '' : stageOf(pct, total)}</span>
+            <span>{total > 0 ? `Còn ${total - done} ${unit}` : ''}</span>
+          </div>
         </div>
-      </div>
+      )}
       <Link href={cta.href} className="hm-cta"><span>{cta.text}</span><i aria-hidden="true">›</i></Link>
     </article>
   );
@@ -254,7 +281,7 @@ export default function StudentHome() {
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState(null);
   const [days, setDays] = useState(undefined); // undefined: đang tải, null: lớp chưa có, object: có
-  const [prog, setProg] = useState(null); // { lit, eng, mus }
+  const [prog, setProg] = useState(null); // { lit, eng, mus, art }
   const [tab, setTab] = useState('today');
   const [now, setNow] = useState(nowHm());
 
@@ -279,8 +306,8 @@ export default function StudentHome() {
         const { data: cls } = await supabase.from('classes').select('grade').eq('id', p.class_id).single();
         grade = cls?.grade ?? null;
       }
-      const [lit, eng, mus] = await Promise.all([loadLit(user.id), loadEng(user.id, grade), loadMusic(user.id, grade)]);
-      setProg({ lit, eng, mus });
+      const [lit, eng, mus, art] = await Promise.all([loadLit(user.id), loadEng(user.id, grade), loadMusic(user.id, grade), loadArt()]);
+      setProg({ lit, eng, mus, art });
     })();
 
     const dayTask = (async () => {
@@ -306,6 +333,7 @@ export default function StudentHome() {
   const ctxTheme = useStudent()?.uiTheme;
   const vip = (rk?.level || 0) >= 6 && ctxTheme !== 'classic';
 
+  // Tiến độ chung chưa tính Mỹ thuật (chưa có phần nộp bài)
   const overall = useMemo(() => {
     if (!prog) return null;
     const list = [prog.lit, prog.eng, prog.mus];
