@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { litFetch } from '@/lib/litClient';
 import { genreLabel, STATUS_META, round025, formatDateTime } from '@/lib/litConfig';
 import { AnnotatedEssay, ScoreRing } from '@/components/lit/ResultView';
+import AiWaiting from '@/components/AiWaiting';
 
 const backBtnStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 999,
@@ -28,7 +29,7 @@ export default function TeacherLitDetail() {
   const [draft, setDraft] = useState(null);
   const [active, setActive] = useState(null);
   const [busy, setBusy] = useState('');
-  const [progress, setProgress] = useState('');
+  const [batch, setBatch] = useState(null); // {i, n, name} khi AI đang chấm hàng loạt
   const [msg, setMsg] = useState(null);
   const [showRubric, setShowRubric] = useState(false);
 
@@ -124,10 +125,10 @@ export default function TeacherLitDetail() {
     setBusy('all'); setMsg(null);
     let fail = 0;
     for (let i = 0; i < pending.length; i++) {
-      setProgress(`Đang chấm ${i + 1}/${pending.length}: ${pending[i].full_name}`);
+      setBatch({ i: i + 1, n: pending.length, name: pending[i].full_name });
       try { await litFetch('/api/lit/grade', { submissionId: subs[pending[i].id].id }); } catch { fail++; }
     }
-    setProgress(''); await load(); setBusy('');
+    setBatch(null); await load(); setBusy('');
     setMsg({ type: fail ? 'err' : 'ok', text: fail ? `Có ${fail} bài AI chưa chấm được, hãy thử lại từng bài.` : 'AI đã chấm xong tất cả bài.' });
   }
 
@@ -149,6 +150,16 @@ export default function TeacherLitDetail() {
   const meta = (key) => STATUS_META[key] || STATUS_META.none;
   const disabled = !!busy;
 
+  // Các câu chạy chữ khi chấm hàng loạt: nêu rõ đang chấm bài của bạn nào.
+  const batchSteps = batch
+    ? [
+        `Bài ${batch.i}/${batch.n} (${batch.name}): AI đang đọc bài làm`,
+        `Bài ${batch.i}/${batch.n} (${batch.name}): AI đang đối chiếu với barem`,
+        `Bài ${batch.i}/${batch.n} (${batch.name}): AI đang viết nhận xét`,
+        `Bài ${batch.i}/${batch.n} (${batch.name}): sắp xong, AI đang kiểm tra lại điểm`,
+      ]
+    : null;
+
   return (
     <div className="wrap">
       <style jsx>{`
@@ -168,7 +179,6 @@ export default function TeacherLitDetail() {
         .btn.primary { background: #225da3; color: #fff; border-color: #225da3; box-shadow: 0 3px 0 #184270; }
         .btn.warn { color: #a3374a; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .progress { font-size: 13px; color: #225da3; font-weight: 600; }
         .msg { padding: 10px 14px; border-radius: 10px; font-size: 13.5px; margin-bottom: 14px; }
         .msg.ok { background: #EAFBEA; color: #1a7f4e; }
         .msg.err { background: #fdeef0; color: #a3374a; }
@@ -224,8 +234,10 @@ export default function TeacherLitDetail() {
       <div className="toolbar">
         <button className="btn primary" disabled={disabled || pending.length === 0} onClick={gradeAll}>✨ AI chấm {pending.length} bài chưa chấm</button>
         <button className="btn" disabled={disabled || reviewed.length === 0} onClick={publishAll}>Công bố {reviewed.length} bài đã chấm</button>
-        {progress && <span className="progress">{progress}</span>}
       </div>
+
+      {/* Chấm hàng loạt: hiệu ứng chờ, đổi theo từng bài (key để đồng hồ chờ tính lại cho mỗi bài) */}
+      {busy === 'all' && batch && <AiWaiting key={batch.i} kind="grade" steps={batchSteps} />}
 
       {msg && <div className={`msg ${msg.type}`}>{msg.text}</div>}
 
@@ -248,6 +260,9 @@ export default function TeacherLitDetail() {
         </aside>
 
         <section className="panel">
+          {/* Chấm một bài (chấm lần đầu hoặc chấm lại): hiệu ứng chờ ở đầu khung bên phải */}
+          {busy === 'grade' && <AiWaiting kind="grade" />}
+
           {!sel && <div className="empty">Chọn một học sinh bên trái để xem bài và nhận xét của AI.</div>}
 
           {sel && (!sub || sub.status === 'draft') && (
