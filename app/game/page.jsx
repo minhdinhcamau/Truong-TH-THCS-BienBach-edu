@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
 import CharacterCreator from '../../components/game/CharacterCreator';
 import HouseView from '../../components/game/HouseView';
+import YardView from '../../components/game/YardView';
 import './game.css';
 
 function unwrap(data, key) {
@@ -17,7 +18,7 @@ function unwrap(data, key) {
 
 export default function GamePage() {
   const router = useRouter();
-  const [phase, setPhase] = useState('loading'); // loading | create | house | error
+  const [phase, setPhase] = useState('loading'); // loading | create | house | yard | error
   const [cfg, setCfg] = useState(null);
   const [house, setHouse] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -66,7 +67,7 @@ export default function GamePage() {
     return !error;
   }
 
-  const title = phase === 'house' ? 'NHÀ CỦA EM' : 'TẠO NHÂN VẬT';
+  const title = phase === 'house' ? 'NHÀ CỦA EM' : phase === 'yard' ? 'SÂN NHÀ EM' : 'TẠO NHÂN VẬT';
   return (
     <div className="gm-root">
       <div className="gm-top">
@@ -85,7 +86,10 @@ export default function GamePage() {
         />
       )}
       {phase === 'house' && (
-        <HouseView cfg={cfg} initialHouse={house} onSaveHouse={saveHouse} onEditCharacter={() => { setMessage(null); setPhase('create'); }} />
+        <HouseView cfg={cfg} initialHouse={house} onSaveHouse={saveHouse} onEditCharacter={() => { setMessage(null); setPhase('create'); }} onExit={() => setPhase('yard')} />
+      )}
+      {phase === 'yard' && (
+        <YardView cfg={cfg} onEnterHouse={() => setPhase('house')} onEditCharacter={() => { setMessage(null); setPhase('create'); }} />
       )}
     </div>
   );

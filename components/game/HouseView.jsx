@@ -1,7 +1,7 @@
 'use client';
 // GAME (tách riêng): căn nhà, đi lại, sắp xếp đồ và kho. Xóa cùng thư mục components/game khi gỡ game.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { WALK_POSES, renderCharacter } from '../../lib/game/sprites';
+import { SPR_SCALE, buildFrames } from '../../lib/game/sprites';
 import {
   ACT_TEXT, CATALOG, CH, COLS, CW, ROWS, SPAWN, TILE, WALL_H,
   canPlace, findFreeSpot, footBlocked, freePoint, getItemCanvas, getRoomCanvas,
@@ -30,7 +30,7 @@ function ItemThumb({ type }) {
   return <canvas ref={ref} width={64} height={64} className="gm-thumb" />;
 }
 
-export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharacter }) {
+export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharacter, onExit }) {
   const [house, setHouse] = useState(() => sanitizeHouse(initialHouse));
   const [mode, setMode] = useState('play');
   const [selected, setSelected] = useState(null);
@@ -79,16 +79,7 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
 
   // các khung hình của nhân vật: đứng, bước, nhìn từ sau, chớp mắt
   useEffect(() => {
-    const mk = (pose) => {
-      const cv = document.createElement('canvas');
-      renderCharacter(cv, cfg, 1, pose);
-      return cv;
-    };
-    const front = WALK_POSES.map((p) => mk(p));
-    front[2] = front[0];
-    const back = WALK_POSES.map((p) => mk({ ...p, back: true }));
-    back[2] = back[0];
-    S.frames = { front, back, blink: mk({ blink: true }) };
+    S.frames = buildFrames(cfg);
   }, [cfg, S]);
 
   // lưu tự động sau 0,7 giây kể từ lần đổi cuối
@@ -282,7 +273,8 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
       const moving = speed > 8;
       if (has) {
         if (Math.abs(ix) > 0.2) S.facing = ix > 0 ? 1 : -1;
-        S.dir = iy < 0 && -iy >= Math.abs(ix) * 0.8 ? 'back' : 'front';
+        if (Math.abs(ix) > 0.2 && Math.abs(ix) >= Math.abs(iy) * 0.8) S.dir = 'side';
+        else S.dir = iy < 0 ? 'back' : 'front';
       }
       if (moving) {
         S.phase += (speed * dt) / STRIDE;
@@ -322,18 +314,21 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
       if (!S.frames) return;
       let img;
       let bob = 0;
+      const set = S.frames[S.dir] || S.frames.front;
       if (speed > 8) {
-        img = (S.dir === 'back' ? S.frames.back : S.frames.front)[S.frame];
+        img = set[S.frame];
         bob = BOB[S.frame];
-      } else if (S.dir === 'front' && S.clock < S.blinkUntil) {
-        img = S.frames.blink;
+      } else if (S.dir !== 'back' && S.clock < S.blinkUntil) {
+        img = S.dir === 'side' ? S.frames.blinkSide : S.frames.blinkFront;
       } else {
-        img = (S.dir === 'back' ? S.frames.back : S.frames.front)[0];
+        img = set[0];
       }
+      const K = SPR_SCALE;
       ctx.save();
       ctx.translate(px, py + bob);
-      if (S.facing < 0 && S.dir === 'front') ctx.scale(-1, 1);
-      ctx.drawImage(img, -14, -80);
+      if (S.facing < 0 && S.dir === 'side') ctx.scale(-1, 1);
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(img, -S.frames.ax * K, -S.frames.h * K, S.frames.w * K, S.frames.h * K);
       ctx.restore();
     }
 
@@ -585,6 +580,9 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
           <button type="button" className="gm-btn main" onClick={leaveEdit}>Xong</button>
         )}
         <button type="button" className="gm-btn" onClick={onEditCharacter}>Sửa nhân vật</button>
+        {onExit && mode === 'play' && (
+          <button type="button" className="gm-btn" onClick={onExit}>Ra sân</button>
+        )}
         <span className={`gm-status ${saveState}`}>{statusText}</span>
       </div>
 

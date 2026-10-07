@@ -3,6 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_CFG, HAIRS, OPTIONS, SKINS, SIZE, renderCharacter, sanitize, randomCfg } from '../../lib/game/sprites';
 
+const DIRS = [
+  { id: 'front', label: 'Nhìn trước' },
+  { id: 'side', label: 'Nhìn bên' },
+  { id: 'back', label: 'Nhìn sau' },
+];
+
 function Chips({ list, value, onPick }) {
   return (
     <div className="gm-row">
@@ -38,18 +44,57 @@ export default function CharacterCreator({ initial, saving, message, onSave, onC
   const [cfg, setCfg] = useState(() => sanitize(initial || DEFAULT_CFG));
   const canvasRef = useRef(null);
 
+  const [dir, setDir] = useState('front');
+  const [walk, setWalk] = useState(false);
+  const [tick, setTick] = useState(0);
+  const [blink, setBlink] = useState(false);
+
+  // chớp mắt định kỳ; bước đi khi bật "Đi thử"
   useEffect(() => {
-    renderCharacter(canvasRef.current, cfg, 10);
-  }, [cfg]);
+    let t1;
+    let t2;
+    const loop = () => {
+      t1 = setTimeout(() => {
+        setBlink(true);
+        t2 = setTimeout(() => {
+          setBlink(false);
+          loop();
+        }, 140);
+      }, 2200 + Math.random() * 2500);
+    };
+    loop();
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
+  useEffect(() => {
+    if (!walk) return undefined;
+    const id = setInterval(() => setTick((n) => (n + 1) % 4), 170);
+    return () => clearInterval(id);
+  }, [walk]);
+
+  useEffect(() => {
+    renderCharacter(canvasRef.current, cfg, 6, { dir, step: walk ? tick : 0, blink: blink && !walk });
+  }, [cfg, dir, walk, tick, blink]);
 
   const set = (patch) => setCfg((c) => sanitize({ ...c, ...patch }));
-  const pants = OPTIONS.pants.filter((o) => !o.onlyFemale || cfg.gender === 'nu');
 
   return (
     <div className="gm-wrap">
       <div className="gm-stage">
         <div className="gm-spot">
-          <canvas ref={canvasRef} className="gm-canvas" width={SIZE.w * 10} height={SIZE.h * 10} aria-label="Nhân vật của bạn" />
+          <canvas ref={canvasRef} className="gm-canvas" width={SIZE.w * 6} height={SIZE.h * 6} aria-label="Nhân vật của bạn" />
+        </div>
+        <div className="gm-row" style={{ justifyContent: 'center', marginTop: 10 }}>
+          {DIRS.map((d) => (
+            <button key={d.id} type="button" className="gm-chip" aria-pressed={dir === d.id} onClick={() => setDir(d.id)}>
+              {d.label}
+            </button>
+          ))}
+          <button type="button" className="gm-chip" aria-pressed={walk} onClick={() => setWalk((w) => !w)}>
+            Đi thử
+          </button>
         </div>
         <div className="gm-name">Nhân vật của bạn</div>
       </div>
@@ -57,7 +102,7 @@ export default function CharacterCreator({ initial, saving, message, onSave, onC
       <div className="gm-panel">
         <div className="gm-sec">
           <div className="gm-lbl">Giới tính</div>
-          <Chips list={OPTIONS.gender} value={cfg.gender} onPick={(id) => set({ gender: id })} />
+          <Chips list={OPTIONS.gender} value={cfg.gender} onPick={(id) => set({ gender: id, hair: id === 'nu' ? 'mau' : 'troc', shoes: id === 'nu' ? 'giay' : 'chan' })} />
         </div>
         <div className="gm-sec">
           <div className="gm-lbl">Màu da</div>
@@ -74,17 +119,13 @@ export default function CharacterCreator({ initial, saving, message, onSave, onC
           </div>
         )}
         <div className="gm-sec">
-          <div className="gm-lbl">Áo</div>
-          <Chips list={OPTIONS.shirt} value={cfg.shirt} onPick={(id) => set({ shirt: id })} />
-          <div className="gm-row" style={{ marginTop: 8 }}>
+          <div className="gm-lbl">Trang phục</div>
+          <div className="gm-row">
+            <button type="button" className="gm-chip" aria-pressed="true">Đồng phục trường</button>
             <button type="button" className="gm-chip" aria-pressed={cfg.scarf} onClick={() => set({ scarf: !cfg.scarf })}>
               Khăn quàng đỏ
             </button>
           </div>
-        </div>
-        <div className="gm-sec">
-          <div className="gm-lbl">Quần, váy</div>
-          <Chips list={pants} value={cfg.pants} onPick={(id) => set({ pants: id })} />
         </div>
         <div className="gm-sec">
           <div className="gm-lbl">Giày dép</div>
