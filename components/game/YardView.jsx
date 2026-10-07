@@ -1,7 +1,7 @@
 'use client';
 // GAME (tách riêng): sân nhà miền Tây, đi lại ngoài trời. Xóa cùng thư mục components/game khi gỡ game.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { SPR_SCALE, buildFrames } from '../../lib/game/sprites';
+import { buildFrames } from '../../lib/game/sprites';
 import { POND, VH, YARD_BG, YARD_K, YARD_SPAWN, YARD_TEXT, YH, YW, yardBlocked, yardNearest } from '../../lib/game/yard';
 
 const SPEED = 100;
@@ -253,7 +253,7 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, from }) {
       } else {
         img = set[0];
       }
-      const K = YARD_K * (SPR_SCALE / 1.2);
+      const K = YARD_K;
       ctx.save();
       ctx.translate(px, py + bob);
       if (S.facing < 0 && S.dir === 'side') ctx.scale(-1, 1);
