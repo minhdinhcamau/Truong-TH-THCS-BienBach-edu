@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { litFetch } from '@/lib/litClient';
 import { round025 } from '@/lib/litConfig';
 import RubricEditor, { newCriterion } from '@/components/lit/RubricEditor';
+import AiWaiting from '@/components/AiWaiting';
 
 const MODES = [
   { value: 'photo', label: 'Chụp ảnh bài vẽ giấy' },
@@ -232,11 +233,14 @@ export default function NewArtAssignment() {
               {aiBusy ? 'AI đang soạn...' : '✨ AI soạn barem'}
             </button>
           </div>
-          <RubricEditor criteria={criteria} onChange={setCriteria} maxScore={Number(form.maxScore) || 10} />
+          {aiBusy && <AiWaiting kind="rubric" />}
+          <div style={aiBusy ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+            <RubricEditor criteria={criteria} onChange={setCriteria} maxScore={Number(form.maxScore) || 10} />
+          </div>
         </div>
 
         {error && <div className="error">{error}</div>}
-        <button type="submit" className="submit" disabled={!!saving}>
+        <button type="submit" className="submit" disabled={!!saving || aiBusy}>
           {saving || (selected.length > 1 ? `Giao bài cho ${selected.length} lớp` : 'Giao bài cho lớp')}
         </button>
       </form>

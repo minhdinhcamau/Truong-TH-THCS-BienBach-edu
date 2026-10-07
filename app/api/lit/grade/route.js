@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { requireUser, gradeAndSave } from '@/lib/litServer';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function POST(request) {
   const auth = await requireUser(request, ['teacher', 'admin']);

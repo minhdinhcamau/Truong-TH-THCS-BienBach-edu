@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/litServer';
 import { generateRubric } from '@/lib/litAi';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function POST(request) {
   const auth = await requireUser(request, ['teacher', 'admin']);
