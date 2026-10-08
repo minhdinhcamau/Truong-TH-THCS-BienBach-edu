@@ -235,6 +235,34 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
       ctx.stroke();
     }
 
+    function drawSchoolSign() {
+      const x = 300;
+      const y = 582;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(x - 8, y - 1, 22, 3);
+      ctx.fillStyle = '#6b4a2a';
+      ctx.fillRect(x, y - 30, 4, 30);
+      ctx.fillStyle = '#123a80';
+      ctx.fillRect(x - 33, y - 48, 74, 22);
+      ctx.fillStyle = '#2f64c8';
+      ctx.fillRect(x - 31, y - 46, 70, 18);
+      ctx.fillStyle = '#ffd45c';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('ĐẾN TRƯỜNG ➜', x + 4, y - 37);
+      const b = Math.round(Math.sin(S.clock * 4) * 2);
+      ctx.fillStyle = '#ffd45c';
+      ctx.beginPath();
+      ctx.moveTo(238, 592 + b);
+      ctx.lineTo(252, 592 + b);
+      ctx.lineTo(245, 603 + b);
+      ctx.closePath();
+      ctx.fill();
+      ctx.textAlign = 'start';
+      ctx.textBaseline = 'alphabetic';
+    }
+
     function drawCharacter() {
       if (!S.frames) return;
       const px = Math.round(S.pos.x);
@@ -274,6 +302,7 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
       ctx.translate(0, -Math.round(camY));
       if (S.bg) ctx.drawImage(S.bg, 0, 0, YW, YH);
       drawFish();
+      drawSchoolSign();
       drawCharacter();
       for (const p of S.parts) {
         const a = 1 - p.life / p.max;
@@ -342,6 +371,7 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
     <div className="gm-house">
       <div className="gm-hud">
         <button type="button" className="gm-btn main" onClick={onEnterHouse}>Vào nhà</button>
+        {onGoSchool && <button type="button" className="gm-btn main" onClick={onGoSchool}>Đi tới trường</button>}
         <button type="button" className="gm-btn" onClick={onEditCharacter}>Sửa nhân vật</button>
       </div>
       <div className="gm-view" ref={viewRef} style={{ '--ar': YW / VH }}>
@@ -356,7 +386,7 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
           <button type="button" className="gm-btn main big" disabled={!near} onClick={interact}>
             {near ? near.label : 'Đi dạo quanh sân'}
           </button>
-          <div className="gm-hint">Phía sau là sông, bên trái là vườn rau, bên phải là ao cá. Đi xuống cuối đường đất để tới trường.</div>
+          <div className="gm-hint">Phía sau là sông, bên trái là vườn rau, bên phải là ao cá. Đi xuống cuối đường đất (có biển ĐẾN TRƯỜNG) hoặc bấm nút Đi tới trường.</div>
         </div>
       </div>
     </div>
