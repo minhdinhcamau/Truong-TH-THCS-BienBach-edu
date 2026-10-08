@@ -2,6 +2,7 @@
 // GAME (tách riêng): căn nhà, đi lại, sắp xếp đồ và kho. Xóa cùng thư mục components/game khi gỡ game.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { SPR_SCALE, buildFrames } from '../../lib/game/sprites';
+import { dayTime, nightLevel } from '../../lib/game/clock';
 import {
   ACT_TEXT, CATALOG, CH, COLS, CW, ROWS, SPAWN, TILE, WALL_H,
   canPlace, findFreeSpot, footBlocked, freePoint, getItemCanvas, getRoomCanvas,
@@ -58,6 +59,7 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
     blinkUntil: 0,
     parts: [],
     scale: 1,
+    z: 1, ox: 0, oy: 0, cw: 0, ch: 0, dpr: 1, camX: null, camY: null, lc: null,
     frames: null,
     nearUid: null,
     dirty: false,
@@ -147,18 +149,20 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
     };
   }, [S, interact]);
 
-  // độ phân giải của canvas theo cỡ màn hình, để hình luôn nét và không nhấp nháy khi di chuyển
+  // canvas phủ kín khung nhìn (toàn màn hình), độ phân giải theo màn hình
   useEffect(() => {
     const view = viewRef.current;
     const canvas = canvasRef.current;
     const fit = () => {
       const dpr = window.devicePixelRatio || 1;
-      const n = Math.max(1, Math.min(4, Math.round(((canvas.clientWidth || view.clientWidth) * dpr) / CW)));
-      if (n !== S.scale || canvas.width !== CW * n) {
-        S.scale = n;
-        canvas.width = CW * n;
-        canvas.height = CH * n;
-      }
+      const cw = view.clientWidth;
+      const ch = view.clientHeight;
+      if (!cw || !ch) return;
+      S.dpr = dpr;
+      S.cw = cw;
+      S.ch = ch;
+      canvas.width = Math.round(cw * dpr);
+      canvas.height = Math.round(ch * dpr);
     };
     fit();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
@@ -303,7 +307,7 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
     }
 
     function drawCharacter() {
-      const n = S.scale;
+      const n = S.z * S.dpr;
       const px = Math.round(S.pos.x * n) / n;
       const py = Math.round(S.pos.y * n) / n;
       const speed = Math.hypot(S.vel.x, S.vel.y);
@@ -341,9 +345,101 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
       }
     }
 
+    function layout(dt) {
+      const cw = S.cw;
+      const ch = S.ch;
+      if (S.mode === 'edit') {
+        const z = Math.min(cw / CW, (ch * 0.56) / CH);
+        S.z = z;
+        S.ox = (cw - CW * z) / 2;
+        S.oy = 52;
+        S.camX = null;
+        return;
+      }
+      const z = Math.max(cw / CW, ch / CH);
+      S.z = z;
+      const tx = CW * z <= cw ? (cw - CW * z) / 2 : Math.max(cw - CW * z, Math.min(0, cw / 2 - S.pos.x * z));
+      const ty = CH * z <= ch ? (ch - CH * z) / 2 : Math.max(ch - CH * z, Math.min(0, ch / 2 - (WALL_H + S.pos.y - 24) * z));
+      if (S.camX === null) { S.camX = tx; S.camY = ty; }
+      const k = 1 - Math.exp(-dt * 9);
+      S.camX += (tx - S.camX) * k;
+      S.camY += (ty - S.camY) * k;
+      S.ox = S.camX;
+      S.oy = S.camY;
+    }
+
+    // đèn dầu, bếp lửa sáng ban đêm trong nhà
+    const LAMPS = {
+      den: { dx: 24, dy: 14, r: 120, kind: 'oil' },
+      ban_hoc: { dx: 80, dy: 16, r: 110, kind: 'oil' },
+      bep_cui: { dx: 24, dy: 32, r: 84, kind: 'fire' },
+    };
+    function flicker(kind, seed, t) {
+      if (kind === 'fire') return Math.max(0.5, Math.min(1, 0.78 + 0.14 * Math.sin(t * 9 + seed) + 0.1 * Math.sin(t * 23 + seed * 2)));
+      let a = 0.7 + 0.16 * Math.sin(t * 6 + seed) + 0.1 * Math.sin(t * 13.7 + seed * 1.7);
+      if (Math.sin(t * 2.1 + seed * 3) > 0.93) a *= 0.62;
+      return Math.max(0.38, Math.min(1, a));
+    }
+    function drawNight() {
+      const night = nightLevel(dayTime());
+      if (S.mode !== 'play' || night < 0.02) return;
+      const W = canvas.width;
+      const Hh = canvas.height;
+      if (!S.lc) S.lc = document.createElement('canvas');
+      const lc = S.lc;
+      if (lc.width !== W || lc.height !== Hh) { lc.width = W; lc.height = Hh; }
+      const lx = lc.getContext('2d');
+      const z = S.z * S.dpr;
+      lx.setTransform(1, 0, 0, 1, 0, 0);
+      lx.globalCompositeOperation = 'source-over';
+      lx.clearRect(0, 0, W, Hh);
+      lx.fillStyle = `rgba(8,12,38,${(0.8 * night).toFixed(3)})`;
+      lx.fillRect(0, 0, W, Hh);
+      lx.globalCompositeOperation = 'destination-out';
+      const lights = [];
+      for (const it of S.house.placed) {
+        const lp = LAMPS[it.type];
+        if (!lp) continue;
+        const r = itemRect(it.type, it.x, it.y);
+        const seed = it.x * 1.3 + it.y * 2.7;
+        lights.push({ x: r.x + lp.dx, y: WALL_H + r.y + lp.dy, r: lp.r, a: flicker(lp.kind, seed, S.clock), fire: lp.kind === 'fire' });
+      }
+      lights.push({ x: S.pos.x, y: WALL_H + S.pos.y - 18, r: 46, a: 0.35, fire: false });
+      for (const l of lights) {
+        const sx = S.ox * S.dpr + l.x * z;
+        const sy = S.oy * S.dpr + l.y * z;
+        const sr = l.r * z * (0.92 + 0.08 * l.a);
+        const g = lx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+        g.addColorStop(0, `rgba(0,0,0,${l.a.toFixed(3)})`);
+        g.addColorStop(0.45, `rgba(0,0,0,${(l.a * 0.6).toFixed(3)})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        lx.fillStyle = g;
+        lx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(lc, 0, 0);
+      ctx.globalCompositeOperation = 'lighter';
+      for (const l of lights) {
+        if (l.r < 60) continue;
+        const sx = S.ox * S.dpr + l.x * z;
+        const sy = S.oy * S.dpr + l.y * z;
+        const sr = l.r * 0.8 * z;
+        const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+        g.addColorStop(0, `rgba(255,160,60,${(0.22 * l.a * night).toFixed(3)})`);
+        g.addColorStop(1, 'rgba(255,120,30,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
     function draw() {
-      const n = S.scale;
-      ctx.setTransform(n, 0, 0, n, 0, 0);
+      const n = S.z * S.dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#05060f';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(n, 0, 0, n, S.ox * S.dpr, S.oy * S.dpr);
       ctx.imageSmoothingEnabled = false;
       const room = getRoomCanvas();
       if (room) ctx.drawImage(room, 0, 0);
@@ -421,12 +517,14 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
         }
       }
       ctx.restore();
+      drawNight();
     }
 
     function frame(now) {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       update(dt);
+      layout(dt);
       draw();
       raf = requestAnimationFrame(frame);
     }
@@ -437,7 +535,13 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
   // ----- kéo thả khi sắp xếp đồ -----
   function toWorld(e) {
     const r = canvasRef.current.getBoundingClientRect();
-    return { x: ((e.clientX - r.left) * CW) / r.width, y: ((e.clientY - r.top) * CH) / r.height - WALL_H };
+    let lx = e.clientX - r.left;
+    let ly = e.clientY - r.top;
+    if (document.querySelector('.gm-root[data-rot="1"]')) {
+      lx = e.clientY - r.top;
+      ly = r.right - e.clientX;
+    }
+    return { x: (lx - S.ox) / S.z, y: (ly - S.oy) / S.z - WALL_H };
   }
   function onPointerDown(e) {
     if (S.mode !== 'edit') return;
@@ -528,6 +632,7 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
     const maxR = r.width * 0.34;
     let vx = e.clientX - cx;
     let vy = e.clientY - cy;
+    if (document.querySelector('.gm-root[data-rot="1"]')) { const t0 = vx; vx = vy; vy = -t0; }
     const len = Math.hypot(vx, vy) || 1;
     const clamped = Math.min(len, maxR);
     vx = (vx / len) * clamped;
@@ -581,17 +686,15 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
         )}
         <button type="button" className="gm-btn" onClick={onEditCharacter}>Sửa nhân vật</button>
         {onExit && mode === 'play' && (
-          <button type="button" className="gm-btn" onClick={onExit}>Ra sân</button>
+          <button type="button" className="gm-btn" onClick={onExit}>Ra ngoài</button>
         )}
         <span className={`gm-status ${saveState}`}>{statusText}</span>
       </div>
 
-      <div className="gm-view" data-mode={mode} ref={viewRef} style={{ '--ar': CW / CH }}>
+      <div className="gm-view gw-full" data-mode={mode} ref={viewRef}>
         <canvas
           ref={canvasRef}
-          className="gm-room"
-          width={CW}
-          height={CH}
+          className="gm-room gw-canvas"
           style={{ touchAction: mode === 'edit' ? 'none' : 'manipulation' }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -615,7 +718,7 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
           </div>
         </div>
       ) : (
-        <div className="gm-edit">
+        <div className="gm-edit gw-sheet">
           <div className="gm-hint">Chạm vào đồ để chọn, kéo để đưa đến ô khác. Đồ không đặt được sẽ về chỗ cũ.</div>
           <div className="gm-actions" style={{ marginTop: 8 }}>
             <button type="button" className="gm-btn" disabled={!selected} onClick={storeSelected}>

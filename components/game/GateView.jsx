@@ -399,6 +399,7 @@ export default function GateView({ cfg, onBackHome, onEditCharacter }) {
     const maxR = r.width * 0.34;
     let vx = e.clientX - cx;
     let vy = e.clientY - cy;
+    if (document.querySelector('.gm-root[data-rot="1"]')) { const t0 = vx; vx = vy; vy = -t0; }
     const len = Math.hypot(vx, vy) || 1;
     const clamped = Math.min(len, maxR);
     vx = (vx / len) * clamped;

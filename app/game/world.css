@@ -1,0 +1,45 @@
+/* GAME (tách riêng): CSS cho làng quê, toàn màn hình, xoay ngang. Xóa cùng thư mục app/game khi gỡ game. */
+.gm-root[data-play] { position: fixed; inset: 0; z-index: 9999; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: none; }
+.gm-root[data-rot='1'] {
+  inset: auto; top: 0; left: 0;
+  width: 100vh; height: 100vw; width: 100dvh; height: 100dvw;
+  transform-origin: 0 0; transform: translateX(100vw) rotate(90deg);
+}
+.gm-root[data-wide] { overflow: hidden; }
+.gm-root[data-wide] .gm-house { position: absolute; inset: 0; max-width: none; margin: 0; overflow: hidden; }
+.gm-root[data-wide] .gm-view { height: var(--gh, 100dvh); }
+.gm-root[data-wide] .gm-room { width: min(var(--gw, 100vw), calc(var(--gh, 100dvh) * var(--ar, 1.5))); }
+.gm-root[data-wide] .gm-hud { max-width: calc(var(--gw, 100vw) - 250px); }
+.gm-root[data-wide] .gm-act { width: min(calc(var(--gw, 100vw) * 0.44), 300px); }
+.gm-root[data-wide] .gm-view.gw-full { position: absolute; inset: 0; height: auto; width: auto; animation: none; background: #05060f; }
+.gm-root[data-wide] .gm-view.gw-full .gm-room.gw-canvas { width: 100%; height: 100%; aspect-ratio: auto; image-rendering: auto; }
+.gm-root[data-wide] .gm-edit.gw-sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 44%; overflow: auto; z-index: 15; background: rgba(13, 15, 36, 0.96); border-top: 3px solid #3c4690; padding: 12px 14px; }
+.gm-root[data-wide] .gm-view[data-mode='edit'].gw-full { padding-top: 0; }
+.gm-root[data-wide] .gm-toast { bottom: 84px; }
+
+/* màn hình bắt đầu: một lần chạm để toàn màn hình */
+.gw-start { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: radial-gradient(900px 500px at 50% 0%, #2f6a3a 0%, #17341f 55%, #0b1710 100%); }
+.gw-start-card { width: min(94%, 460px); text-align: center; background: rgba(13, 15, 36, 0.78); border: 3px solid #ffd45c; border-radius: 18px; padding: 22px 18px; box-shadow: 0 8px 0 rgba(0, 0, 0, 0.35); }
+.gw-start-t { font-size: 24px; font-weight: 800; letter-spacing: 1px; color: #ffe08a; text-shadow: 0 3px 0 #5b3b00; }
+.gw-start-s { margin: 10px 0 16px; font-size: 14px; color: #cdd5ff; }
+
+/* đồng hồ ngày đêm */
+.gw-clock { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: rgba(13, 15, 36, 0.72); border: 2px solid #3c4690; color: #eef1ff; font-size: 12px; font-weight: 700; white-space: nowrap; pointer-events: none; }
+.gw-clock b { font-size: 14px; color: #ffe08a; font-variant-numeric: tabular-nums; }
+.gw-sun { width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff7c2, #ffc83c 70%); box-shadow: 0 0 8px #ffc83c; }
+.gw-clock[data-night='1'] .gw-sun { background: #dfe6ff; box-shadow: inset -5px -2px 0 0 #6f7bb8, 0 0 8px #9fb0ff; }
+.gw-online { color: #7dffb0; }
+.gw-world .gm-view { background: #05060f; }
+
+/* bảng nâng cấp nhà */
+.gw-modal { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(8, 10, 28, 0.74); animation: gm-fade 0.2s ease-out both; }
+.gw-card { width: min(94%, 580px); max-height: 94%; overflow: auto; background: #151a42; border: 3px solid #3c4690; border-radius: 16px; padding: 14px; box-shadow: 0 8px 0 #0a0c20; }
+.gw-card-t { font-size: 16px; font-weight: 800; color: #ffe08a; margin-bottom: 10px; text-align: center; }
+.gw-up { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.gw-up-i { flex: 1; min-width: 0; text-align: center; font-size: 12px; color: #cdd5ff; display: flex; flex-direction: column; gap: 4px; }
+.gw-up-i img { width: 100%; max-height: 110px; object-fit: contain; image-rendering: auto; }
+.gw-up-i b { color: #fff; font-size: 14px; }
+.gw-up-i.next b { color: #7dffb0; }
+.gw-arrow { font-size: 24px; color: #ffd45c; flex: none; }
+.gw-input { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; font-weight: 700; color: #eef1ff; background: #0d1030; border: 2px solid #3c4690; border-radius: 10px; padding: 12px; }
+.gw-input:focus { outline: none; border-color: #ffd45c; }
