@@ -1,35 +1,42 @@
 'use client';
-// GAME (tách riêng): sân nhà miền Tây, đi lại ngoài trời. Xóa cùng thư mục components/game khi gỡ game.
+// GAME (tách riêng): cảnh trước cổng trường TH - THCS Biển Bạch, đi qua cầu tới cổng. Xóa cùng thư mục components/game khi gỡ game.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { buildFrames } from '../../lib/game/sprites';
-import { POND, VH, YARD_BG, YARD_FROM_SCHOOL, YARD_K, YARD_SPAWN, YARD_TEXT, YH, YW, yardBlocked, yardNearest } from '../../lib/game/yard';
+import {
+  ARCH, ARCH_BASE_Y, GATE_BG, GATE_K, GATE_SPAWN, GATE_TEXT, GH, GVH, GVW, GW, SIGN_C, SIGN_TEXT,
+  gateBlocked, gateNearest,
+} from '../../lib/game/gate';
 
-const SPEED = 100;
-const STRIDE = 10;
+const SPEED = 130;
+const STRIDE = 12;
 const BOB = [-1, 0, -1, 0];
 const STICK_DEAD = 0.16;
-const FISH = [
-  { a: 0.0, sp: 0.5, rx: 62, ry: 32, c: '#f08a2c' },
-  { a: 2.1, sp: -0.38, rx: 48, ry: 24, c: '#f4f0e6' },
-  { a: 4.0, sp: 0.62, rx: 70, ry: 36, c: '#e8602a' },
-  { a: 5.2, sp: -0.45, rx: 36, ry: 18, c: '#f6c24a' },
-];
+const INTRO_HOLD = 1.4;   // giây giữ cận cảnh bảng tên
+const INTRO_MOVE = 1.6;   // giây kéo camera về nhân vật
+const INTRO_Z = 2.3;
 
-export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchool, from }) {
+let introShown = false;   // chỉ chiếu cận cảnh bảng tên một lần mỗi lần mở trang
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const ease = (t) => t * t * (3 - 2 * t);
+
+export default function GateView({ cfg, onBackHome, onEditCharacter }) {
   const canvasRef = useRef(null);
   const viewRef = useRef(null);
   const stickRef = useRef(null);
   const knobRef = useRef(null);
   const [near, setNear] = useState(null);
   const [toast, setToast] = useState(null);
+  const [signOpen, setSignOpen] = useState(false);
+  const [intro, setIntro] = useState(false);
   const S = useRef({
-    pos: from === 'school' ? { x: YARD_FROM_SCHOOL.x, y: YARD_FROM_SCHOOL.y } : { x: YARD_SPAWN.x, y: YARD_SPAWN.y },
+    pos: { x: GATE_SPAWN.x, y: GATE_SPAWN.y },
     vel: { x: 0, y: 0 },
     keys: new Set(),
     stick: { x: 0, y: 0 },
     stickId: null,
     facing: 1,
-    dir: from === 'school' ? 'back' : 'front',
+    dir: 'back',
     phase: 0,
     frame: 0,
     clock: 0,
@@ -39,39 +46,90 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
     scale: 1,
     frames: null,
     bg: null,
+    glints: [],
+    cam: null,
+    intro: { on: false, t: 0 },
     nearId: null,
+    paused: false,
   }).current;
 
   const say = useCallback((text) => setToast({ text, id: Date.now() }), []);
   useEffect(() => {
     if (!toast) return undefined;
-    const t = setTimeout(() => setToast(null), 3200);
+    const t = setTimeout(() => setToast(null), 3400);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    S.paused = signOpen;
+    if (signOpen) {
+      S.keys.clear();
+      S.stick = { x: 0, y: 0 };
+    }
+  }, [signOpen, S]);
 
   useEffect(() => {
     S.frames = buildFrames(cfg);
   }, [cfg, S]);
 
+  // chiếu cận cảnh bảng tên lần đầu
+  useEffect(() => {
+    if (!introShown) {
+      introShown = true;
+      S.intro = { on: true, t: 0 };
+      setIntro(true);
+    }
+  }, [S]);
+
   useEffect(() => {
     const img = new Image();
-    img.onload = () => { S.bg = img; };
-    img.src = YARD_BG;
+    img.onload = () => {
+      S.bg = img;
+      // tìm các điểm nước trên kênh để làm gợn sáng
+      try {
+        const c = document.createElement('canvas');
+        c.width = GW;
+        c.height = GH;
+        const cx = c.getContext('2d', { willReadFrequently: true });
+        cx.drawImage(img, 0, 0, GW, GH);
+        const spots = [];
+        for (let tries = 0; tries < 4000 && spots.length < 70; tries++) {
+          const x = 10 + Math.floor(Math.random() * (GW - 20));
+          const y = 715 + Math.floor(Math.random() * 200);
+          const d = cx.getImageData(x, y, 1, 1).data;
+          if (d[2] > d[0] + 40 && d[2] > d[1] + 10 && d[2] > 90) spots.push({ x, y, ph: Math.random() * 6.28, sp: 0.6 + Math.random() * 0.9 });
+        }
+        S.glints = spots;
+      } catch (e) {
+        S.glints = [];
+      }
+    };
+    img.src = GATE_BG;
   }, [S]);
 
   const interact = useCallback(() => {
-    const it = yardNearest(S.pos.x, S.pos.y);
+    if (S.paused || S.intro.on) return;
+    const it = gateNearest(S.pos.x, S.pos.y);
     if (!it) return;
-    if (it.id === 'cua') onEnterHouse();
-    else if (it.id === 'truong') { if (onGoSchool) onGoSchool(); }
-    else say(YARD_TEXT[it.id]);
-  }, [S, say, onEnterHouse, onGoSchool]);
+    if (it.id === 've_nha') onBackHome();
+    else if (it.id === 'bang') setSignOpen(true);
+    else say(GATE_TEXT[it.id]);
+  }, [S, say, onBackHome]);
+
+  const skipIntro = useCallback(() => {
+    if (S.intro.on && S.intro.t < INTRO_HOLD) S.intro.t = INTRO_HOLD;
+  }, [S]);
 
   useEffect(() => {
     const map = { ArrowUp: 'u', w: 'u', W: 'u', ArrowDown: 'd', s: 'd', S: 'd', ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r' };
     const down = (e) => {
+      if (e.key === 'Escape') {
+        setSignOpen(false);
+        return;
+      }
       const k = map[e.key];
       if (k) {
+        skipIntro();
         S.keys.add(k);
         e.preventDefault();
       } else if ((e.key === 'e' || e.key === 'E' || e.key === 'Enter') && !e.repeat) {
@@ -91,18 +149,18 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
       window.removeEventListener('keyup', up);
       window.removeEventListener('blur', blur);
     };
-  }, [S, interact]);
+  }, [S, interact, skipIntro]);
 
   useEffect(() => {
     const view = viewRef.current;
     const canvas = canvasRef.current;
     const fit = () => {
       const dpr = window.devicePixelRatio || 1;
-      const n = Math.max(1, Math.min(4, Math.round((view.clientWidth * dpr) / YW)));
-      if (n !== S.scale || canvas.width !== YW * n) {
+      const n = Math.max(1, Math.min(4, Math.round((view.clientWidth * dpr) / GVW)));
+      if (n !== S.scale || canvas.width !== GVW * n) {
         S.scale = n;
-        canvas.width = YW * n;
-        canvas.height = VH * n;
+        canvas.width = GVW * n;
+        canvas.height = GVH * n;
       }
     };
     fit();
@@ -125,7 +183,7 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
       if (d === 0) return;
       const nx = axis === 'x' ? S.pos.x + d : S.pos.x;
       const ny = axis === 'y' ? S.pos.y + d : S.pos.y;
-      if (!yardBlocked(nx, ny)) {
+      if (!gateBlocked(nx, ny)) {
         S.pos.x = nx;
         S.pos.y = ny;
         return;
@@ -134,8 +192,8 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
         for (const sign of [1, -1]) {
           const tx = axis === 'x' ? nx : nx + sign * off;
           const ty = axis === 'x' ? ny + sign * off : ny;
-          if (!yardBlocked(tx, ty)) {
-            const step = Math.min(off, 1.1);
+          if (!gateBlocked(tx, ty)) {
+            const step = Math.min(off, 1.3);
             if (axis === 'x') S.pos.y += sign * step;
             else S.pos.x += sign * step;
             return;
@@ -153,6 +211,13 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
       if (S.parts.length > 30) S.parts.splice(0, S.parts.length - 30);
     }
 
+    function targetCam() {
+      return {
+        x: clamp(S.pos.x - GVW / 2, 0, GW - GVW),
+        y: clamp(S.pos.y - GVH * 0.68, 0, GH - GVH),
+      };
+    }
+
     function update(dt) {
       S.clock += dt;
       for (const p of S.parts) {
@@ -163,8 +228,18 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
       }
       S.parts = S.parts.filter((p) => p.life < p.max);
 
-      let ix = (S.keys.has('r') ? 1 : 0) - (S.keys.has('l') ? 1 : 0) + S.stick.x;
-      let iy = (S.keys.has('d') ? 1 : 0) - (S.keys.has('u') ? 1 : 0) + S.stick.y;
+      if (S.intro.on) {
+        S.intro.t += dt;
+        if (S.intro.t >= INTRO_HOLD + INTRO_MOVE) {
+          S.intro.on = false;
+          S.cam = targetCam();
+          setIntro(false);
+        }
+      }
+      const locked = S.intro.on || S.paused;
+
+      let ix = locked ? 0 : (S.keys.has('r') ? 1 : 0) - (S.keys.has('l') ? 1 : 0) + S.stick.x;
+      let iy = locked ? 0 : (S.keys.has('d') ? 1 : 0) - (S.keys.has('u') ? 1 : 0) + S.stick.y;
       const il = Math.hypot(ix, iy);
       if (il > 1) {
         ix /= il;
@@ -203,7 +278,17 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
         S.blinkUntil = S.clock + 0.13;
         S.nextBlink = S.clock + 2.4 + Math.random() * 3;
       }
-      const it = yardNearest(S.pos.x, S.pos.y);
+
+      // camera đi theo nhân vật, mượt
+      const t = targetCam();
+      if (!S.cam) S.cam = t;
+      else {
+        const kc = 1 - Math.exp(-dt * 9);
+        S.cam.x += (t.x - S.cam.x) * kc;
+        S.cam.y += (t.y - S.cam.y) * kc;
+      }
+
+      const it = locked ? null : gateNearest(S.pos.x, S.pos.y);
       const id = it ? it.id : null;
       if (id !== S.nearId) {
         S.nearId = id;
@@ -211,28 +296,14 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
       }
     }
 
-    function drawFish() {
-      for (const f of FISH) {
-        const a = f.a + S.clock * f.sp;
-        const x = POND.cx + Math.cos(a) * f.rx;
-        const y = POND.cy + Math.sin(a) * f.ry;
-        const dx = -Math.sin(a) * f.sp;
-        const dir = dx >= 0 ? 1 : -1;
-        ctx.fillStyle = 'rgba(20,60,80,0.35)';
-        ctx.fillRect(Math.round(x - 4 * dir - 1), Math.round(y + 2), 8, 2);
-        ctx.fillStyle = f.c;
-        ctx.fillRect(Math.round(x - 3), Math.round(y - 1), 6, 3);
-        ctx.fillRect(Math.round(x - 3 * dir - (dir > 0 ? 2 : -0)), Math.round(y - 2 + (Math.floor(S.clock * 6) % 2)), 2, 4);
-        ctx.fillStyle = '#1c1a26';
-        ctx.fillRect(Math.round(x + 2 * dir), Math.round(y - 1), 1, 1);
+    function drawGlints() {
+      for (const g of S.glints) {
+        const a = 0.5 + 0.5 * Math.sin(S.clock * g.sp * 2 + g.ph);
+        if (a < 0.55) continue;
+        ctx.fillStyle = `rgba(225,245,255,${(0.55 * (a - 0.55) / 0.45).toFixed(2)})`;
+        ctx.fillRect(Math.round(g.x), Math.round(g.y), 5, 1);
+        ctx.fillRect(Math.round(g.x) + 2, Math.round(g.y) + 2, 3, 1);
       }
-      // gợn nước
-      const r = (S.clock * 14) % 24;
-      ctx.strokeStyle = `rgba(255,255,255,${(0.35 * (1 - r / 24)).toFixed(2)})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(POND.cx + 26, POND.cy - 8, r, r * 0.55, 0, 0, Math.PI * 2);
-      ctx.stroke();
     }
 
     function drawCharacter() {
@@ -240,9 +311,9 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
       const px = Math.round(S.pos.x);
       const py = Math.round(S.pos.y);
       const speed = Math.hypot(S.vel.x, S.vel.y);
-      ctx.fillStyle = 'rgba(0,0,0,0.28)';
-      ctx.fillRect(px - 8, py - 3, 16, 4);
-      ctx.fillRect(px - 10, py - 2, 20, 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.26)';
+      ctx.fillRect(px - 9, py - 3, 18, 4);
+      ctx.fillRect(px - 11, py - 2, 22, 2);
       const set = S.frames[S.dir] || S.frames.front;
       let img;
       let bob = 0;
@@ -254,7 +325,7 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
       } else {
         img = set[0];
       }
-      const K = YARD_K;
+      const K = GATE_K;
       ctx.save();
       ctx.translate(px, py + bob);
       if (S.facing < 0 && S.dir === 'side') ctx.scale(-1, 1);
@@ -265,20 +336,39 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
 
     function draw() {
       const n = S.scale;
-      const camY = Math.max(0, Math.min(YH - VH, S.pos.y - VH * 0.62));
-      ctx.setTransform(n, 0, 0, n, 0, 0);
-      ctx.imageSmoothingEnabled = false;
-      ctx.fillStyle = '#3a5a2a';
-      ctx.fillRect(0, 0, YW, VH);
+      let z = 1;
+      let cx = S.cam ? S.cam.x : 0;
+      let cy = S.cam ? S.cam.y : 0;
+      if (S.intro.on) {
+        const u = ease(clamp((S.intro.t - INTRO_HOLD) / INTRO_MOVE, 0, 1));
+        z = INTRO_Z + (1 - INTRO_Z) * u;
+        const t = targetCam();
+        const mx = SIGN_C.x + (t.x + GVW / 2 - SIGN_C.x) * u;
+        const my = SIGN_C.y + (t.y + GVH / 2 - SIGN_C.y) * u;
+        cx = clamp(mx - GVW / z / 2, 0, GW - GVW / z);
+        cy = clamp(my - GVH / z / 2, 0, GH - GVH / z);
+      } else {
+        cx = Math.round(cx);
+        cy = Math.round(cy);
+      }
+      ctx.setTransform(n * z, 0, 0, n * z, 0, 0);
+      ctx.fillStyle = '#2a4a2a';
+      ctx.fillRect(0, 0, GW, GH);
       ctx.save();
-      ctx.translate(0, -Math.round(camY));
-      if (S.bg) ctx.drawImage(S.bg, 0, 0, YW, YH);
-      drawFish();
+      ctx.translate(-cx, -cy);
+      ctx.imageSmoothingEnabled = z !== 1;
+      if (S.bg) ctx.drawImage(S.bg, 0, 0, GW, GH);
+      drawGlints();
       drawCharacter();
       for (const p of S.parts) {
         const a = 1 - p.life / p.max;
-        ctx.fillStyle = `rgba(230,200,150,${(0.6 * a).toFixed(2)})`;
+        ctx.fillStyle = `rgba(225,215,195,${(0.6 * a).toFixed(2)})`;
         ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 2);
+      }
+      // mái cổng và bảng tên che nhân vật khi đi vào dưới cổng
+      if (S.bg && S.pos.y < ARCH_BASE_Y) {
+        ctx.imageSmoothingEnabled = z !== 1;
+        ctx.drawImage(S.bg, ARCH.x, ARCH.y, ARCH.w, ARCH.h, ARCH.x, ARCH.y, ARCH.w, ARCH.h);
       }
       ctx.restore();
     }
@@ -315,6 +405,7 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
     } else {
       const sc = (mag - STICK_DEAD) / (1 - STICK_DEAD);
       S.stick = { x: (vx / clamped) * sc, y: (vy / clamped) * sc };
+      skipIntro();
     }
   }
   function stickEnd() {
@@ -341,12 +432,22 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
   return (
     <div className="gm-house">
       <div className="gm-hud">
-        <button type="button" className="gm-btn main" onClick={onEnterHouse}>Vào nhà</button>
+        <button type="button" className="gm-btn main" onClick={onBackHome}>Về sân nhà</button>
         <button type="button" className="gm-btn" onClick={onEditCharacter}>Sửa nhân vật</button>
       </div>
-      <div className="gm-view" ref={viewRef}>
-        <canvas ref={canvasRef} className="gm-room" width={YW} height={VH} style={{ touchAction: 'manipulation' }} aria-label="Sân nhà em" />
+      <div className="gm-view" ref={viewRef} onPointerDown={skipIntro}>
+        <canvas ref={canvasRef} className="gm-room" width={GVW} height={GVH} style={{ touchAction: 'manipulation' }} aria-label="Trước cổng trường" />
+        {intro && <div className="gm-intro">Trước cổng Trường TH - THCS Biển Bạch</div>}
         {toast && <div className="gm-toast" key={toast.id}>{toast.text}</div>}
+        {signOpen && (
+          <div className="gm-signpop" role="dialog" aria-label="Bảng tên trường" onClick={() => setSignOpen(false)}>
+            <div className="gm-sign">
+              <div className="gm-sign-in">{SIGN_TEXT}</div>
+            </div>
+            <div className="gm-sign-sub">Xã Biển Bạch, tỉnh Cà Mau</div>
+            <div className="gm-sign-close">Chạm để đóng</div>
+          </div>
+        )}
       </div>
       <div className="gm-ctrl">
         <div className="gm-stick" ref={stickRef} aria-label="Cần điều khiển" {...stickProps}>
@@ -354,9 +455,9 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
         </div>
         <div className="gm-act">
           <button type="button" className="gm-btn main big" disabled={!near} onClick={interact}>
-            {near ? near.label : 'Đi dạo quanh sân'}
+            {near ? near.label : 'Đi dạo trước cổng trường'}
           </button>
-          <div className="gm-hint">Phía sau là sông, bên trái là vườn rau, bên phải là ao cá. Đi xuống cuối đường đất để tới trường.</div>
+          <div className="gm-hint">Đi qua cầu để tới cổng trường. Đứng trước cổng để đọc bảng tên. Cuối cầu là đường về nhà.</div>
         </div>
       </div>
     </div>

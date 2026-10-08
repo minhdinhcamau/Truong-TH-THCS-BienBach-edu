@@ -215,3 +215,12 @@
 .gm-stick:active .gm-knob { transition: none; }
 @media (max-width: 520px) { .gm-stick { width: 136px; height: 136px; } .gm-knob { width: 56px; height: 56px; margin: -28px 0 0 -28px; } }
 @media (prefers-reduced-motion: reduce) { .gm-view, .gm-toast { animation: none; } }
+
+/* ---------- cổng trường: giới thiệu và bảng tên ---------- */
+.gm-intro { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); max-width: 92%; background: rgba(13, 15, 36, 0.78); color: #ffe08a; border: 2px solid #ffd45c; border-radius: 12px; padding: 7px 14px; font-weight: 800; font-size: 14px; text-align: center; pointer-events: none; animation: gm-fade 0.4s ease-out both; }
+.gm-signpop { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px; background: rgba(8, 10, 28, 0.78); cursor: pointer; animation: gm-fade 0.25s ease-out both; }
+.gm-sign { width: min(94%, 640px); background: #1c4fa8; border: 5px solid #e9f1ff; border-radius: 10px; padding: 6px; box-shadow: 0 0 0 4px #123a80, 0 10px 0 rgba(0, 0, 0, 0.4); }
+.gm-sign-in { background: #1741a0; border: 3px solid #0e2f78; border-radius: 6px; padding: 14px 10px; text-align: center; font-weight: 800; font-size: clamp(18px, 5.2vw, 38px); letter-spacing: 1px; line-height: 1.2; color: #ffc93c; text-shadow: 0 3px 0 #6a3d00, 0 0 12px rgba(255, 201, 60, 0.35); }
+.gm-sign-sub { color: #cdd5ff; font-weight: 700; font-size: 14px; }
+.gm-sign-close { color: #8f9bea; font-size: 13px; font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .gm-intro, .gm-signpop { animation: none; } }

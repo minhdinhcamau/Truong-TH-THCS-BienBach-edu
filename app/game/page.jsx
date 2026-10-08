@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabaseClient';
 import CharacterCreator from '../../components/game/CharacterCreator';
 import HouseView from '../../components/game/HouseView';
 import YardView from '../../components/game/YardView';
+import GateView from '../../components/game/GateView';
 import './game.css';
 
 function unwrap(data, key) {
@@ -18,9 +19,10 @@ function unwrap(data, key) {
 
 export default function GamePage() {
   const router = useRouter();
-  const [phase, setPhase] = useState('loading'); // loading | create | house | yard | error
+  const [phase, setPhase] = useState('loading'); // loading | create | house | yard | gate | error
   const [cfg, setCfg] = useState(null);
   const [house, setHouse] = useState(null);
+  const [yardFrom, setYardFrom] = useState('house'); // house | school: nơi nhân vật đến sân
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
 
@@ -67,7 +69,7 @@ export default function GamePage() {
     return !error;
   }
 
-  const title = phase === 'house' ? 'NHÀ CỦA EM' : phase === 'yard' ? 'SÂN NHÀ EM' : 'TẠO NHÂN VẬT';
+  const title = phase === 'house' ? 'NHÀ CỦA EM' : phase === 'yard' ? 'SÂN NHÀ EM' : phase === 'gate' ? 'TRƯỚC CỔNG TRƯỜNG' : 'TẠO NHÂN VẬT';
   return (
     <div className="gm-root">
       <div className="gm-top">
@@ -86,10 +88,13 @@ export default function GamePage() {
         />
       )}
       {phase === 'house' && (
-        <HouseView cfg={cfg} initialHouse={house} onSaveHouse={saveHouse} onEditCharacter={() => { setMessage(null); setPhase('create'); }} onExit={() => setPhase('yard')} />
+        <HouseView cfg={cfg} initialHouse={house} onSaveHouse={saveHouse} onEditCharacter={() => { setMessage(null); setPhase('create'); }} onExit={() => { setYardFrom('house'); setPhase('yard'); }} />
       )}
       {phase === 'yard' && (
-        <YardView cfg={cfg} onEnterHouse={() => setPhase('house')} onEditCharacter={() => { setMessage(null); setPhase('create'); }} />
+        <YardView cfg={cfg} from={yardFrom} onEnterHouse={() => setPhase('house')} onGoSchool={() => setPhase('gate')} onEditCharacter={() => { setMessage(null); setPhase('create'); }} />
+      )}
+      {phase === 'gate' && (
+        <GateView cfg={cfg} onBackHome={() => { setYardFrom('school'); setPhase('yard'); }} onEditCharacter={() => { setMessage(null); setPhase('create'); }} />
       )}
     </div>
   );
