@@ -153,7 +153,7 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
     const canvas = canvasRef.current;
     const fit = () => {
       const dpr = window.devicePixelRatio || 1;
-      const n = Math.max(1, Math.min(4, Math.round((view.clientWidth * dpr) / CW)));
+      const n = Math.max(1, Math.min(4, Math.round(((canvas.clientWidth || view.clientWidth) * dpr) / CW)));
       if (n !== S.scale || canvas.width !== CW * n) {
         S.scale = n;
         canvas.width = CW * n;
@@ -586,7 +586,7 @@ export default function HouseView({ cfg, initialHouse, onSaveHouse, onEditCharac
         <span className={`gm-status ${saveState}`}>{statusText}</span>
       </div>
 
-      <div className="gm-view" data-mode={mode} ref={viewRef}>
+      <div className="gm-view" data-mode={mode} ref={viewRef} style={{ '--ar': CW / CH }}>
         <canvas
           ref={canvasRef}
           className="gm-room"

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { buildFrames } from '../../lib/game/sprites';
 import {
   ARCH, ARCH_BASE_Y, GATE_BG, GATE_K, GATE_SPAWN, GATE_TEXT, GH, GVH, GVW, GW, SIGN_C, SIGN_TEXT,
-  gateBlocked, gateNearest,
+  gateBlocked, gateNearest, gateScale,
 } from '../../lib/game/gate';
 
 const SPEED = 130;
@@ -156,7 +156,7 @@ export default function GateView({ cfg, onBackHome, onEditCharacter }) {
     const canvas = canvasRef.current;
     const fit = () => {
       const dpr = window.devicePixelRatio || 1;
-      const n = Math.max(1, Math.min(4, Math.round((view.clientWidth * dpr) / GVW)));
+      const n = Math.max(1, Math.min(4, Math.round(((canvas.clientWidth || view.clientWidth) * dpr) / GVW)));
       if (n !== S.scale || canvas.width !== GVW * n) {
         S.scale = n;
         canvas.width = GVW * n;
@@ -247,8 +247,9 @@ export default function GateView({ cfg, onBackHome, onEditCharacter }) {
       }
       const has = il > 0.05;
       const k = 1 - Math.exp(-dt * (has ? 15 : 24));
-      S.vel.x += (ix * SPEED - S.vel.x) * k;
-      S.vel.y += (iy * SPEED - S.vel.y) * k;
+      const sp = SPEED * (gateScale(S.pos.y) / GATE_K);
+      S.vel.x += (ix * sp - S.vel.x) * k;
+      S.vel.y += (iy * sp - S.vel.y) * k;
       if (!has && Math.hypot(S.vel.x, S.vel.y) < 4) {
         S.vel.x = 0;
         S.vel.y = 0;
@@ -306,14 +307,18 @@ export default function GateView({ cfg, onBackHome, onEditCharacter }) {
       }
     }
 
-    function drawCharacter() {
+    function drawCharacter(alpha = 1) {
       if (!S.frames) return;
       const px = Math.round(S.pos.x);
       const py = Math.round(S.pos.y);
+      const K = gateScale(S.pos.y);
+      const q = K / GATE_K;
       const speed = Math.hypot(S.vel.x, S.vel.y);
+      ctx.save();
+      ctx.globalAlpha = alpha;
       ctx.fillStyle = 'rgba(0,0,0,0.26)';
-      ctx.fillRect(px - 9, py - 3, 18, 4);
-      ctx.fillRect(px - 11, py - 2, 22, 2);
+      ctx.fillRect(Math.round(px - 9 * q), py - 3, Math.round(18 * q), 4);
+      ctx.fillRect(Math.round(px - 11 * q), py - 2, Math.round(22 * q), 2);
       const set = S.frames[S.dir] || S.frames.front;
       let img;
       let bob = 0;
@@ -325,8 +330,6 @@ export default function GateView({ cfg, onBackHome, onEditCharacter }) {
       } else {
         img = set[0];
       }
-      const K = GATE_K;
-      ctx.save();
       ctx.translate(px, py + bob);
       if (S.facing < 0 && S.dir === 'side') ctx.scale(-1, 1);
       ctx.imageSmoothingEnabled = false;
@@ -369,6 +372,8 @@ export default function GateView({ cfg, onBackHome, onEditCharacter }) {
       if (S.bg && S.pos.y < ARCH_BASE_Y) {
         ctx.imageSmoothingEnabled = z !== 1;
         ctx.drawImage(S.bg, ARCH.x, ARCH.y, ARCH.w, ARCH.h, ARCH.x, ARCH.y, ARCH.w, ARCH.h);
+        // đi khuất sau mái cổng thì vẫn thấy bóng mờ của nhân vật
+        if (S.pos.y > ARCH.y - 8 && S.pos.x > ARCH.x - 20 && S.pos.x < ARCH.x + ARCH.w + 20) drawCharacter(0.5);
       }
       ctx.restore();
     }
@@ -435,7 +440,7 @@ export default function GateView({ cfg, onBackHome, onEditCharacter }) {
         <button type="button" className="gm-btn main" onClick={onBackHome}>Về sân nhà</button>
         <button type="button" className="gm-btn" onClick={onEditCharacter}>Sửa nhân vật</button>
       </div>
-      <div className="gm-view" ref={viewRef} onPointerDown={skipIntro}>
+      <div className="gm-view" ref={viewRef} style={{ '--ar': GVW / GVH }} onPointerDown={skipIntro}>
         <canvas ref={canvasRef} className="gm-room" width={GVW} height={GVH} style={{ touchAction: 'manipulation' }} aria-label="Trước cổng trường" />
         {intro && <div className="gm-intro">Trước cổng Trường TH - THCS Biển Bạch</div>}
         {toast && <div className="gm-toast" key={toast.id}>{toast.text}</div>}
@@ -457,7 +462,7 @@ export default function GateView({ cfg, onBackHome, onEditCharacter }) {
           <button type="button" className="gm-btn main big" disabled={!near} onClick={interact}>
             {near ? near.label : 'Đi dạo trước cổng trường'}
           </button>
-          <div className="gm-hint">Đi qua cầu để tới cổng trường. Đứng trước cổng để đọc bảng tên. Cuối cầu là đường về nhà.</div>
+          <div className="gm-hint">Đi qua cầu, qua cổng để vào sân trường. Đứng trước cổng để đọc bảng tên. Cuối cầu là đường về nhà.</div>
         </div>
       </div>
     </div>

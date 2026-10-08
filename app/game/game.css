@@ -224,3 +224,33 @@
 .gm-sign-sub { color: #cdd5ff; font-weight: 700; font-size: 14px; }
 .gm-sign-close { color: #8f9bea; font-size: 13px; font-weight: 700; }
 @media (prefers-reduced-motion: reduce) { .gm-intro, .gm-signpop { animation: none; } }
+
+/* ---------- chế độ rộng: toàn màn hình và điện thoại xoay ngang ---------- */
+.gm-fs { font: inherit; font-weight: 700; font-size: 14px; color: #cdd5ff; padding: 8px 12px; border: 2px solid #3c4690; border-radius: 10px; background: #1a2050; cursor: pointer; white-space: nowrap; }
+.gm-fs:hover { background: #232b6a; }
+.gm-rotate { max-width: 980px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: #fff7d6; color: #3a2600; border: 3px solid #ffd45c; border-radius: 12px; padding: 9px 14px; font-weight: 700; font-size: 14px; }
+.gm-rotate button { font: inherit; font-weight: 800; color: #3a2600; background: #ffd45c; border: 2px solid #a87400; border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+@media (max-width: 520px) { .gm-top { flex-wrap: wrap; } .gm-title { order: 3; flex-basis: 100%; text-align: center; } }
+.gm-root[data-fs='pseudo'] { position: fixed; inset: 0; z-index: 9999; overflow: auto; }
+.gm-root[data-fs='real'] { overflow: auto; }
+
+.gm-root[data-wide] { padding: 0; min-height: 100vh; min-height: 100dvh; overflow-x: hidden; overscroll-behavior: none; background: #000; }
+.gm-root[data-wide] .gm-top { position: fixed; top: 8px; right: 8px; left: auto; z-index: 20; margin: 0; max-width: none; gap: 8px; flex-wrap: nowrap; }
+.gm-root[data-wide] .gm-title { display: none; }
+.gm-root[data-wide] .gm-back, .gm-root[data-wide] .gm-fs { padding: 6px 10px; font-size: 12px; background: rgba(26, 32, 80, 0.82); }
+.gm-root[data-wide] .gm-house { max-width: none; margin: 0; }
+.gm-root[data-wide] .gm-view { height: 100vh; height: 100dvh; border: 0; border-radius: 0; box-shadow: none; display: flex; align-items: center; justify-content: center; background: #000; }
+.gm-root[data-wide] .gm-room { width: min(100vw, calc(100dvh * var(--ar, 1.5))); height: auto; aspect-ratio: var(--ar, 1.5); }
+.gm-root[data-wide] .gm-hud { position: fixed; top: 8px; left: 8px; z-index: 20; margin: 0; max-width: calc(100vw - 250px); gap: 6px; }
+.gm-root[data-wide] .gm-hud .gm-btn { min-height: 36px; padding: 4px 10px; font-size: 12px; opacity: 0.92; }
+.gm-root[data-wide] .gm-ctrl { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; margin: 0; align-items: flex-end; pointer-events: none; padding: 0 max(14px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
+.gm-root[data-wide] .gm-stick, .gm-root[data-wide] .gm-act { pointer-events: auto; }
+.gm-root[data-wide] .gm-act { flex: none; width: min(44vw, 300px); }
+.gm-root[data-wide] .gm-hint { display: none; }
+.gm-root[data-wide] .gm-btn.big { min-height: 52px; font-size: 15px; }
+.gm-root[data-wide] .gm-stick { width: 128px; height: 128px; opacity: 0.88; }
+.gm-root[data-wide] .gm-knob { width: 52px; height: 52px; margin: -26px 0 0 -26px; }
+.gm-root[data-wide] .gm-toast { bottom: 78px; max-width: 54%; }
+.gm-root[data-wide] .gm-edit { position: relative; z-index: 10; background: #0d0f24; padding: 14px; margin: 0; }
+.gm-root[data-wide] .gm-view[data-mode='edit'] { height: auto; padding-top: 52px; }
+.gm-root[data-wide] .gm-view[data-mode='edit'] .gm-room { width: min(100vw, calc((100dvh - 200px) * var(--ar, 1.5))); }

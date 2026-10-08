@@ -98,7 +98,7 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
     const canvas = canvasRef.current;
     const fit = () => {
       const dpr = window.devicePixelRatio || 1;
-      const n = Math.max(1, Math.min(4, Math.round((view.clientWidth * dpr) / YW)));
+      const n = Math.max(1, Math.min(4, Math.round(((canvas.clientWidth || view.clientWidth) * dpr) / YW)));
       if (n !== S.scale || canvas.width !== YW * n) {
         S.scale = n;
         canvas.width = YW * n;
@@ -344,7 +344,7 @@ export default function YardView({ cfg, onEnterHouse, onEditCharacter, onGoSchoo
         <button type="button" className="gm-btn main" onClick={onEnterHouse}>Vào nhà</button>
         <button type="button" className="gm-btn" onClick={onEditCharacter}>Sửa nhân vật</button>
       </div>
-      <div className="gm-view" ref={viewRef}>
+      <div className="gm-view" ref={viewRef} style={{ '--ar': YW / VH }}>
         <canvas ref={canvasRef} className="gm-room" width={YW} height={VH} style={{ touchAction: 'manipulation' }} aria-label="Sân nhà em" />
         {toast && <div className="gm-toast" key={toast.id}>{toast.text}</div>}
       </div>
