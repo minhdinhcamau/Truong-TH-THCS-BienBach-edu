@@ -1,18 +1,18 @@
 'use client';
 // GAME (tách riêng): cảnh TRƯỚC CỔNG TRƯỜNG TH - THCS Biển Bạch (dựng theo ảnh gốc của thầy, đổi thành pixel nét).
 // Đi từ đầu cầu phía nam, qua cầu, tới sân trước cổng; bước vào lối giữa hai cột cổng thì chuyển sang sân trường.
-// Có mây trôi chậm, ngày đêm (12 phút sáng, 12 phút tối), mưa, nhiều bạn cùng một khu (tối đa 10), đổi khu vực.
+// Nền là hai ảnh mẫu (ban ngày, ban đêm) mờ dần vào nhau theo giờ game (12 phút sáng, 12 phút tối); có mưa, nhiều bạn cùng một khu (tối đa 10), đổi khu vực.
 // Xóa cùng thư mục components/game khi gỡ game.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { buildFrames } from '../../lib/game/sprites';
 import { clockLabel, dayTime, isNight, nightLevel, rainLevel } from '../../lib/game/clock';
 import {
-  CHAR_H, GATE, GATE_TEXT, SH, SIGN_TEXT, SPEED, SW, WINDOWS, ZONE_MAX,
-  depthScale, getSchool, schoolBlocked, schoolNearest, spawnPoint,
+  CHAR_H, GATE, GATE_TEXT, SH, SIGN_TEXT, SPEED, SW, ZONE_MAX,
+  depthScale, schoolBlocked, schoolNearest, spawnPoint,
 } from '../../lib/game/school';
 import { makeSchoolArt } from '../../lib/game/schoolArt';
-import { drawSchoolObject, drawSky, drawWater, visibleSchoolObjects } from '../../lib/game/schoolRender';
+import { drawBackdrop } from '../../lib/game/schoolRender';
 
 const STRIDE = 12;
 const BOB = [-1, 0, -1, 0];
@@ -41,7 +41,7 @@ export default function GateView({
   const S = useRef({
     pos: null, vel: { x: 0, y: 0 }, keys: new Set(), stick: { x: 0, y: 0 }, stickId: null,
     facing: 1, dir: 'back', phase: 0, frame: 0, clock: 0, nextBlink: 2, blinkUntil: 0,
-    cam: null, dpr: 1, cw: 0, ch: 0, lc: null, drops: [], flies: [], art: null, frames: null,
+    cam: null, dpr: 1, cw: 0, ch: 0, drops: [], art: null, frames: null,
     remotes: new Map(), ch2: null, ready: false, sendT: 0, idleT: 0, lastSent: '',
     nearId: null, paused: false, fade: 1, entering: false, enterT: 0, entered: false, capChecked: false,
   }).current;
@@ -55,7 +55,7 @@ export default function GateView({
     return () => clearTimeout(t);
   }, [toast]);
 
-  if (!S.art && typeof document !== 'undefined') S.art = makeSchoolArt(() => document.createElement('canvas'));
+  if (!S.art && typeof document !== 'undefined') S.art = makeSchoolArt();
 
   // vị trí xuất hiện: từ làng đi lên thì đứng đầu cầu phía nam; từ sân trường ra thì đứng trước cổng
   if (!S.pos) {
@@ -205,7 +205,6 @@ export default function GateView({
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    const world = getSchool();
     let raf = 0;
     let last = performance.now();
     let hudT = 0;
@@ -241,7 +240,7 @@ export default function GateView({
         ix = clampN((GATE.cx - S.pos.x) / 14, -0.8, 0.8);
         iy = -0.8;
         S.enterT += dt;
-        if (S.pos.y < 262) S.fade = Math.min(1, S.fade + dt / 0.75);
+        if (S.pos.y < 258) S.fade = Math.min(1, S.fade + dt / 0.75);
         if ((S.fade >= 1 || S.enterT > 6) && !S.entered) { S.entered = true; onEnterYard(); }
       } else if (!locked && S.pos.y <= GATE.enterY && S.pos.x > GATE.x0 && S.pos.x < GATE.x1) {
         S.entering = true; S.enterT = 0; S.keys.clear(); S.stick = { x: 0, y: 0 };
@@ -344,8 +343,6 @@ export default function GateView({
       const t = dayTime(now);
       const night = nightLevel(t);
       const rain = rainLevel(now);
-      const wt = S.clock;
-      const scene = art.scene();
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = '#0a1020';
@@ -353,118 +350,22 @@ export default function GateView({
       ctx.setTransform(sc, 0, 0, sc, -cx * sc, -cy * sc);
       ctx.imageSmoothingEnabled = false;
 
-      drawSky(ctx, art, cx, cy, vw, vh, now, night);
-      if (scene) ctx.drawImage(scene, 0, 0);
-      else {
+      // nền: ảnh ngày, ban đêm mờ dần sang ảnh đêm (không thêm mây, sao, trăng, đom đóm, đốm sáng)
+      if (!drawBackdrop(ctx, S.art, cx, cy, vw, vh, night)) {
         ctx.fillStyle = '#e8eefc';
         ctx.font = '10px sans-serif';
         ctx.fillText('Đang tải map…', cx + 12, cy + 24);
       }
-      drawWater(ctx, wt, cx, cx + vw);
 
-      // vật thể (bờ nam, súng trên kênh) và người sắp theo độ sâu (y)
-      const list = [];
-      for (const o of visibleSchoolObjects(world.objects, cx, cy, cx + vw, cy + vh)) list.push({ key: o.y, o });
-      list.push({ key: S.pos.y, me: true });
+      // người sắp theo độ sâu (y)
+      const list = [{ key: S.pos.y, me: true }];
       for (const r of S.remotes.values()) list.push({ key: r.y, r });
       list.sort((a, b) => a.key - b.key);
       const blink = S.clock < S.blinkUntil;
       const moving = Math.hypot(S.vel.x, S.vel.y) > 8;
       for (const e of list) {
-        if (e.o) drawSchoolObject(ctx, art, e.o, wt);
-        else if (e.me) drawPerson(S.frames, S.pos.x, S.pos.y, S.dir, S.facing, S.frame, moving, blink);
+        if (e.me) drawPerson(S.frames, S.pos.x, S.pos.y, S.dir, S.facing, S.frame, moving, blink);
         else drawPerson(e.r.frames, e.r.x, e.r.y, e.r.dir, e.r.facing, e.r.frame || 0, e.r.walk, false);
-      }
-      // ----- ban đêm: tối dần, ánh đèn ở bảng tên, lối cổng, đầu cầu, cửa sổ sáng, đom đóm -----
-      const dark = Math.max(night, rain * 0.3);
-      if (dark > 0.02) {
-        if (!S.lc) S.lc = document.createElement('canvas');
-        const lc = S.lc;
-        if (lc.width !== cwp || lc.height !== chp) { lc.width = cwp; lc.height = chp; }
-        const lx = lc.getContext('2d');
-        lx.setTransform(1, 0, 0, 1, 0, 0);
-        lx.globalCompositeOperation = 'source-over';
-        lx.clearRect(0, 0, cwp, chp);
-        lx.fillStyle = `rgba(6,11,38,${(0.76 * dark).toFixed(3)})`;
-        lx.fillRect(0, 0, cwp, chp);
-        lx.globalCompositeOperation = 'destination-out';
-        // phần trời xa ít bị phủ tối hơn để thấy sao trăng
-        const y0s = (0 - cy) * sc;
-        const y1s = (170 - cy) * sc;
-        const gr = lx.createLinearGradient(0, y0s, 0, y1s);
-        gr.addColorStop(0, 'rgba(0,0,0,0.92)');
-        gr.addColorStop(0.5, 'rgba(0,0,0,0.78)');
-        gr.addColorStop(1, 'rgba(0,0,0,0)');
-        lx.fillStyle = gr;
-        lx.fillRect(0, 0, cwp, chp);
-        const lights = [];
-        for (const l of world.lights) {
-          if (l.x < cx - 110 || l.x > cx + vw + 110 || l.y < cy - 110 || l.y > cy + vh + 110) continue;
-          let a = l.a + 0.05 * Math.sin(t * 3 + l.seed);
-          if (Math.sin(t * 0.7 + l.seed * 5) > 0.985) a *= 0.6;
-          lights.push({ x: l.x, y: l.y, r: l.r, a: clampN(a, 0.2, 1), kind: l.kind });
-        }
-        lights.push({ x: S.pos.x, y: S.pos.y - 14, r: 40, a: 0.4, kind: 'me' });
-        for (const r of S.remotes.values()) lights.push({ x: r.x, y: r.y - 14, r: 30, a: 0.3, kind: 'me' });
-        for (const l of lights) {
-          const sx = (l.x - cx) * sc;
-          const sy = (l.y - cy) * sc;
-          const sr = l.r * sc * (0.9 + 0.1 * l.a);
-          const g = lx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-          g.addColorStop(0, `rgba(0,0,0,${l.a.toFixed(3)})`);
-          g.addColorStop(0.5, `rgba(0,0,0,${(l.a * 0.55).toFixed(3)})`);
-          g.addColorStop(1, 'rgba(0,0,0,0)');
-          lx.fillStyle = g;
-          lx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
-        }
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(lc, 0, 0);
-        ctx.globalCompositeOperation = 'lighter';
-        for (const l of lights) {
-          if (l.kind === 'me') continue;
-          const sx = (l.x - cx) * sc;
-          const sy = (l.y - cy) * sc;
-          const sr = l.r * 0.85 * sc;
-          const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-          g.addColorStop(0, `rgba(255,190,90,${(0.3 * l.a * night).toFixed(3)})`);
-          g.addColorStop(1, 'rgba(255,150,40,0)');
-          ctx.fillStyle = g;
-          ctx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
-        }
-        ctx.globalCompositeOperation = 'source-over';
-        // cửa sổ nhà trường sáng đèn, bóng đèn đường
-        ctx.setTransform(sc, 0, 0, sc, -cx * sc, -cy * sc);
-        if (night > 0.15) {
-          for (const w of WINDOWS) {
-            if (w.x > cx + vw || w.x + w.w < cx || w.y > cy + vh || w.y + w.h < cy) continue;
-            ctx.fillStyle = `rgba(255,214,120,${(0.85 * night).toFixed(3)})`;
-            ctx.fillRect(w.x, w.y, w.w, w.h);
-            ctx.fillStyle = `rgba(196,128,40,${(0.7 * night).toFixed(3)})`;
-            ctx.fillRect(w.x + (w.w >> 1), w.y, 1, w.h);
-            ctx.fillRect(w.x, w.y + (w.h >> 1), w.w, 1);
-          }
-          for (const l of world.lights) {
-            if (l.kind !== 'lamp' || l.x < cx - 20 || l.x > cx + vw + 20 || l.y < cy - 20 || l.y > cy + vh + 20) continue;
-            ctx.fillStyle = `rgba(255,246,190,${night.toFixed(3)})`;
-            ctx.fillRect(l.x - 4, l.y + 1, 8, 3);
-          }
-        }
-        // đom đóm bên bờ nam
-        if (night > 0.4 && rain < 0.4) {
-          while (S.flies.length < 26) S.flies.push({ x: cx + Math.random() * vw, y: 420 + Math.random() * 56, ph: Math.random() * 6, sp: 0.6 + Math.random() });
-          for (const f of S.flies) {
-            if (f.x < cx - 30 || f.x > cx + vw + 30) { f.x = cx + Math.random() * vw; f.y = 420 + Math.random() * 56; }
-            const fx = f.x + Math.sin(t * 0.9 * f.sp + f.ph) * 9;
-            const fy = f.y + Math.cos(t * 0.7 * f.sp + f.ph * 1.3) * 6;
-            const blinkA = Math.max(0, Math.sin(t * 2.2 * f.sp + f.ph)) * night;
-            if (blinkA < 0.05) continue;
-            ctx.fillStyle = `rgba(220,255,120,${(0.28 * blinkA).toFixed(3)})`;
-            ctx.fillRect(Math.round(fx) - 2, Math.round(fy) - 2, 5, 5);
-            ctx.fillStyle = `rgba(240,255,170,${(0.95 * blinkA).toFixed(3)})`;
-            ctx.fillRect(Math.round(fx), Math.round(fy), 1, 1);
-          }
-        }
       }
 
       // ----- mưa -----
