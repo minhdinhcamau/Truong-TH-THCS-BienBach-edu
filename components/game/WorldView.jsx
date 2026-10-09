@@ -1,14 +1,16 @@
 'use client';
-// GAME (tách riêng): map NÔNG THÔN dùng chung. Nhiều người chơi cùng thấy nhau (Supabase Realtime),
-// có ngày đêm (12 phút sáng, 12 phút tối), mưa ngẫu nhiên, nhà lá sáng đèn dầu ban đêm, chỗ nâng cấp nhà.
+// GAME (tách riêng): làng quê MIỀN TÂY dùng chung (map dựng bằng code, pixel nét). Mỗi khu 10 nhà, nhiều khu, có thể đi thăm bạn.
+// Có ngày đêm (12 phút sáng, 12 phút tối), mưa ngẫu nhiên, đèn dầu ban đêm, đom đóm, cột điện cũ, chỗ nâng cấp nhà.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { buildFrames } from '../../lib/game/sprites';
 import { clockLabel, dayTime, isNight, nightLevel, rainLevel } from '../../lib/game/clock';
 import {
-  CHAR_H, LEVELS, MAX_LEVEL, SCHOOL_SIGN, SPEED, VIEW_W, WORLD_BG, WH, WW,
-  houseGeom, nearestFree, signPos, worldBlocked,
-} from '../../lib/game/world';
+  CHAR_H, LEVELS, MAX_LEVEL, PLOTS_PER_SHARD, SCHOOL_SIGN, SCHOOL_SPAWN, SCHOOL_ZONE, SPEED, T, VIEW_W, VISITOR_SPAWN, WH, WW,
+  getWorld, houseGeom, nearestFree, plotInfo, worldBlocked,
+} from '../../lib/game/mekong';
+import { makeArt } from '../../lib/game/mekongArt';
+import { drawGround, drawStatic, drawWires, visibleObjects } from '../../lib/game/mekongRender';
 
 const STRIDE = 12;
 const BOB = [-1, 0, -1, 0];
@@ -16,41 +18,37 @@ const STICK_DEAD = 0.16;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 
-function useImage(src) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const img = new Image();
-    img.onload = () => { ref.current = img; };
-    img.src = src;
-  }, [src]);
-  return ref;
-}
-
-export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEditCharacter, onGoSchool, onUpgrade }) {
+export default function WorldView({
+  cfg, land, viewShard, userId, from, onEnterHouse, onEditCharacter, onGoSchool, onUpgrade, onVisit, onMoveHome,
+}) {
   const canvasRef = useRef(null);
   const viewRef = useRef(null);
   const stickRef = useRef(null);
   const knobRef = useRef(null);
   const [near, setNear] = useState(null);
   const [toast, setToast] = useState(null);
-  const [panel, setPanel] = useState(null);
+  const [panel, setPanel] = useState(null);       // 'upgrade' | 'areas'
   const [busy, setBusy] = useState(false);
   const [hud, setHud] = useState({ time: '', night: false, rain: false, online: 1 });
-  const [houses, setHouses] = useState([{ plot: land.plot, level: land.level, nick: land.nick }]);
-  const bg = useImage(WORLD_BG);
-  const imgs = [useImage(LEVELS[0].img), useImage(LEVELS[1].img), useImage(LEVELS[2].img)];
+  const [houses, setHouses] = useState([]);
+  const [shards, setShards] = useState(null);
+  const [friendQ, setFriendQ] = useState('');
+  const [friends, setFriends] = useState(null);
+  const isHome = viewShard === land.shard;
 
   const S = useRef({
     pos: null, vel: { x: 0, y: 0 }, keys: new Set(), stick: { x: 0, y: 0 }, stickId: null,
     facing: 1, dir: 'front', phase: 0, frame: 0, clock: 0, nextBlink: 2, blinkUntil: 0,
-    cam: null, z: 1, dpr: 1, cw: 0, ch: 0, lc: null, drops: [], parts: [],
+    cam: null, dpr: 1, cw: 0, ch: 0, lc: null, drops: [], flies: [], art: null, houseCv: [], houseImg: [],
     remotes: new Map(), ch2: null, ready: false, sendT: 0, idleT: 0, lastSent: '', frames: null,
     nearId: null, houses: [], panel: null,
   }).current;
-  S.houses = houses.map((h) => (h.plot === land.plot ? { ...h, level: land.level, nick: land.nick } : h));
+  const own = isHome ? { plot: land.plot, level: land.level, nick: land.nick } : null;
+  S.houses = houses.map((h) => (isHome && h.plot === land.plot ? { ...h, level: land.level, nick: land.nick } : h));
+  if (isHome && !S.houses.some((h) => h.plot === land.plot)) S.houses.push(own);
   S.panel = panel;
   S.land = land;
-  S.cfgK = cfg;
+  S.isHome = isHome;
 
   const say = useCallback((text) => setToast({ text, id: Date.now() }), []);
   useEffect(() => {
@@ -59,26 +57,43 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
     return () => clearTimeout(t);
   }, [toast]);
 
-  // vị trí xuất hiện: về từ nhà thì đứng trước cửa, từ trường thì ở biển chỉ đường
+  // tranh pixel vẽ bằng code + ảnh nhà (thu nhỏ đúng cỡ để cùng độ mịn với map)
+  if (!S.art && typeof document !== 'undefined') S.art = makeArt((w, h) => document.createElement('canvas'));
+  useEffect(() => {
+    LEVELS.forEach((L, i) => {
+      const im = new Image();
+      im.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = Math.round(L.w); c.height = Math.round(L.w * L.ar);
+        const g = c.getContext('2d');
+        g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+        g.drawImage(im, 0, 0, c.width, c.height);
+        S.houseCv[i] = c;
+      };
+      im.src = L.img;
+      S.houseImg[i] = im;
+    });
+  }, [S]);
+
+  // vị trí xuất hiện
   if (!S.pos) {
-    const g = houseGeom(land.plot, land.level);
-    const base = from === 'school' ? { x: SCHOOL_SIGN.x - 18, y: SCHOOL_SIGN.y + 10 } : { x: g.door.x, y: g.door.y + 14 };
+    let base;
+    if (from === 'school') base = SCHOOL_SPAWN;
+    else if (isHome) { const g = houseGeom(land.plot, land.level); base = { x: g.door.x, y: g.door.y + 14 }; }
+    else base = VISITOR_SPAWN;
     S.pos = nearestFree(base.x, base.y, []);
     S.dir = from === 'school' ? 'side' : 'front';
+    S.facing = from === 'school' ? -1 : 1;
   }
-
   useEffect(() => { S.frames = buildFrames(cfg); }, [cfg, S]);
 
-  // ----- danh sách nhà của cả khu -----
+  // ----- nhà của cả khu -----
   const refreshHouses = useCallback(async () => {
-    const { data } = await supabase.rpc('game_world_state', { p_shard: land.shard });
+    const { data } = await supabase.rpc('game_world_state', { p_shard: viewShard });
     if (Array.isArray(data)) {
-      const list = data.filter((r) => r && Number.isInteger(r.plot)).map((r) => ({ plot: r.plot, level: r.level || 0, nick: r.nick || 'Bạn nhỏ' }));
-      if (!list.some((h) => h.plot === land.plot)) list.push({ plot: land.plot, level: land.level, nick: land.nick });
-      setHouses(list);
+      setHouses(data.filter((r) => r && Number.isInteger(r.plot) && r.plot < PLOTS_PER_SHARD).map((r) => ({ plot: r.plot, level: r.level || 0, nick: r.nick || 'Bạn nhỏ' })));
     }
-  }, [land.shard, land.plot, land.level, land.nick]);
-
+  }, [viewShard]);
   useEffect(() => {
     refreshHouses();
     const t = setInterval(refreshHouses, 25000);
@@ -87,7 +102,7 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
 
   // ----- trực tuyến: thấy nhau trong cùng khu -----
   useEffect(() => {
-    const ch = supabase.channel(`bb-nongthon-${land.shard}`, { config: { presence: { key: userId }, broadcast: { self: false } } });
+    const ch = supabase.channel(`bb-nongthon-${viewShard}`, { config: { presence: { key: userId }, broadcast: { self: false } } });
     S.ch2 = ch;
     let timer = null;
     const soon = () => { clearTimeout(timer); timer = setTimeout(refreshHouses, 1200); };
@@ -121,7 +136,7 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
     ch.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         S.ready = true;
-        try { await ch.track({ n: land.nick, c: cfg, p: land.plot, x: Math.round(S.pos.x), y: Math.round(S.pos.y) }); } catch (e) { /* bỏ qua */ }
+        try { await ch.track({ n: land.nick, c: cfg, x: Math.round(S.pos.x), y: Math.round(S.pos.y) }); } catch (e) { /* bỏ qua */ }
       }
     });
     return () => {
@@ -131,20 +146,24 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
       S.remotes.clear();
       supabase.removeChannel(ch);
     };
-  }, [land.shard, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewShard, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ----- tương tác -----
   const findNear = useCallback(() => {
     const p = S.pos;
-    const own = S.houses.find((h) => h.plot === S.land.plot);
-    if (own) {
-      const g = houseGeom(own.plot, own.level);
-      if (dist(p, g.door) < 30) return { id: 'cua', label: 'Vào nhà' };
-      if (dist(p, signPos(own.plot)) < 28) return { id: 'nang_cap', label: own.level < MAX_LEVEL ? 'Nâng cấp nhà' : 'Xem nhà của em' };
+    if (p.x > SCHOOL_ZONE.x0 && p.y > SCHOOL_ZONE.y0 && p.y < SCHOOL_ZONE.y1) return { id: 'truong', label: 'Đi tới trường' };
+    if (dist(p, SCHOOL_SIGN) < 36) return { id: 'truong', label: 'Đi tới trường' };
+    if (S.isHome) {
+      const mine = S.houses.find((h) => h.plot === S.land.plot);
+      if (mine) {
+        const g = houseGeom(mine.plot, mine.level);
+        if (dist(p, g.door) < 30) return { id: 'cua', label: 'Vào nhà' };
+        const pi = plotInfo(mine.plot);
+        if (dist(p, { x: (pi.x0 + 4) * T, y: (pi.y1 - 2) * T }) < 28) return { id: 'nang_cap', label: mine.level < MAX_LEVEL ? 'Nâng cấp nhà' : 'Xem nhà của em' };
+      }
     }
-    if (dist(p, SCHOOL_SIGN) < 40) return { id: 'truong', label: 'Đi tới trường' };
     for (const h of S.houses) {
-      if (h.plot === S.land.plot) continue;
+      if (S.isHome && h.plot === S.land.plot) continue;
       if (dist(p, houseGeom(h.plot, h.level).door) < 30) return { id: 'nha_khac', label: `Nhà của ${h.nick}`, nick: h.nick };
     }
     return null;
@@ -170,10 +189,31 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
     } else say('Nâng cấp chưa được, em thử lại nhé.');
   }
 
+  async function openAreas() {
+    S.keys.clear(); S.stick = { x: 0, y: 0 };
+    setPanel('areas');
+    setFriends(null);
+    const { data } = await supabase.rpc('game_list_shards');
+    setShards(Array.isArray(data) ? data : []);
+  }
+  async function findFriend() {
+    const q = friendQ.trim();
+    if (q.length < 2) { say('Gõ ít nhất 2 chữ của tên bạn nhé.'); return; }
+    const { data } = await supabase.rpc('game_find_friend', { p_name: q });
+    setFriends(Array.isArray(data) ? data : []);
+  }
+  async function moveHere(shard) {
+    setBusy(true);
+    const ok = await onMoveHome(shard);
+    setBusy(false);
+    if (!ok) say('Chuyển nhà chưa được, khu đó có thể vừa đầy.');
+  }
+
   // ----- bàn phím -----
   useEffect(() => {
     const map = { ArrowUp: 'u', w: 'u', W: 'u', ArrowDown: 'd', s: 'd', S: 'd', ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r' };
     const down = (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
       if (e.key === 'Escape') { setPanel(null); return; }
       if (S.panel) return;
       const k = map[e.key];
@@ -197,14 +237,13 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
     const view = viewRef.current;
     const canvas = canvasRef.current;
     const fit = () => {
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
       const cw = view.clientWidth;
       const ch = view.clientHeight;
       if (!cw || !ch) return;
       S.dpr = dpr; S.cw = cw; S.ch = ch;
       canvas.width = Math.round(cw * dpr);
       canvas.height = Math.round(ch * dpr);
-      S.z = Math.max(cw / VIEW_W, cw / WW, ch / WH);
     };
     fit();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
@@ -217,6 +256,7 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
+    const W = getWorld();
     let raf = 0;
     let last = performance.now();
     let hudT = 0;
@@ -242,9 +282,6 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
 
     function update(dt) {
       S.clock += dt;
-      for (const p of S.parts) { p.life += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 24 * dt; }
-      S.parts = S.parts.filter((p) => p.life < p.max);
-
       const locked = !!S.panel;
       let ix = locked ? 0 : (S.keys.has('r') ? 1 : 0) - (S.keys.has('l') ? 1 : 0) + S.stick.x;
       let iy = locked ? 0 : (S.keys.has('d') ? 1 : 0) - (S.keys.has('u') ? 1 : 0) + S.stick.y;
@@ -275,7 +312,6 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
       const id = it ? `${it.id}:${it.label}` : null;
       if (id !== S.nearId) { S.nearId = id; setNear(it); }
 
-      // gửi vị trí cho người khác
       S.sendT += dt;
       S.idleT += dt;
       const sig = `${Math.round(S.pos.x)},${Math.round(S.pos.y)},${S.dir},${S.facing},${moving ? 1 : 0}`;
@@ -284,7 +320,6 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
         try { S.ch2.send({ type: 'broadcast', event: 'pos', payload: { u: userId, x: Math.round(S.pos.x * 10) / 10, y: Math.round(S.pos.y * 10) / 10, d: S.dir, f: S.facing, m: moving ? 1 : 0 } }); } catch (e) { /* bỏ qua */ }
       }
 
-      // người khác: trượt mượt về vị trí mới
       for (const r of S.remotes.values()) {
         const k2 = 1 - Math.exp(-dt * 9);
         const ox = r.x; const oy = r.y;
@@ -321,122 +356,111 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
       ctx.ellipse(x, y - 0.5, 7, 2.6, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.save();
-      ctx.translate(x, y + bob);
+      ctx.translate(Math.round(x), Math.round(y + bob));
       if (facing < 0 && dir === 'side') ctx.scale(-1, 1);
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, -frames.ax * K, -frames.h * K, frames.w * K, frames.h * K);
       ctx.restore();
     }
 
-    function drawSign(x, y, label, color) {
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.fillRect(x - 5, y - 1, 12, 2);
-      ctx.fillStyle = '#6b4a2a';
-      ctx.fillRect(x - 1, y - 15, 2.4, 15);
-      ctx.fillStyle = '#2b1a0c';
-      ctx.fillRect(x - 13, y - 25, 26, 11);
-      ctx.fillStyle = color;
-      ctx.fillRect(x - 12, y - 24, 24, 9);
-      ctx.fillStyle = '#1c1a26';
-      ctx.font = 'bold 5px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(label, x, y - 19.5);
-      ctx.textAlign = 'start';
-      ctx.textBaseline = 'alphabetic';
-    }
-
     function draw() {
-      const W = canvas.width;
-      const Hh = canvas.height;
-      const dpr = S.dpr;
-      const z = S.z;
-      const vw = S.cw / z;
-      const vh = S.ch / z;
-      // camera
+      const cwp = canvas.width;
+      const chp = canvas.height;
+      const sc = Math.max(1, Math.round(cwp / VIEW_W));       // phóng nguyên số lần để pixel luôn nét
+      const vw = cwp / sc;
+      const vh = chp / sc;
       const tx = clampN(S.pos.x - vw / 2, 0, Math.max(0, WW - vw));
-      const ty = clampN(S.pos.y - 16 - vh / 2, 0, Math.max(0, WH - vh));
+      const ty = clampN(S.pos.y - 14 - vh / 2, 0, Math.max(0, WH - vh));
       if (!S.cam) S.cam = { x: tx, y: ty };
-      S.cam.x += (tx - S.cam.x) * 0.16;
-      S.cam.y += (ty - S.cam.y) * 0.16;
-      const cx = S.cam.x;
-      const cy = S.cam.y;
-      const sc = z * dpr;
+      S.cam.x += (tx - S.cam.x) * 0.18;
+      S.cam.y += (ty - S.cam.y) * 0.18;
+      const cx = Math.round(S.cam.x * sc) / sc;
+      const cy = Math.round(S.cam.y * sc) / sc;
       const t = dayTime();
       const night = nightLevel(t);
       const rain = rainLevel();
+      const wt = S.clock;
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = '#10200f';
-      ctx.fillRect(0, 0, W, Hh);
+      ctx.fillRect(0, 0, cwp, chp);
       ctx.setTransform(sc, 0, 0, sc, -cx * sc, -cy * sc);
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      if (bg.current) ctx.drawImage(bg.current, 0, 0, WW, WH);
+      ctx.imageSmoothingEnabled = false;
+      drawGround(ctx, S.art, W, cx, cy, cx + vw, cy + vh, wt);
 
-      // các vật thể sắp theo độ sâu (y)
+      // vật thể sắp theo độ sâu (y)
       const list = [];
+      for (const o of visibleObjects(W, cx, cy, cx + vw, cy + vh)) list.push({ key: o.y, o });
       for (const h of S.houses) {
         const g = houseGeom(h.plot, h.level);
-        list.push({ key: g.base, kind: 'house', h, g });
-        if (h.plot === S.land.plot) {
-          const sp = signPos(h.plot);
-          list.push({ key: sp.y, kind: 'sign', sp, lvl: h.level });
-        }
+        if (g.x > cx + vw + 20 || g.x + g.w < cx - 20 || g.y > cy + vh + 20 || g.y + g.h < cy - 20) continue;
+        list.push({ key: g.base, house: h, g });
       }
-      list.push({ key: SCHOOL_SIGN.y, kind: 'school' });
-      list.push({ key: S.pos.y, kind: 'me' });
-      for (const [id, r] of S.remotes) list.push({ key: r.y, kind: 'other', r, id });
+      if (S.isHome) {
+        const pi = plotInfo(S.land.plot);
+        list.push({ key: (pi.y1 - 2) * T, upgrade: { x: (pi.x0 + 4) * T, y: (pi.y1 - 2) * T }, lvl: S.land.level });
+      }
+      list.push({ key: S.pos.y, me: true });
+      for (const [, r] of S.remotes) list.push({ key: r.y, r });
       list.sort((a, b) => a.key - b.key);
       const blink = S.clock < S.blinkUntil;
       const moving = Math.hypot(S.vel.x, S.vel.y) > 8;
       for (const e of list) {
-        if (e.kind === 'house') {
-          const { g, h } = e;
-          if (g.x > cx + vw + 20 || g.x + g.w < cx - 20 || g.y > cy + vh + 20 || g.y + g.h < cy - 20) continue;
+        if (e.o) drawStatic(ctx, S.art, e.o, wt, null);
+        else if (e.house) {
+          const g = e.g;
           ctx.fillStyle = 'rgba(0,0,0,0.22)';
-          ctx.beginPath();
-          ctx.ellipse(g.cx, g.base - 1, g.w * 0.46, 5, 0, 0, Math.PI * 2);
-          ctx.fill();
-          const im = imgs[h.level] && imgs[h.level].current;
-          ctx.imageSmoothingEnabled = true;
-          if (im) ctx.drawImage(im, g.x, g.y, g.w, g.h);
-        } else if (e.kind === 'sign') {
-          drawSign(e.sp.x, e.sp.y, e.lvl < MAX_LEVEL ? 'NÂNG CẤP' : 'NHÀ EM', '#ffd45c');
-        } else if (e.kind === 'school') {
-          drawSign(SCHOOL_SIGN.x, SCHOOL_SIGN.y, 'ĐẾN TRƯỜNG', '#5aa0ff');
-        } else if (e.kind === 'me') {
-          drawPerson(S.frames, S.pos.x, S.pos.y, S.dir, S.facing, S.frame, moving, blink);
-        } else {
-          const r = e.r;
-          drawPerson(r.frames, r.x, r.y, r.dir, r.facing, r.frame || 0, r.walk, false);
-        }
+          ctx.beginPath(); ctx.ellipse(g.cx, g.base - 1, g.w * 0.46, 5, 0, 0, Math.PI * 2); ctx.fill();
+          const cv = S.houseCv[e.house.level];
+          if (cv) ctx.drawImage(cv, Math.round(g.x), Math.round(g.y));
+        } else if (e.upgrade) {
+          const u = e.upgrade;
+          ctx.drawImage(S.art.signBoard('NÂNG CẤP', '#ffd45c'), Math.round(u.x - 23), Math.round(u.y - 35));
+          ctx.fillStyle = '#1c1a26'; ctx.font = 'bold 6px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(e.lvl < MAX_LEVEL ? 'NÂNG CẤP' : 'NHÀ EM', u.x, u.y - 29);
+          ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+        } else if (e.me) drawPerson(S.frames, S.pos.x, S.pos.y, S.dir, S.facing, S.frame, moving, blink);
+        else drawPerson(e.r.frames, e.r.x, e.r.y, e.r.dir, e.r.facing, e.r.frame || 0, e.r.walk, false);
       }
-      ctx.imageSmoothingEnabled = true;
+      drawWires(ctx, W, cx, cy, cx + vw, cy + vh, wt);
 
-      // nhãn "Nhà của em" và mũi tên chỉ cửa
-      const own = S.houses.find((h) => h.plot === S.land.plot);
-      if (own) {
-        const g = houseGeom(own.plot, own.level);
+      // bảng tên nhà ở cổng, mũi tên chỉ nhà của mình
+      ctx.font = 'bold 7px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.lineJoin = 'round';
+      for (const h of S.houses) {
+        const pi = plotInfo(h.plot);
+        const lx = (pi.x0 + 12) * T;
+        const ly = (pi.y1 + 1) * T + 9;
+        if (lx < cx - 60 || lx > cx + vw + 60 || ly < cy - 20 || ly > cy + vh + 20) continue;
+        const mine = S.isHome && h.plot === S.land.plot;
+        ctx.lineWidth = 2.4; ctx.strokeStyle = 'rgba(30,18,6,0.85)';
+        ctx.strokeText(`Nhà ${h.nick}`, lx, ly);
+        ctx.fillStyle = mine ? '#ffe08a' : '#ffffff';
+        ctx.fillText(`Nhà ${h.nick}`, lx, ly);
+      }
+      ctx.textAlign = 'start';
+      const mineH = S.isHome && S.houses.find((h) => h.plot === S.land.plot);
+      if (mineH) {
+        const g = houseGeom(mineH.plot, mineH.level);
         const by = g.y - 6 + Math.sin(S.clock * 4) * 1.5;
         ctx.fillStyle = '#ffd45c';
-        ctx.beginPath();
-        ctx.moveTo(g.cx - 4, by - 8); ctx.lineTo(g.cx + 4, by - 8); ctx.lineTo(g.cx, by);
-        ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(g.cx - 4, by - 8); ctx.lineTo(g.cx + 4, by - 8); ctx.lineTo(g.cx, by); ctx.closePath(); ctx.fill();
       }
 
-      // ----- ban đêm: tối, đèn dầu leo lét, cửa sổ sáng -----
+      // ----- ban đêm: tối, đèn dầu leo lét, đèn cột điện, đom đóm -----
       const dark = Math.max(night, rain * 0.3);
+      const psc = sc; // 1 đơn vị = sc điểm ảnh thiết bị
       if (dark > 0.02) {
         if (!S.lc) S.lc = document.createElement('canvas');
         const lc = S.lc;
-        if (lc.width !== W || lc.height !== Hh) { lc.width = W; lc.height = Hh; }
+        if (lc.width !== cwp || lc.height !== chp) { lc.width = cwp; lc.height = chp; }
         const lx = lc.getContext('2d');
         lx.setTransform(1, 0, 0, 1, 0, 0);
         lx.globalCompositeOperation = 'source-over';
-        lx.clearRect(0, 0, W, Hh);
-        lx.fillStyle = `rgba(7,12,40,${(0.8 * dark).toFixed(3)})`;
-        lx.fillRect(0, 0, W, Hh);
+        lx.clearRect(0, 0, cwp, chp);
+        lx.fillStyle = `rgba(6,11,38,${(0.82 * dark).toFixed(3)})`;
+        lx.fillRect(0, 0, cwp, chp);
         lx.globalCompositeOperation = 'destination-out';
         const lights = [];
         for (const h of S.houses) {
@@ -447,19 +471,25 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
             let a;
             if (l.kind === 'oil') {
               a = 0.66 + 0.17 * Math.sin(t * 6.1 + seed) + 0.11 * Math.sin(t * 14.3 + seed * 1.7);
-              if (Math.sin(t * 1.9 + seed * 3) > 0.92) a *= 0.55;   // thoi thóp như sắp tắt
+              if (Math.sin(t * 1.9 + seed * 3) > 0.92) a *= 0.55;
             } else if (l.kind === 'oildim') {
               a = 0.36 + 0.12 * Math.sin(t * 5.2 + seed) + 0.08 * Math.sin(t * 12 + seed);
             } else a = 0.92 + 0.05 * Math.sin(t * 2 + seed);
             lights.push({ x: l.x, y: l.y, r: l.r, a: clampN(a, 0.2, 1), kind: l.kind });
           });
         }
+        for (const l of W.lamps) {
+          if (l.x < cx - 80 || l.x > cx + vw + 80 || l.y < cy - 80 || l.y > cy + vh + 80) continue;
+          let a = l.a + 0.08 * Math.sin(t * 3 + l.seed);
+          if (Math.sin(t * 0.7 + l.seed * 5) > 0.97) a *= 0.3;        // bóng đèn cũ chập chờn
+          lights.push({ x: l.x, y: l.y, r: l.r, a: clampN(a, 0.15, 0.95), kind: 'pole' });
+        }
         lights.push({ x: S.pos.x, y: S.pos.y - 14, r: 40, a: 0.38, kind: 'me' });
         for (const r of S.remotes.values()) lights.push({ x: r.x, y: r.y - 14, r: 30, a: 0.3, kind: 'me' });
-        const cut = (l, k) => {
-          const sx = (l.x - cx) * sc;
-          const sy = (l.y - cy) * sc;
-          const sr = l.r * sc * (0.9 + 0.1 * l.a) * k;
+        const cut = (l) => {
+          const sx = (l.x - cx) * psc;
+          const sy = (l.y - cy) * psc;
+          const sr = l.r * psc * (0.9 + 0.1 * l.a);
           const g = lx.createRadialGradient(sx, sy, 0, sx, sy, sr);
           g.addColorStop(0, `rgba(0,0,0,${l.a.toFixed(3)})`);
           g.addColorStop(0.5, `rgba(0,0,0,${(l.a * 0.55).toFixed(3)})`);
@@ -467,33 +497,48 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
           lx.fillStyle = g;
           lx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
         };
-        for (const l of lights) cut(l, 1);
+        for (const l of lights) cut(l);
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalCompositeOperation = 'source-over';
         ctx.drawImage(lc, 0, 0);
-        // ánh vàng ấm quanh đèn
         ctx.globalCompositeOperation = 'lighter';
         for (const l of lights) {
           if (l.kind === 'me') continue;
-          const sx = (l.x - cx) * sc;
-          const sy = (l.y - cy) * sc;
-          const sr = l.r * 0.85 * sc;
+          const sx = (l.x - cx) * psc;
+          const sy = (l.y - cy) * psc;
+          const sr = l.r * 0.85 * psc;
           const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
           g.addColorStop(0, `rgba(255,150,50,${(0.26 * l.a * night).toFixed(3)})`);
           g.addColorStop(1, 'rgba(255,110,20,0)');
           ctx.fillStyle = g;
           ctx.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
         }
-        // ngọn lửa đèn dầu
         for (const l of lights) {
           if (l.kind !== 'oil') continue;
-          const sx = (l.x - cx) * sc;
-          const sy = (l.y - cy) * sc;
+          const sx = Math.round((l.x - cx) * psc);
+          const sy = Math.round((l.y - cy) * psc);
           const fl = 0.8 + 0.5 * Math.abs(Math.sin(t * 17 + l.x));
           ctx.fillStyle = `rgba(255,150,40,${(0.9 * night).toFixed(3)})`;
-          ctx.beginPath(); ctx.ellipse(sx, sy, 1.9 * sc, 3.2 * sc * fl, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillRect(sx - psc, sy - Math.round(2 * psc * fl), 2 * psc, Math.round(4 * psc * fl));
           ctx.fillStyle = `rgba(255,240,170,${(0.95 * night).toFixed(3)})`;
-          ctx.beginPath(); ctx.ellipse(sx, sy + 0.6 * sc, 0.9 * sc, 1.7 * sc * fl, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillRect(sx - psc * 0.5, sy - Math.round(psc * fl), psc, Math.round(2 * psc * fl));
+        }
+        // đom đóm
+        if (night > 0.4 && rain < 0.4) {
+          while (S.flies.length < 34) S.flies.push({ x: cx + Math.random() * vw, y: cy + Math.random() * vh, ph: Math.random() * 6, sp: 0.6 + Math.random() });
+          for (const f of S.flies) {
+            if (f.x < cx - 30 || f.x > cx + vw + 30 || f.y < cy - 30 || f.y > cy + vh + 30) { f.x = cx + Math.random() * vw; f.y = cy + Math.random() * vh; }
+            const fx = f.x + Math.sin(t * 0.9 * f.sp + f.ph) * 9;
+            const fy = f.y + Math.cos(t * 0.7 * f.sp + f.ph * 1.3) * 6;
+            const blinkA = Math.max(0, Math.sin(t * 2.2 * f.sp + f.ph)) * night;
+            const sx = (fx - cx) * psc;
+            const sy = (fy - cy) * psc;
+            const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, 6 * psc);
+            g.addColorStop(0, `rgba(220,255,120,${(0.85 * blinkA).toFixed(3)})`);
+            g.addColorStop(1, 'rgba(180,255,80,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(sx - 6 * psc, sy - 6 * psc, 12 * psc, 12 * psc);
+          }
         }
         ctx.globalCompositeOperation = 'source-over';
       }
@@ -502,10 +547,11 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
       if (rain > 0.02) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.fillStyle = `rgba(52,70,96,${(0.22 * rain).toFixed(3)})`;
-        ctx.fillRect(0, 0, W, Hh);
+        ctx.fillRect(0, 0, cwp, chp);
         const want = Math.round(60 + 190 * rain);
-        while (S.drops.length < want) S.drops.push({ x: Math.random() * W, y: Math.random() * Hh, l: 10 + Math.random() * 14, v: 700 + Math.random() * 500 });
+        while (S.drops.length < want) S.drops.push({ x: Math.random() * cwp, y: Math.random() * chp, l: 10 + Math.random() * 14, v: 700 + Math.random() * 500 });
         if (S.drops.length > want) S.drops.length = want;
+        const dpr = S.dpr;
         ctx.strokeStyle = `rgba(205,225,255,${(0.42 * rain + 0.1).toFixed(3)})`;
         ctx.lineWidth = Math.max(1, dpr);
         ctx.beginPath();
@@ -513,8 +559,8 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
         for (const d of S.drops) {
           d.y += d.v * dtD * dpr;
           d.x -= 150 * dtD * dpr;
-          if (d.y > Hh) { d.y = -20; d.x = Math.random() * (W + 200); }
-          if (d.x < -20) d.x = W;
+          if (d.y > chp) { d.y = -20; d.x = Math.random() * (cwp + 200); }
+          if (d.x < -20) d.x = cwp;
           ctx.moveTo(d.x, d.y);
           ctx.lineTo(d.x + 3.2 * dpr, d.y - d.l * dpr);
         }
@@ -525,12 +571,12 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
-      ctx.font = `700 ${Math.round(11 * dpr)}px sans-serif`;
+      ctx.font = `700 ${Math.round(11 * S.dpr)}px sans-serif`;
       ctx.lineJoin = 'round';
       const tag = (name, wx, wy, color) => {
-        const sx = (wx - cx) * sc;
-        const sy = (wy - CHAR_H - 3 - cy) * sc;
-        ctx.lineWidth = 3 * dpr;
+        const sx = (wx - cx) * psc;
+        const sy = (wy - CHAR_H - 3 - cy) * psc;
+        ctx.lineWidth = 3 * S.dpr;
         ctx.strokeStyle = 'rgba(10,12,30,0.85)';
         ctx.strokeText(name, sx, sy);
         ctx.fillStyle = color;
@@ -596,12 +642,13 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
   return (
     <div className="gm-house gw-world" data-night={hud.night ? '1' : undefined}>
       <div className="gm-view gw-full" ref={viewRef}>
-        <canvas ref={canvasRef} className="gm-room gw-canvas" style={{ touchAction: 'none' }} aria-label="Làng quê" />
+        <canvas ref={canvasRef} className="gm-room gw-canvas" style={{ touchAction: 'none' }} aria-label="Làng quê Miền Tây" />
         {toast && <div className="gm-toast" key={toast.id}>{toast.text}</div>}
       </div>
 
       <div className="gm-hud">
-        {onGoSchool && <button type="button" className="gm-btn" onClick={onGoSchool}>Đi tới trường</button>}
+        <button type="button" className="gm-btn" onClick={openAreas}>Khu vực {viewShard}</button>
+        {!isHome && <button type="button" className="gm-btn main" onClick={() => onVisit(land.shard)}>Về nhà mình</button>}
         <button type="button" className="gm-btn" onClick={onEditCharacter}>Sửa nhân vật</button>
       </div>
       <div className="gw-clock" data-night={hud.night ? '1' : undefined}>
@@ -610,6 +657,7 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
         <span>{hud.night ? 'Ban đêm' : 'Ban ngày'}{hud.rain ? ' · Trời mưa' : ''}</span>
         <span className="gw-online">{hud.online} người</span>
       </div>
+      {!isHome && <div className="gw-visit">Đang đi thăm khu {viewShard}</div>}
 
       <div className="gm-ctrl">
         <div className="gm-stick" ref={stickRef} aria-label="Cần điều khiển" {...stickProps}>
@@ -628,19 +676,9 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
           <div className="gw-card" onClick={(e) => e.stopPropagation()}>
             <div className="gw-card-t">Chỗ nâng cấp nhà</div>
             <div className="gw-up">
-              <div className="gw-up-i">
-                <img src={cur.img} alt={cur.name} />
-                <b>{cur.name}</b>
-                <span>Nhà hiện tại</span>
-              </div>
+              <div className="gw-up-i"><img src={cur.img} alt={cur.name} /><b>{cur.name}</b><span>Nhà hiện tại</span></div>
               {nxt && <div className="gw-arrow" aria-hidden="true">➜</div>}
-              {nxt && (
-                <div className="gw-up-i next">
-                  <img src={nxt.img} alt={nxt.name} />
-                  <b>{nxt.name}</b>
-                  <span>{nxt.desc}</span>
-                </div>
-              )}
+              {nxt && <div className="gw-up-i next"><img src={nxt.img} alt={nxt.name} /><b>{nxt.name}</b><span>{nxt.desc}</span></div>}
             </div>
             {nxt ? (
               <>
@@ -656,6 +694,45 @@ export default function WorldView({ cfg, land, userId, from, onEnterHouse, onEdi
                 <div className="gm-actions"><button type="button" className="gm-btn main" onClick={() => setPanel(null)}>Đóng</button></div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {panel === 'areas' && (
+        <div className="gw-modal" onClick={() => !busy && setPanel(null)}>
+          <div className="gw-card" onClick={(e) => e.stopPropagation()}>
+            <div className="gw-card-t">Chọn khu vực</div>
+            <div className="gm-hint">Mỗi khu có tối đa {PLOTS_PER_SHARD} nhà. Càng nhiều bạn vào game, làng càng mở thêm khu mới. Em có thể đi thăm bạn ở khu khác, hoặc chuyển nhà đến ở chung với bạn.</div>
+            <div className="gw-find">
+              <input className="gw-input" value={friendQ} onChange={(e) => setFriendQ(e.target.value)} placeholder="Tìm bạn theo tên" maxLength={18} aria-label="Tìm bạn" />
+              <button type="button" className="gm-btn" onClick={findFriend}>Tìm</button>
+            </div>
+            {friends && (
+              <div className="gw-list">
+                {friends.length === 0 && <div className="gm-hint">Chưa thấy bạn nào có tên này.</div>}
+                {friends.map((f, i) => (
+                  <div className="gw-row" key={`${f.nick}-${i}`}>
+                    <span><b>{f.nick}</b> · khu {f.shard}</span>
+                    <button type="button" className="gm-btn" disabled={busy || f.shard === viewShard} onClick={() => { setPanel(null); onVisit(f.shard); }}>{f.shard === viewShard ? 'Đang ở đây' : 'Đến thăm'}</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="gw-list">
+              {!shards && <div className="gm-hint">Đang tải…</div>}
+              {shards && shards.map((s) => (
+                <div className="gw-row" key={s.shard}>
+                  <span><b>Khu {s.shard}</b> · {s.count}/{PLOTS_PER_SHARD} nhà{s.shard === land.shard ? ' · nhà em ở đây' : ''}</span>
+                  <span className="gw-row-b">
+                    <button type="button" className="gm-btn" disabled={busy || s.shard === viewShard} onClick={() => { setPanel(null); onVisit(s.shard); }}>{s.shard === viewShard ? 'Đang ở đây' : 'Đến thăm'}</button>
+                    {s.shard !== land.shard && s.count < PLOTS_PER_SHARD && (
+                      <button type="button" className="gm-btn main" disabled={busy} onClick={() => moveHere(s.shard)}>Chuyển nhà đến đây</button>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="gm-actions"><button type="button" className="gm-btn" onClick={() => setPanel(null)}>Đóng</button></div>
           </div>
         </div>
       )}

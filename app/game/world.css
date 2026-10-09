@@ -43,3 +43,12 @@
 .gw-arrow { font-size: 24px; color: #ffd45c; flex: none; }
 .gw-input { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; font-weight: 700; color: #eef1ff; background: #0d1030; border: 2px solid #3c4690; border-radius: 10px; padding: 12px; }
 .gw-input:focus { outline: none; border-color: #ffd45c; }
+
+/* chọn khu vực, đi thăm bạn */
+.gw-find { display: flex; gap: 8px; margin: 10px 0; }
+.gw-find .gw-input { flex: 1; min-width: 0; }
+.gw-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; max-height: 34vh; overflow: auto; }
+.gw-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #0d1030; border: 2px solid #2c3470; color: #eef1ff; font-size: 13px; }
+.gw-row-b { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.gw-visit { position: fixed; top: 44px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 4px 12px; border-radius: 999px; background: rgba(90, 160, 255, 0.85); color: #fff; font-size: 12px; font-weight: 700; pointer-events: none; }
+.gw-canvas { image-rendering: pixelated; }

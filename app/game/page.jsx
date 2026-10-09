@@ -27,6 +27,7 @@ function readLand(data) {
   if (row && row.game_join_world) row = row.game_join_world;
   if (row && row.game_upgrade_house) row = row.game_upgrade_house;
   if (row && row.game_set_nick) row = row.game_set_nick;
+  if (row && row.game_move_home) row = row.game_move_home;
   if (!row || !Number.isInteger(row.plot)) return null;
   return { shard: row.shard, plot: row.plot, level: row.level || 0, nick: row.nick || '' };
 }
@@ -44,6 +45,7 @@ export default function GamePage() {
   const [cfg, setCfg] = useState(null);
   const [house, setHouse] = useState(null);
   const [land, setLand] = useState(null);
+  const [viewShard, setViewShard] = useState(null);
   const [from, setFrom] = useState('house');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -134,6 +136,7 @@ export default function GamePage() {
       const ld = le ? null : readLand(l);
       if (!ld) { setErrText('Chưa có khu đất để chia. Nhờ thầy cô chạy file game_nong_thon.sql trong Supabase.'); setPhase('error'); setReady(true); return; }
       setLand(ld);
+      setViewShard(ld.shard);
       setPhase(!saved ? 'create' : !ld.nick ? 'nick' : 'world');
       setReady(true);
     })();
@@ -173,6 +176,16 @@ export default function GamePage() {
     const ld = error ? null : readLand(data);
     if (!ld) return false;
     setLand(ld);
+    return true;
+  }
+
+  async function moveHome(shard) {
+    const { data, error } = await supabase.rpc('game_move_home', { p_shard: shard });
+    const ld = error ? null : readLand(data);
+    if (!ld) return false;
+    setLand(ld);
+    setFrom('house');
+    setViewShard(ld.shard);
     return true;
   }
 
@@ -247,10 +260,14 @@ export default function GamePage() {
           )}
           {ready && phase === 'world' && land && cfg && (
             <WorldView
+              key={`w-${viewShard || land.shard}`}
               cfg={cfg}
               land={land}
+              viewShard={viewShard || land.shard}
               userId={userId}
               from={from}
+              onVisit={(sh) => { setFrom('visit'); setViewShard(sh); }}
+              onMoveHome={moveHome}
               onEnterHouse={() => setPhase('house')}
               onEditCharacter={goCreate}
               onGoSchool={() => setPhase('gate')}
@@ -263,7 +280,7 @@ export default function GamePage() {
               initialHouse={house}
               onSaveHouse={saveHouse}
               onEditCharacter={goCreate}
-              onExit={() => { setFrom('house'); setPhase('world'); }}
+              onExit={() => { setFrom('house'); setViewShard(land.shard); setPhase('world'); }}
             />
           )}
           {ready && phase === 'gate' && cfg && (
