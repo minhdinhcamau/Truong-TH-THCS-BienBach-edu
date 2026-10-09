@@ -376,13 +376,20 @@ export default function CourtyardView({
       if (facing < 0 && dir === 'side') ctx.scale(-1, 1);
       ctx.imageSmoothingEnabled = false;
       if (sit) {
-        // ngồi: thân hạ thấp xuống mặt ghế, phần chân (từ hông xuống) ép ngắn lại và đưa ra phía trước
+        // ngồi: thân hạ thấp xuống mặt ghế; đùi (đoạn chân phía trên) xoay ngang đưa ra trước, cẳng chân thẳng xuống đất
         const drop = Math.round(SIT_DROP * ds);
         const cut = Math.round(th * 0.58);
-        const legH = Math.max(2, (th - cut) - drop);
-        const ax0 = -Math.round(frames.ax * K);
-        ctx.drawImage(t, 0, 0, tw, cut, ax0, -th + drop, tw, cut);
-        ctx.drawImage(t, 0, cut, tw, th - cut, ax0 + Math.round(4 * ds), -legH, tw, legH);
+        const axp = Math.round(frames.ax * K);
+        const hipY = -(th - cut) + drop;                 // độ cao hông so với mặt đất (số âm)
+        const thigh = Math.max(3, Math.round(th * 0.22));
+        const shinSrc = Math.max(1, th - cut - thigh);
+        ctx.drawImage(t, 0, 0, tw, cut, -axp, -th + drop, tw, cut);
+        ctx.save();
+        ctx.translate(0, hipY);
+        ctx.rotate(-Math.PI / 2);
+        ctx.drawImage(t, 0, cut, tw, thigh, -axp, 0, tw, thigh);
+        ctx.restore();
+        ctx.drawImage(t, 0, cut + thigh, tw, shinSrc, thigh - axp, hipY, tw, -hipY);
       } else {
         ctx.drawImage(t, 0, 0, tw, th, -Math.round(frames.ax * K), -th, tw, th);
       }
