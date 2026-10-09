@@ -21,8 +21,10 @@ const Y_SQUASH = 0.72;      // đi dọc (xa gần) chậm hơn đi ngang vì m�
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 const ramp01 = (v, a, b) => clampN((v - a) / (b - a), 0, 1);
 
+let carry = null;   // giữ vị trí khi đổi khu vực (màn hình được dựng lại)
+
 export default function CourtyardView({
-  cfg, nick, userId, zone, homeZone, onBack, onEditCharacter,
+  cfg, nick, userId, zone, homeZone, onBack, onEditCharacter, onChangeZone,
 }) {
   const canvasRef = useRef(null);
   const viewRef = useRef(null);
@@ -31,6 +33,11 @@ export default function CourtyardView({
   const [near, setNear] = useState(null);
   const [toast, setToast] = useState(null);
   const [hud, setHud] = useState({ time: '', night: false, rain: false, online: 1 });
+  const [panel, setPanel] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [shards, setShards] = useState(null);
+  const [friendQ, setFriendQ] = useState('');
+  const [friends, setFriends] = useState(null);
 
   const S = useRef({
     pos: null, vel: { x: 0, y: 0 }, keys: new Set(), stick: { x: 0, y: 0 }, stickId: null,
@@ -40,6 +47,7 @@ export default function CourtyardView({
     nearId: null, paused: false, fade: 1, leaving: false, left: false,
   }).current;
   S.nick = nick;
+  S.paused = panel;
 
   const say = useCallback((text) => setToast({ text, id: Date.now() }), []);
   useEffect(() => {
@@ -50,7 +58,14 @@ export default function CourtyardView({
 
   if (!S.art && typeof document !== 'undefined') S.art = makeYardArt();
   if (!S.tmp && typeof document !== 'undefined') { S.tmp = document.createElement('canvas'); S.tmp.width = 160; S.tmp.height = 160; }
-  if (!S.pos) { S.pos = yardSpawn(); S.dir = 'back'; S.facing = 1; }
+  if (!S.pos) {
+    if (carry) {
+      S.pos = { x: carry.x, y: carry.y };
+      S.dir = carry.dir; S.facing = carry.facing;
+      S.fade = 0.4;
+      carry = null;
+    } else { S.pos = yardSpawn(); S.dir = 'back'; S.facing = 1; }
+  }
   useEffect(() => { S.frames = buildFrames(cfg); }, [cfg, S]);
 
   // ----- trực tuyến: thấy nhau trong cùng khu (kênh riêng của sân trường) -----
@@ -110,11 +125,37 @@ export default function CourtyardView({
     else say(YARD_TEXT[it.id]);
   }, [S, say, leave]);
 
+  // ----- đổi khu vực -----
+  const changeZone = useCallback((z) => {
+    carry = { x: S.pos.x, y: S.pos.y, dir: S.dir, facing: S.facing };
+    onChangeZone(z);
+  }, [S, onChangeZone]);
+  async function openAreas() {
+    S.keys.clear(); S.stick = { x: 0, y: 0 };
+    setPanel(true);
+    setFriends(null);
+    const { data } = await supabase.rpc('game_list_shards');
+    setShards(Array.isArray(data) ? data : []);
+  }
+  async function findFriend() {
+    const q = friendQ.trim();
+    if (q.length < 2) { say('Gõ ít nhất 2 chữ của tên bạn nhé.'); return; }
+    const { data } = await supabase.rpc('game_find_friend', { p_name: q });
+    setFriends(Array.isArray(data) ? data : []);
+  }
+  function goZone(z) {
+    setBusy(true);
+    setPanel(false);
+    changeZone(z);
+  }
+
   // ----- bàn phím -----
   useEffect(() => {
     const map = { ArrowUp: 'u', w: 'u', W: 'u', ArrowDown: 'd', s: 'd', S: 'd', ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r' };
     const down = (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.key === 'Escape') { setPanel(false); return; }
+      if (S.paused) return;
       const k = map[e.key];
       if (k) { S.keys.add(k); e.preventDefault(); }
       else if ((e.key === 'e' || e.key === 'E' || e.key === 'Enter') && !e.repeat) interact();
@@ -444,6 +485,7 @@ export default function CourtyardView({
       </div>
 
       <div className="gm-hud">
+        <button type="button" className="gm-btn" onClick={openAreas} disabled={busy}>Khu vực {zone}</button>
         <button type="button" className="gm-btn main" onClick={leave}>Ra cổng trường</button>
         <button type="button" className="gm-btn" onClick={onEditCharacter}>Sửa nhân vật</button>
       </div>
@@ -466,6 +508,40 @@ export default function CourtyardView({
           <div className="gm-hint">Đi xuống mép dưới để ra cổng trường. Máy tính: phím mũi tên hoặc W A S D, phím E để dùng.</div>
         </div>
       </div>
+
+      {panel && (
+        <div className="gw-modal" onClick={() => setPanel(false)}>
+          <div className="gw-card" onClick={(e) => e.stopPropagation()}>
+            <div className="gw-card-t">Chọn khu vực</div>
+            <div className="gm-hint">Mỗi khu có tối đa {ZONE_MAX} bạn cùng lúc. Em đang ở khu {zone}. Chọn khu khác để gặp các bạn ở đó.</div>
+            <div className="gw-find">
+              <input className="gw-input" value={friendQ} onChange={(e) => setFriendQ(e.target.value)} placeholder="Tìm bạn theo tên" maxLength={18} aria-label="Tìm bạn" />
+              <button type="button" className="gm-btn" onClick={findFriend}>Tìm</button>
+            </div>
+            {friends && (
+              <div className="gw-list">
+                {friends.length === 0 && <div className="gm-hint">Chưa thấy bạn nào có tên này.</div>}
+                {friends.map((f, i) => (
+                  <div className="gw-row" key={`${f.nick}-${i}`}>
+                    <span><b>{f.nick}</b> · khu {f.shard}</span>
+                    <button type="button" className="gm-btn" disabled={f.shard === zone} onClick={() => goZone(f.shard)}>{f.shard === zone ? 'Đang ở đây' : 'Đến khu này'}</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="gw-list">
+              {!shards && <div className="gm-hint">Đang tải…</div>}
+              {shards && (shards.length ? shards : [{ shard: homeZone }]).map((sh) => (
+                <div className="gw-row" key={sh.shard}>
+                  <span><b>Khu {sh.shard}</b>{sh.shard === homeZone ? ' · khu nhà em' : ''}</span>
+                  <button type="button" className="gm-btn" disabled={sh.shard === zone} onClick={() => goZone(sh.shard)}>{sh.shard === zone ? 'Đang ở đây' : 'Đến khu này'}</button>
+                </div>
+              ))}
+            </div>
+            <div className="gm-actions"><button type="button" className="gm-btn" onClick={() => setPanel(false)}>Đóng</button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

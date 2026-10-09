@@ -311,6 +311,7 @@ export default function GamePage() {
               homeZone={land.shard}
               onBack={() => { setSchoolFrom('yard'); setPhase('gate'); }}
               onEditCharacter={goCreate}
+              onChangeZone={(z) => setSchoolZone(z)}
             />
           )}
         </>
