@@ -22,6 +22,28 @@ const Y_SQUASH = 0.72;      // đi dọc (xa gần) chậm hơn đi ngang vì m�
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 const ramp01 = (v, a, b) => clampN((v - a) / (b - a), 0, 1);
 
+// Dáng ngồi dựng từ khung "đứng nhìn bên" (ảnh gốc 40 x 84) ngay ở độ phân giải gốc nên vẫn nét như pixel:
+// thân trên (đến hông, hàng 55) hạ xuống 4 hàng và lùi trái 4 cột; đùi (hàng 55-68) xoay ngang đưa ra trước, kéo dài thành 18;
+// cẳng chân và giày (hàng 68-84) đặt thẳng dưới đầu gối, chân vẫn chạm đất.
+const seatCache = new WeakMap();
+function seatedOf(src) {
+  let c = seatCache.get(src);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.drawImage(src, 4, 0, src.width - 4, 55, 0, 4, src.width - 4, 55);
+  g.save();
+  g.translate(15, 68);
+  g.rotate(-Math.PI / 2);
+  g.drawImage(src, 19, 55, 9, 13, 0, 0, 9, 18);
+  g.restore();
+  g.drawImage(src, 18, 68, 13, 16, 23, 68, 13, 16);
+  seatCache.set(src, c);
+  return c;
+}
+
 let carry = null;   // giữ vị trí khi đổi khu vực (màn hình được dựng lại)
 
 export default function CourtyardView({
@@ -347,6 +369,7 @@ export default function CourtyardView({
       if (walking) { img = set[frameIdx]; bob = BOB[frameIdx] * 0.6 * ds; }
       else if (blinking && dir !== 'back') img = dir === 'side' ? frames.blinkSide : frames.blinkFront;
       else img = set[0];
+      if (sit) img = seatedOf(img);
       const lit = litAt(x, y);
       const shade = canopyShade(x, y);
       ctx.fillStyle = `rgba(0,0,0,${(0.3 * (1 - 0.35 * night * (1 - lit))).toFixed(3)})`;
@@ -375,24 +398,7 @@ export default function CourtyardView({
       ctx.translate(Math.round(x), Math.round(y + bob));
       if (facing < 0 && dir === 'side') ctx.scale(-1, 1);
       ctx.imageSmoothingEnabled = false;
-      if (sit) {
-        // ngồi: thân hạ thấp xuống mặt ghế; đùi (đoạn chân phía trên) xoay ngang đưa ra trước, cẳng chân thẳng xuống đất
-        const drop = Math.round(SIT_DROP * ds);
-        const cut = Math.round(th * 0.58);
-        const axp = Math.round(frames.ax * K);
-        const hipY = -(th - cut) + drop;                 // độ cao hông so với mặt đất (số âm)
-        const thigh = Math.max(3, Math.round(th * 0.22));
-        const shinSrc = Math.max(1, th - cut - thigh);
-        ctx.drawImage(t, 0, 0, tw, cut, -axp, -th + drop, tw, cut);
-        ctx.save();
-        ctx.translate(0, hipY);
-        ctx.rotate(-Math.PI / 2);
-        ctx.drawImage(t, 0, cut, tw, thigh, -axp, 0, tw, thigh);
-        ctx.restore();
-        ctx.drawImage(t, 0, cut + thigh, tw, shinSrc, thigh - axp, hipY, tw, -hipY);
-      } else {
-        ctx.drawImage(t, 0, 0, tw, th, -Math.round(frames.ax * K), -th, tw, th);
-      }
+      ctx.drawImage(t, 0, 0, tw, th, -Math.round(frames.ax * K), -th, tw, th);
       ctx.restore();
     }
 
