@@ -3,14 +3,15 @@
 // Đi từ cổng vào, dạo trong sân, ra lại cổng trường ở mép dưới.
 // Ngày đêm theo giờ game (12 phút sáng, 12 phút tối) chuyển mượt: ảnh ngày mờ sang ảnh đêm, đèn bật dần theo từng khu.
 // Chiều sâu: nhân vật to nhỏ và đi nhanh chậm theo độ xa, đi sau cột và dưới mái xanh, có bóng mái che ban ngày, quầng đèn ban đêm.
+// Ghế đá: ngồi được, mỗi ghế 2 chỗ, đồng bộ cho các bạn cùng khu (trường s trong gói vị trí).
 // Nhiều người cùng một khu (kênh Realtime bb-san-<khu>). Xóa cùng thư mục components/game khi gỡ game.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { buildFrames } from '../../lib/game/sprites';
 import { clockLabel, dayTime, isNight, nightLevel, rainLevel } from '../../lib/game/clock';
 import {
-  CHAR_H, EXIT_Y, SH, SPEED, SW, YARD_TEXT, ZONE_MAX,
-  canopyShade, depthScale, litAt, yardBlocked, yardNearest, yardSpawn,
+  CHAR_H, EXIT_Y, SH, SIT_DROP, SPEED, SW, YARD_TEXT, ZONE_MAX,
+  benchSeats, canopyShade, depthScale, litAt, yardBlocked, yardNearest, yardSpawn,
 } from '../../lib/game/courtyard';
 import { COLUMNS, drawYardBackdrop, drawYardColumn, drawYardRoof, makeYardArt } from '../../lib/game/courtyardRender';
 
@@ -45,9 +46,11 @@ export default function CourtyardView({
     cam: null, dpr: 1, cw: 0, ch: 0, drops: [], art: null, frames: null, tmp: null,
     remotes: new Map(), ch2: null, ready: false, sendT: 0, idleT: 0, lastSent: '',
     nearId: null, paused: false, fade: 1, leaving: false, left: false,
+    seat: null, standPos: null,
   }).current;
   S.nick = nick;
   S.paused = panel;
+  S.uid = userId;
 
   const say = useCallback((text) => setToast({ text, id: Date.now() }), []);
   useEffect(() => {
@@ -82,7 +85,7 @@ export default function CourtyardView({
         seen.add(key);
         let r = S.remotes.get(key);
         if (!r) {
-          r = { x: m.x ?? 0, y: m.y ?? 0, tx: m.x ?? 0, ty: m.y ?? 0, dir: 'front', facing: 1, moving: false, phase: 0, frame: 0, frames: null, cfgKey: '' };
+          r = { uid: key, seat: null, x: m.x ?? 0, y: m.y ?? 0, tx: m.x ?? 0, ty: m.y ?? 0, dir: 'front', facing: 1, moving: false, phase: 0, frame: 0, frames: null, cfgKey: '' };
           S.remotes.set(key, r);
         }
         r.nick = m.n || 'Bạn nhỏ';
@@ -95,7 +98,7 @@ export default function CourtyardView({
     ch.on('broadcast', { event: 'pos' }, ({ payload: p }) => {
       const r = p && S.remotes.get(p.u);
       if (!r) return;
-      r.tx = p.x; r.ty = p.y; r.dir = p.d || 'front'; r.facing = p.f || 1; r.moving = !!p.m;
+      r.tx = p.x; r.ty = p.y; r.dir = p.d || 'front'; r.facing = p.f || 1; r.moving = !!p.m; r.seat = p.s || null;
     });
     ch.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
@@ -111,23 +114,51 @@ export default function CourtyardView({
     };
   }, [zone, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ----- ghế đá: ngồi xuống / đứng dậy (mỗi ghế 2 chỗ) -----
+  const stand = useCallback(() => {
+    if (!S.seat) return;
+    const sp = S.standPos;
+    S.seat = null; S.standPos = null;
+    if (sp) S.pos = { x: sp.x, y: sp.y };
+    S.vel.x = 0; S.vel.y = 0;
+  }, [S]);
+
+  const sitAt = useCallback((bench) => {
+    const taken = new Set();
+    for (const r of S.remotes.values()) if (r.seat) taken.add(r.seat);
+    const free = benchSeats(bench).filter((s) => !taken.has(s.id));
+    if (!free.length) { say('Ghế này đã đủ 2 bạn ngồi rồi. Em chọn ghế khác nhé.'); return; }
+    free.sort((a, b) => Math.hypot(a.x - S.pos.x, a.y - S.pos.y) - Math.hypot(b.x - S.pos.x, b.y - S.pos.y));
+    const s = free[0];
+    S.standPos = { x: S.pos.x, y: S.pos.y };
+    S.seat = s.id;
+    S.pos = { x: s.x, y: s.y };
+    S.vel.x = 0; S.vel.y = 0;
+    S.dir = 'side'; S.facing = s.face;
+    S.keys.clear(); S.stick = { x: 0, y: 0 };
+  }, [S, say]);
+
   // ----- tương tác -----
   const leave = useCallback(() => {
     if (S.leaving) return;
+    stand();
     S.leaving = true; S.keys.clear(); S.stick = { x: 0, y: 0 };
-  }, [S]);
+  }, [S, stand]);
 
   const interact = useCallback(() => {
     if (S.paused || S.leaving) return;
+    if (S.seat) { stand(); return; }
     const it = yardNearest(S.pos.x, S.pos.y);
     if (!it) return;
     if (it.id === 'ra') leave();
+    else if (it.id === 'ghe') sitAt(it.bench);
     else say(YARD_TEXT[it.id]);
-  }, [S, say, leave]);
+  }, [S, say, leave, stand, sitAt]);
 
   // ----- đổi khu vực -----
   const changeZone = useCallback((z) => {
-    carry = { x: S.pos.x, y: S.pos.y, dir: S.dir, facing: S.facing };
+    const sp = S.seat && S.standPos ? S.standPos : S.pos;
+    carry = { x: sp.x, y: sp.y, dir: S.dir, facing: S.facing };
     onChangeZone(z);
   }, [S, onChangeZone]);
   async function openAreas() {
@@ -225,6 +256,16 @@ export default function CourtyardView({
       let ix = (S.keys.has('r') ? 1 : 0) - (S.keys.has('l') ? 1 : 0) + S.stick.x;
       let iy = (S.keys.has('d') ? 1 : 0) - (S.keys.has('u') ? 1 : 0) + S.stick.y;
       if (S.paused) { ix = 0; iy = 0; }
+      if (S.seat && !S.leaving) {
+        if (Math.hypot(ix, iy) > 0.3) stand();          // đẩy cần / bấm phím di chuyển thì đứng dậy
+        else { ix = 0; iy = 0; S.vel.x = 0; S.vel.y = 0; }
+        for (const r of S.remotes.values()) {            // hai bạn cùng ngồi một chỗ trong cùng giây: bạn có mã lớn hơn nhường chỗ
+          if (S.seat && r.seat === S.seat && String(r.uid) < String(S.uid)) {
+            stand();
+            say('Chỗ này vừa có bạn khác ngồi trước. Em chọn chỗ khác nhé.');
+          }
+        }
+      }
       if (S.leaving) {
         ix = 0; iy = 0.8;                            // tự bước xuống mép dưới rồi tối dần để ra cổng
         S.fade = Math.min(1, S.fade + dt / 0.7);
@@ -254,25 +295,31 @@ export default function CourtyardView({
       } else { S.phase = 0; S.frame = 0; }
       if (!moving && S.clock >= S.nextBlink) { S.blinkUntil = S.clock + 0.13; S.nextBlink = S.clock + 2.4 + Math.random() * 3; }
 
-      const it = (S.paused || S.leaving) ? null : yardNearest(S.pos.x, S.pos.y);
+      let it = (S.paused || S.leaving) ? null : (S.seat ? { id: 'dung', label: 'Đứng dậy' } : yardNearest(S.pos.x, S.pos.y));
+      if (it && it.id === 'ghe') {
+        const taken = new Set();
+        for (const r of S.remotes.values()) if (r.seat) taken.add(r.seat);
+        const left = benchSeats(it.bench).filter((s) => !taken.has(s.id)).length;
+        it = { ...it, label: left > 0 ? `Ngồi ghế đá (còn ${left}/2 chỗ)` : 'Ghế đá đã đủ 2 bạn' };
+      }
       const id = it ? `${it.id}:${it.label}` : null;
       if (id !== S.nearId) { S.nearId = id; setNear(it); }
 
       S.sendT += dt;
       S.idleT += dt;
-      const sig = `${Math.round(S.pos.x)},${Math.round(S.pos.y)},${S.dir},${S.facing},${moving ? 1 : 0}`;
+      const sig = `${Math.round(S.pos.x)},${Math.round(S.pos.y)},${S.dir},${S.facing},${moving ? 1 : 0},${S.seat || 0}`;
       if (S.ready && S.ch2 && ((sig !== S.lastSent && S.sendT > 0.1) || S.idleT > 2)) {
         S.lastSent = sig; S.sendT = 0; S.idleT = 0;
-        try { S.ch2.send({ type: 'broadcast', event: 'pos', payload: { u: userId, x: Math.round(S.pos.x * 10) / 10, y: Math.round(S.pos.y * 10) / 10, d: S.dir, f: S.facing, m: moving ? 1 : 0 } }); } catch (e) { /* bỏ qua */ }
+        try { S.ch2.send({ type: 'broadcast', event: 'pos', payload: { u: userId, x: Math.round(S.pos.x * 10) / 10, y: Math.round(S.pos.y * 10) / 10, d: S.dir, f: S.facing, m: moving ? 1 : 0, s: S.seat || 0 } }); } catch (e) { /* bỏ qua */ }
       }
 
       for (const r of S.remotes.values()) {
-        const k2 = 1 - Math.exp(-dt * 9);
+        const k2 = r.seat ? 1 : 1 - Math.exp(-dt * 9);
         const ox = r.x; const oy = r.y;
         r.x += (r.tx - r.x) * k2;
         r.y += (r.ty - r.y) * k2;
         const sp = Math.hypot(r.x - ox, r.y - oy) / Math.max(dt, 0.001);
-        r.walk = sp > 6;
+        r.walk = !r.seat && sp > 6;
         if (r.walk) { r.phase += (sp * dt) / (STRIDE * depthScale(r.y)); r.frame = Math.floor(r.phase) % 4; } else { r.phase = 0; r.frame = 0; }
       }
 
@@ -289,10 +336,11 @@ export default function CourtyardView({
     }
 
     // nhân vật: to nhỏ theo độ sâu, bóng mái che ban ngày, quầng đèn ban đêm, hơi mờ xa
-    function drawPerson(frames, x, y, dir, facing, frameIdx, walking, blinking, night) {
+    function drawPerson(frames, x, y, dir, facing, frameIdx, walking, blinking, night, sit) {
       if (!frames) return;
       const ds = depthScale(y);
       const K = (CHAR_H / frames.h) * ds;
+      if (sit) { dir = 'side'; walking = false; }
       const set = frames[dir] || frames.front;
       let img;
       let bob = 0;
@@ -327,7 +375,17 @@ export default function CourtyardView({
       ctx.translate(Math.round(x), Math.round(y + bob));
       if (facing < 0 && dir === 'side') ctx.scale(-1, 1);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(t, 0, 0, tw, th, -Math.round(frames.ax * K), -th, tw, th);
+      if (sit) {
+        // ngồi: thân hạ thấp xuống mặt ghế, phần chân (từ hông xuống) ép ngắn lại và đưa ra phía trước
+        const drop = Math.round(SIT_DROP * ds);
+        const cut = Math.round(th * 0.58);
+        const legH = Math.max(2, (th - cut) - drop);
+        const ax0 = -Math.round(frames.ax * K);
+        ctx.drawImage(t, 0, 0, tw, cut, ax0, -th + drop, tw, cut);
+        ctx.drawImage(t, 0, cut, tw, th - cut, ax0 + Math.round(4 * ds), -legH, tw, legH);
+      } else {
+        ctx.drawImage(t, 0, 0, tw, th, -Math.round(frames.ax * K), -th, tw, th);
+      }
       ctx.restore();
     }
 
@@ -372,8 +430,8 @@ export default function CourtyardView({
       const moving = Math.hypot(S.vel.x, S.vel.y) > 6;
       for (const e of list) {
         if (e.col) drawYardColumn(ctx, art, night, e.col);
-        else if (e.me) drawPerson(S.frames, S.pos.x, S.pos.y, S.dir, S.facing, S.frame, moving, blink, night);
-        else drawPerson(e.r.frames, e.r.x, e.r.y, e.r.dir, e.r.facing, e.r.frame || 0, e.r.walk, false, night);
+        else if (e.me) drawPerson(S.frames, S.pos.x, S.pos.y, S.dir, S.facing, S.frame, moving, blink, night, !!S.seat);
+        else drawPerson(e.r.frames, e.r.x, e.r.y, e.r.dir, e.r.facing, e.r.frame || 0, e.r.walk, false, night, !!e.r.seat);
       }
       drawYardRoof(ctx, art, night);                 // mái xanh luôn nằm trên đầu nhân vật
 
@@ -406,10 +464,10 @@ export default function CourtyardView({
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
       ctx.lineJoin = 'round';
-      const tag = (name, wx, wy, color) => {
+      const tag = (name, wx, wy, color, sit) => {
         const ds = depthScale(wy);
         const sx = (wx - cx) * sc;
-        const sy = (wy - CHAR_H * ds - 3 - cy) * sc;
+        const sy = (wy - CHAR_H * ds - 3 + (sit ? SIT_DROP * ds : 0) - cy) * sc;
         ctx.font = `700 ${Math.round(11 * S.dpr * (0.88 + 0.12 * ds))}px sans-serif`;
         ctx.lineWidth = 3 * S.dpr;
         ctx.strokeStyle = 'rgba(10,12,30,0.85)';
@@ -417,8 +475,8 @@ export default function CourtyardView({
         ctx.fillStyle = color;
         ctx.fillText(name, sx, sy);
       };
-      for (const r of S.remotes.values()) tag(r.nick || 'Bạn nhỏ', r.x, r.y, '#ffffff');
-      tag(S.nick || 'Em', S.pos.x, S.pos.y, '#ffe08a');
+      for (const r of S.remotes.values()) tag(r.nick || 'Bạn nhỏ', r.x, r.y, '#ffffff', !!r.seat);
+      tag(S.nick || 'Em', S.pos.x, S.pos.y, '#ffe08a', !!S.seat);
       ctx.textAlign = 'start';
 
       // chuyển cảnh: sáng dần khi mới vào, tối dần khi ra cổng
@@ -505,7 +563,7 @@ export default function CourtyardView({
           <button type="button" className="gm-btn main big" disabled={!near} onClick={interact}>
             {near ? near.label : 'Đi dạo sân trường'}
           </button>
-          <div className="gm-hint">Đi xuống mép dưới để ra cổng trường. Máy tính: phím mũi tên hoặc W A S D, phím E để dùng.</div>
+          <div className="gm-hint">Đi xuống mép dưới để ra cổng trường. Lại gần ghế đá để ngồi (mỗi ghế 2 bạn), đẩy cần để đứng dậy. Máy tính: phím mũi tên hoặc W A S D, phím E để dùng.</div>
         </div>
       </div>
 
