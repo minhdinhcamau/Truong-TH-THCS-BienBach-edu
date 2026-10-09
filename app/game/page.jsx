@@ -301,7 +301,18 @@ export default function GamePage() {
               onChangeZone={(z) => setSchoolZone(z)}
             />
           )}
-          {ready && phase === 'yard' && <CourtyardView onBack={() => { setSchoolFrom('yard'); setPhase('gate'); }} />}
+          {ready && phase === 'yard' && cfg && land && schoolZone && (
+            <CourtyardView
+              key={`y-${schoolZone}`}
+              cfg={cfg}
+              nick={land.nick}
+              userId={userId}
+              zone={schoolZone}
+              homeZone={land.shard}
+              onBack={() => { setSchoolFrom('yard'); setPhase('gate'); }}
+              onEditCharacter={goCreate}
+            />
+          )}
         </>
       )}
     </div>
