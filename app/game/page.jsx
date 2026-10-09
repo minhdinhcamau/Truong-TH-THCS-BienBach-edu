@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
 import CharacterCreator from '../../components/game/CharacterCreator';
 import HouseView from '../../components/game/HouseView';
+import CourtyardView from '../../components/game/CourtyardView';
 import GateView from '../../components/game/GateView';
 import WorldView from '../../components/game/WorldView';
 import './game.css';
@@ -32,13 +33,13 @@ function readLand(data) {
   return { shard: row.shard, plot: row.plot, level: row.level || 0, nick: row.nick || '' };
 }
 
-const SCENES = ['world', 'house', 'gate'];
+const SCENES = ['world', 'house', 'gate', 'yard'];
 
 export default function GamePage() {
   const router = useRouter();
   const rootRef = useRef(null);
   const [started, setStarted] = useState(false);
-  const [phase, setPhase] = useState('loading'); // loading | create | nick | world | house | gate | error
+  const [phase, setPhase] = useState('loading'); // loading | create | nick | world | house | gate | yard | error
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState(null);
   const [nickDefault, setNickDefault] = useState('');
@@ -47,6 +48,8 @@ export default function GamePage() {
   const [land, setLand] = useState(null);
   const [viewShard, setViewShard] = useState(null);
   const [from, setFrom] = useState('house');
+  const [schoolZone, setSchoolZone] = useState(null);   // khu vực đang đứng ở cổng trường
+  const [schoolFrom, setSchoolFrom] = useState('village'); // 'village' (từ cầu đi lên) | 'yard' (từ sân trường ra)
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [errText, setErrText] = useState('');
@@ -270,7 +273,7 @@ export default function GamePage() {
               onMoveHome={moveHome}
               onEnterHouse={() => setPhase('house')}
               onEditCharacter={goCreate}
-              onGoSchool={() => setPhase('gate')}
+              onGoSchool={() => { setSchoolFrom('village'); setSchoolZone(viewShard || land.shard); setPhase('gate'); }}
               onUpgrade={upgradeHouse}
             />
           )}
@@ -283,9 +286,22 @@ export default function GamePage() {
               onExit={() => { setFrom('house'); setViewShard(land.shard); setPhase('world'); }}
             />
           )}
-          {ready && phase === 'gate' && cfg && (
-            <GateView cfg={cfg} onBackHome={() => { setFrom('school'); setPhase('world'); }} onEditCharacter={goCreate} />
+          {ready && phase === 'gate' && cfg && land && schoolZone && (
+            <GateView
+              key={`g-${schoolZone}`}
+              cfg={cfg}
+              nick={land.nick}
+              userId={userId}
+              zone={schoolZone}
+              homeZone={land.shard}
+              from={schoolFrom}
+              onBackHome={() => { setFrom('school'); setViewShard(schoolZone); setPhase('world'); }}
+              onEnterYard={() => setPhase('yard')}
+              onEditCharacter={goCreate}
+              onChangeZone={(z) => setSchoolZone(z)}
+            />
           )}
+          {ready && phase === 'yard' && <CourtyardView onBack={() => { setSchoolFrom('yard'); setPhase('gate'); }} />}
         </>
       )}
     </div>
