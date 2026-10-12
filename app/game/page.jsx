@@ -9,6 +9,7 @@ import CharacterCreator from '../../components/game/CharacterCreator';
 import HouseView from '../../components/game/HouseView';
 import CourtyardView from '../../components/game/CourtyardView';
 import GateView from '../../components/game/GateView';
+import MarketView from '../../components/game/MarketView';
 import WorldView from '../../components/game/WorldView';
 import './game.css';
 import './world.css';
@@ -33,13 +34,13 @@ function readLand(data) {
   return { shard: row.shard, plot: row.plot, level: row.level || 0, nick: row.nick || '' };
 }
 
-const SCENES = ['world', 'house', 'gate', 'yard'];
+const SCENES = ['world', 'house', 'gate', 'yard', 'market'];
 
 export default function GamePage() {
   const router = useRouter();
   const rootRef = useRef(null);
   const [started, setStarted] = useState(false);
-  const [phase, setPhase] = useState('loading'); // loading | create | nick | world | house | gate | yard | error
+  const [phase, setPhase] = useState('loading'); // loading | create | nick | world | house | gate | yard | market | error
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState(null);
   const [nickDefault, setNickDefault] = useState('');
@@ -50,6 +51,7 @@ export default function GamePage() {
   const [from, setFrom] = useState('house');
   const [schoolZone, setSchoolZone] = useState(null);   // khu vực đang đứng ở cổng trường
   const [schoolFrom, setSchoolFrom] = useState('village'); // 'village' (từ cầu đi lên) | 'yard' (từ sân trường ra)
+  const [marketZone, setMarketZone] = useState(null);   // khu vực đang đứng ở chợ
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [errText, setErrText] = useState('');
@@ -274,6 +276,7 @@ export default function GamePage() {
               onEnterHouse={() => setPhase('house')}
               onEditCharacter={goCreate}
               onGoSchool={() => { setSchoolFrom('village'); setSchoolZone(viewShard || land.shard); setPhase('gate'); }}
+              onGoMarket={() => { setMarketZone(viewShard || land.shard); setPhase('market'); }}
               onUpgrade={upgradeHouse}
             />
           )}
@@ -312,6 +315,20 @@ export default function GamePage() {
               onBack={() => { setSchoolFrom('yard'); setPhase('gate'); }}
               onEditCharacter={goCreate}
               onChangeZone={(z) => setSchoolZone(z)}
+            />
+          )}
+          {ready && phase === 'market' && cfg && land && marketZone && (
+            <MarketView
+              key={`m-${marketZone}`}
+              cfg={cfg}
+              nick={land.nick}
+              userId={userId}
+              zone={marketZone}
+              homeZone={land.shard}
+              from="village"
+              onBackHome={() => { setFrom('market'); setViewShard(marketZone); setPhase('world'); }}
+              onEditCharacter={goCreate}
+              onChangeZone={(z) => setMarketZone(z)}
             />
           )}
         </>

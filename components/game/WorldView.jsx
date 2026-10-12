@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { buildFrames } from '../../lib/game/sprites';
 import { clockLabel, dayTime, isNight, nightLevel, rainLevel } from '../../lib/game/clock';
 import {
-  CHAR_H, LEVELS, MAX_LEVEL, PLOTS_PER_SHARD, SCHOOL_SIGN, SCHOOL_SPAWN, SCHOOL_ZONE, SPEED, T, VIEW_W, VISITOR_SPAWN, WH, WW,
+  CHAR_H, LEVELS, MARKET_SIGN, MARKET_SPAWN, MARKET_ZONE, MAX_LEVEL, PLOTS_PER_SHARD, SCHOOL_SIGN, SCHOOL_SPAWN, SCHOOL_ZONE, SPEED, T, VIEW_W, VISITOR_SPAWN, WH, WW,
   getWorld, houseGeom, nearestFree, plotInfo, worldBlocked,
 } from '../../lib/game/mekong';
 import { makeArt } from '../../lib/game/mekongArt';
@@ -19,7 +19,7 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 
 export default function WorldView({
-  cfg, land, viewShard, userId, from, onEnterHouse, onEditCharacter, onGoSchool, onUpgrade, onVisit, onMoveHome,
+  cfg, land, viewShard, userId, from, onEnterHouse, onEditCharacter, onGoSchool, onGoMarket, onUpgrade, onVisit, onMoveHome,
 }) {
   const canvasRef = useRef(null);
   const viewRef = useRef(null);
@@ -79,10 +79,11 @@ export default function WorldView({
   if (!S.pos) {
     let base;
     if (from === 'school') base = SCHOOL_SPAWN;
+    else if (from === 'market') base = MARKET_SPAWN;
     else if (isHome) { const g = houseGeom(land.plot, land.level); base = { x: g.door.x, y: g.door.y + 14 }; }
     else base = VISITOR_SPAWN;
     S.pos = nearestFree(base.x, base.y, []);
-    S.dir = from === 'school' ? 'side' : 'front';
+    S.dir = from === 'school' ? 'side' : from === 'market' ? 'back' : 'front';
     S.facing = from === 'school' ? -1 : 1;
   }
   useEffect(() => { S.frames = buildFrames(cfg); }, [cfg, S]);
@@ -151,6 +152,8 @@ export default function WorldView({
   // ----- tương tác -----
   const findNear = useCallback(() => {
     const p = S.pos;
+    if (p.x > MARKET_ZONE.x0 && p.x < MARKET_ZONE.x1 && p.y > MARKET_ZONE.y0 && p.y < MARKET_ZONE.y1) return { id: 'cho', label: 'Đi chợ miền Tây' };
+    if (dist(p, MARKET_SIGN) < 30) return { id: 'cho', label: 'Đi chợ miền Tây' };
     if (p.x > SCHOOL_ZONE.x0 && p.y > SCHOOL_ZONE.y0 && p.y < SCHOOL_ZONE.y1) return { id: 'truong', label: 'Đi tới trường' };
     if (dist(p, SCHOOL_SIGN) < 36) return { id: 'truong', label: 'Đi tới trường' };
     if (S.isHome) {
@@ -175,8 +178,9 @@ export default function WorldView({
     if (it.id === 'cua') onEnterHouse();
     else if (it.id === 'nang_cap') { S.keys.clear(); S.stick = { x: 0, y: 0 }; setPanel('upgrade'); }
     else if (it.id === 'truong') onGoSchool && onGoSchool();
+    else if (it.id === 'cho') onGoMarket && onGoMarket();
     else say(`Đây là nhà của ${it.nick}. Nhà riêng nên em chưa vào được, chào hàng xóm nhé!`);
-  }, [findNear, onEnterHouse, onGoSchool, say, S]);
+  }, [findNear, onEnterHouse, onGoSchool, onGoMarket, say, S]);
 
   async function doUpgrade() {
     setBusy(true);
