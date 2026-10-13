@@ -9,11 +9,11 @@ import { buildFrames } from '../../lib/game/sprites';
 import { BUYER_OUTFITS, buildBuyerFrames } from '../../lib/game/marketBuyers';
 import { clockLabel, dayTime, isNight, nightLevel, rainLevel } from '../../lib/game/clock';
 import {
-  CHAR_H, EXIT_Y, MH, MW, SPEED, STALLS, ZONE_MAX,
+  CHAR_H, EXIT_Y, MH, MW, SPAWN, SPEED, STALLS, ZONE_MAX,
   depthScale, interactText, makeBuyers, marketBlocked, marketNearest, stepBuyer,
 } from '../../lib/game/market';
 import { makeMarketArt } from '../../lib/game/marketArt';
-import { NIGHT_TINT, drawBase, drawBoats, drawLights, makeProps } from '../../lib/game/marketRender';
+import { NIGHT_TINT, drawBase, drawBirds, drawBoats, drawCloudShadows, drawLeaves, drawLights, makeProps } from '../../lib/game/marketRender';
 
 const STRIDE = 12;
 const BOB = [-1, 0, -1, 0];
@@ -84,7 +84,7 @@ export default function MarketView({
       S.fade = 0.4;
       carry = null;
     } else {
-      S.pos = { x: 400, y: 478 };
+      S.pos = { x: SPAWN.x, y: SPAWN.y };
       S.dir = 'back';
       S.facing = 1;
     }
@@ -259,7 +259,7 @@ export default function MarketView({
       let iy = locked ? 0 : (S.keys.has('d') ? 1 : 0) - (S.keys.has('u') ? 1 : 0) + S.stick.y;
       if (S.leaving) {
         // tự bước xuống bến rồi tối dần để về làng
-        ix = clampN((400 - S.pos.x) / 14, -0.8, 0.8);
+        ix = clampN((MW / 2 - S.pos.x) / 14, -0.8, 0.8);
         iy = 0.8;
         S.fade = Math.min(1, S.fade + dt / 0.8);
         if (S.fade >= 1 && !S.left) { S.left = true; onBackHome(); }
@@ -398,7 +398,7 @@ export default function MarketView({
       ctx.imageSmoothingEnabled = false;
 
       // nền, nước, xuồng
-      drawBase(ctx, art, tm);
+      drawBase(ctx, art, tm, night);
       drawBoats(ctx, art, tm);
 
       // sạp, cột đèn và mọi người sắp theo độ sâu (y chân)
@@ -410,12 +410,17 @@ export default function MarketView({
       const blink = S.clock < S.blinkUntil;
       const moving = Math.hypot(S.vel.x, S.vel.y) > 8;
       for (const e of list) {
-        if (e.prop) e.prop.draw(ctx);
+        if (e.prop) e.prop.draw(ctx, tm);
         else if (e.me) drawPerson(S.frames, S.pos.x, S.pos.y, S.dir, S.facing, S.frame, moving, blink);
         else if (e.r) drawPerson(e.r.frames, e.r.x, e.r.y, e.r.dir, e.r.facing, e.r.frame || 0, e.r.walk, false);
         else if (e.b.image) drawImagePerson(e.b);
         else drawPerson(e.b.frames, e.b.x, e.b.y, e.b.dir, e.b.facing, e.b.frame, e.b.walk, false);
       }
+
+      // bóng mây, lá bay theo gió, chim trên trời (vẽ trên cùng của thế giới, dưới lớp tối ban đêm)
+      drawCloudShadows(ctx, tm, night);
+      drawLeaves(ctx, tm);
+      drawBirds(ctx, tm, night, rain);
 
       // ban đêm: tối dần, đèn sạp và đèn bến sáng ấm
       if (night > 0.02) {
