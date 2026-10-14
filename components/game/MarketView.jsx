@@ -13,6 +13,7 @@ import {
   depthScale, interactText, makeBuyers, marketBlocked, marketNearest, stepBuyer,
 } from '../../lib/game/market';
 import { makeMarketArt } from '../../lib/game/marketArt';
+import { HERO } from '../../lib/game/marketHero';
 import { NIGHT_TINT, drawBase, drawBirds, drawBoats, drawCloudShadows, drawLeaves, drawLights, makeProps } from '../../lib/game/marketRender';
 
 const STRIDE = 12;
@@ -42,7 +43,7 @@ export default function MarketView({
   const S = useRef({
     pos: null, vel: { x: 0, y: 0 }, keys: new Set(), stick: { x: 0, y: 0 }, stickId: null,
     facing: 1, dir: 'back', phase: 0, frame: 0, clock: 0, nextBlink: 2, blinkUntil: 0,
-    cam: null, dpr: 1, cw: 0, ch: 0, drops: [], art: null, frames: null, props: null, sellerImgs: {}, buyers: null,
+    cam: null, dpr: 1, cw: 0, ch: 0, drops: [], art: null, frames: null, props: null, sellerImgs: {}, heroImgs: {}, buyers: null,
     remotes: new Map(), ch2: null, ready: false, sendT: 0, idleT: 0, lastSent: '',
     nearId: null, paused: false, fade: 1, leaving: false, left: false, capChecked: false,
   }).current;
@@ -60,6 +61,10 @@ export default function MarketView({
   if (!S.art && typeof document !== 'undefined') {
     S.art = makeMarketArt((w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; });
     for (const st of STALLS) if (st.seller) { const im = new Image(); im.src = `/game/cho/${st.seller}.png`; S.sellerImgs[st.seller] = im; }
+    for (const [id, hd] of Object.entries(HERO)) {
+      const ld = (src) => { const im = new Image(); im.src = src; return im; };
+      S.heroImgs[id] = { base: ld(hd.base), body: ld(hd.body.src), head: ld(hd.head.src), blink: ld(hd.blink.src), oar: ld(hd.oar.src) };
+    }
     S.props = makeProps(S.art, S.sellerImgs);
   }
 
@@ -399,7 +404,7 @@ export default function MarketView({
 
       // nền, nước, xuồng
       drawBase(ctx, art, tm, night);
-      drawBoats(ctx, art, tm);
+      drawBoats(ctx, art, tm, S.heroImgs);
 
       // sạp, cột đèn và mọi người sắp theo độ sâu (y chân)
       const list = S.props ? S.props.map((p) => ({ key: p.key, prop: p })) : [];
