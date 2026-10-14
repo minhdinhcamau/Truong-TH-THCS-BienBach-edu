@@ -63,7 +63,7 @@ export default function MarketView({
     for (const st of STALLS) if (st.seller) { const im = new Image(); im.src = `/game/cho/${st.seller}.png`; S.sellerImgs[st.seller] = im; }
     for (const [id, hd] of Object.entries(HERO)) {
       const ld = (src) => { const im = new Image(); im.src = src; return im; };
-      S.heroImgs[id] = { base: ld(hd.base), body: ld(hd.body.src), head: ld(hd.head.src), blink: ld(hd.blink.src), oar: ld(hd.oar.src) };
+      S.heroImgs[id] = { base: ld(hd.base), grp: ld(hd.grp.src), blink: ld(hd.blink.src) };
     }
     S.props = makeProps(S.art, S.sellerImgs);
   }
